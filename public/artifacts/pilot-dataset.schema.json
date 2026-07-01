@@ -1,0 +1,377 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reading-coach-pilot-dataset.v1",
+  "title": "Reading Coach Pilot Dataset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "teacher",
+    "teachers",
+    "students",
+    "classGroups",
+    "assignments",
+    "sessions",
+    "selectedActor",
+    "activeAssignmentId",
+    "activeSessionId",
+    "metadata",
+    "exportMetadata"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "teacher": { "$ref": "#/$defs/teacherAccount" },
+    "teachers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/teacherAccount" }
+    },
+    "students": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/studentAccount" }
+    },
+    "classGroups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/classGroup" }
+    },
+    "assignments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/assignment" }
+    },
+    "sessions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pilotSession" }
+    },
+    "selectedActor": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/selectedActor" }
+      ]
+    },
+    "activeAssignmentId": { "type": "string", "minLength": 1 },
+    "activeSessionId": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "metadata": { "$ref": "#/$defs/appMetadata" },
+    "exportMetadata": { "$ref": "#/$defs/exportMetadata" }
+  },
+  "$defs": {
+    "teacherAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "loginId"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "loginId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "studentAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "classGroupId", "studentNumber", "loginId", "participantCode"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "classGroupId": { "type": "string", "minLength": 1 },
+        "studentNumber": { "type": "number", "minimum": 1 },
+        "loginId": { "type": "string", "minLength": 1 },
+        "participantCode": { "type": "string", "pattern": "^[A-Z0-9-]+$" }
+      }
+    },
+    "classGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "teacherId", "studentIds"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "teacherId": { "type": "string", "minLength": 1 },
+        "studentIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "selectedActor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "accountId"],
+      "properties": {
+        "role": { "enum": ["teacher", "student"] },
+        "accountId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "passage", "question", "gradeLevel", "targetLength"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "passage": { "type": "string", "minLength": 1 },
+        "question": { "type": "string", "minLength": 1 },
+        "gradeLevel": { "type": "string" },
+        "targetLength": { "type": "string" },
+        "assignmentMode": { "enum": ["full_process", "revision_feedback"] },
+        "essayType": { "type": "string" },
+        "minimumWordCount": { "type": "string" },
+        "requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sourceGuidance": { "type": "string" },
+        "classGroupId": { "type": "string" },
+        "createdByTeacherId": { "type": "string" },
+        "startDate": { "type": "string" },
+        "startTime": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "dueTime": { "type": "string" }
+      }
+    },
+    "outline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "evidence", "reasoning", "counterargument", "question"],
+      "properties": {
+        "claim": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reasoning": { "type": "string" },
+        "counterargument": { "type": "string" },
+        "question": { "type": "string" }
+      }
+    },
+    "chatTurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "text", "timestamp"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["student", "assistant"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "responseType": { "$ref": "#/$defs/coachResponseType" }
+      }
+    },
+    "coachResponseType": {
+      "enum": ["clarify", "question", "evidence_check", "redirect", "revision_guidance", "refusal"]
+    },
+    "pilotEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "timestamp", "stage", "payload"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "stage_entered",
+            "stage_completed",
+            "student_message",
+            "assistant_message",
+            "outline_edited",
+            "claim_revised",
+            "evidence_added",
+            "counterargument_added",
+            "draft_edited",
+            "paste_detected",
+            "outline_warning_shown",
+            "feedback_generated",
+            "feedback_viewed",
+            "suggestion_resolved",
+            "submission_created",
+            "teacher_review_updated"
+          ]
+        },
+        "timestamp": { "type": "string" },
+        "stage": { "$ref": "#/$defs/stage" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "draftSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timestamp", "text"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "pasteEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timestamp", "stage", "target", "textLength", "lineCount", "textPreviewFirst80", "fromClipboard"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string" },
+        "stage": { "const": "writing" },
+        "target": { "const": "draft" },
+        "textLength": { "type": "number", "minimum": 0 },
+        "lineCount": { "type": "number", "minimum": 0 },
+        "textPreviewFirst80": { "type": "string" },
+        "fromClipboard": { "const": true }
+      }
+    },
+    "finalSubmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "submittedAt"],
+      "properties": {
+        "text": { "type": "string" },
+        "submittedAt": { "type": "string" }
+      }
+    },
+    "teacherReviewNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "note", "updatedAt", "updatedByTeacherId"],
+      "properties": {
+        "status": { "enum": ["not_reviewed", "needs_follow_up", "reviewed"] },
+        "note": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedByTeacherId": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        }
+      }
+    },
+    "pilotSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "assignment",
+        "student",
+        "currentStage",
+        "events",
+        "chatTurns",
+        "outlineSnapshots",
+        "draftSnapshots",
+        "pasteEvents",
+        "finalSubmission",
+        "teacherReview",
+        "metadata"
+      ],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "assignment": { "$ref": "#/$defs/assignment" },
+        "student": { "$ref": "#/$defs/sessionStudent" },
+        "currentStage": { "$ref": "#/$defs/stage" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pilotEvent" }
+        },
+        "chatTurns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/chatTurn" }
+        },
+        "outlineSnapshots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/outline" }
+        },
+        "draftSnapshots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/draftSnapshot" }
+        },
+        "pasteEvents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pasteEvent" }
+        },
+        "finalSubmission": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/finalSubmission" }
+          ]
+        },
+        "teacherReview": { "$ref": "#/$defs/teacherReviewNote" },
+        "metadata": { "$ref": "#/$defs/sessionMetadata" }
+      }
+    },
+    "sessionStudent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anonymousId"],
+      "properties": {
+        "anonymousId": { "type": "string", "minLength": 1 },
+        "accountId": { "type": "string" },
+        "displayName": { "type": "string" }
+      }
+    },
+    "appMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appVersion", "createdAt"],
+      "properties": {
+        "appVersion": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "sessionMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appVersion", "llmMode", "model", "createdAt"],
+      "properties": {
+        "appVersion": { "type": "string" },
+        "llmMode": { "enum": ["mock", "real"] },
+        "model": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "fileSyncStatus": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "enum": ["pending", "unavailable"] },
+            "message": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "path", "syncedAt"],
+          "properties": {
+            "status": { "const": "saved" },
+            "path": { "type": "string", "minLength": 1 },
+            "syncedAt": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "message"],
+          "properties": {
+            "status": { "const": "failed" },
+            "path": { "type": "string" },
+            "syncedAt": { "type": "string" },
+            "message": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "exportMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "codebookId", "generatedAt", "fileSync"],
+      "properties": {
+        "schemaId": { "const": "reading-coach-pilot-dataset.v1" },
+        "codebookId": { "const": "critical-thinking-cognitive-offloading-sycophancy.v1" },
+        "generatedAt": { "type": "string" },
+        "fileSync": { "$ref": "#/$defs/fileSyncStatus" }
+      }
+    },
+    "stage": { "enum": ["reading", "thinking", "writing", "review"] }
+  }
+}

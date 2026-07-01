@@ -1,0 +1,182 @@
+.account-page {
+  margin: 0 auto;
+  max-width: 1280px;
+  padding: var(--space-8);
+}
+
+.account-page .teacher-page-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-5);
+  justify-content: space-between;
+  max-width: none;
+}
+
+.account-page .teacher-page-heading p {
+  margin-bottom: 0;
+  max-width: 560px;
+}
+
+.account-message {
+  background: var(--surface-coach);
+  border: 1px solid var(--border-accent-soft);
+  border-radius: var(--radius-md);
+  color: var(--accent-primary);
+  font-weight: 700;
+  margin: var(--space-4) 0;
+  padding: var(--space-3);
+}
+
+.account-management-layout {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+  margin-top: var(--space-6);
+}
+
+.account-form-column,
+.account-list-column {
+  align-content: start;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.account-column-heading {
+  border-bottom: 1px solid var(--border-subtle);
+  display: grid;
+  gap: var(--space-1);
+  min-height: 72px;
+  padding-bottom: var(--space-3);
+}
+
+.account-column-heading h2 {
+  font-size: var(--font-size-lg);
+  margin: 0;
+}
+
+.account-column-heading p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.account-section {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.account-section h3,
+.account-table-wrap h3 {
+  font-size: var(--font-size-lg);
+  margin-top: 0;
+}
+
+.account-helper {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  margin: calc(var(--space-2) * -1) 0 var(--space-1);
+}
+
+.account-section .ui-button {
+  margin-top: var(--space-2);
+  width: 100%;
+}
+
+.account-field-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+}
+
+.account-table-wrap {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-document);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  padding: var(--space-5);
+}
+
+.account-table {
+  border-collapse: collapse;
+  min-width: 680px;
+  width: 100%;
+}
+
+.account-table th,
+.account-table td {
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3);
+  text-align: left;
+}
+
+.account-table th {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.account-action-cell {
+  text-align: right;
+  width: 1%;
+}
+
+.account-table th:last-child {
+  text-align: right;
+}
+
+.account-delete-button {
+  align-items: center;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  transition: background var(--motion-standard), border-color var(--motion-standard), color var(--motion-standard);
+  width: 34px;
+}
+
+.account-delete-button:hover,
+.account-delete-button:focus-visible {
+  background: var(--surface-warning);
+  border-color: var(--border-warning);
+  color: var(--status-error);
+}
+
+.account-delete-button svg {
+  height: var(--font-size-md);
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: var(--font-size-md);
+}
+
+.account-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 820px) {
+  .account-page {
+    padding: var(--space-5) var(--space-4) var(--space-8);
+  }
+
+  .account-page .teacher-page-heading {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .account-management-layout,
+  .account-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-column-heading {
+    min-height: 0;
+  }
+}
