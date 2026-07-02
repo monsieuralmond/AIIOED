@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { failedFileSync, syncPilotStateToFile, unavailableFileSync } from "../session/file-sync";
-import { activeSession, assignmentsForStudent, createClassGroup, createInitialPilotState, createSession, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, enterStage, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, sessionForStudent, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updateDraft, updateOutline, updatePilotSession, updateTeacherReview } from "../session/session";
+import { activeSession, assignmentsForStudent, createClassGroup, createInitialPilotState, createSession, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, enterStage, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updateDraft, updateOutline, updatePilotSession, updateTeacherReview } from "../session/session";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session";
 import { loadPersistedState, savePersistedState } from "../session/storage";
 import { sampleDraft, sampleOutline } from "../shared/fixtures";
+import { ResearchModes } from "../shared/research";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, Stage, StudentAccount, TeacherReviewUpdate } from "../shared/types";
 import { AccountManagement } from "./account-management";
 import { CreateAssignment } from "./create-assignment";
@@ -15,6 +16,7 @@ import { RoleEntry } from "./role-entry";
 import { StudentAssignments } from "./student-assignments";
 import { StudentWorkspace } from "./student-workspace";
 import { TeacherReview } from "./teacher-review";
+import { UnderstandingCalibrationFlow } from "./understanding-calibration-flow";
 
 type Route = "list" | "create" | "student" | "review" | "export" | "accounts";
 
@@ -190,6 +192,7 @@ export function App(): ReactElement {
 
   const renderStudentWorkspace = (): ReactElement => {
     if (session === null) throw new Error("Student workspace requires an active persisted session.");
+    if (session.researchMode === ResearchModes.understandingCalibration) return <UnderstandingCalibrationFlow session={session} setSession={setSession} />;
     return <StudentWorkspace session={session} setSession={setSession} />;
   };
 

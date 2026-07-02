@@ -213,5 +213,6 @@ export const activeSession = (state: PilotState): PilotSession | null => {
 export const sessionStatus = (state: PilotState, studentId: string, assignmentId: string): StudentWorkStatus => {
   const session = sessionForStudent(state, studentId, assignmentId);
   if (session === null) return "not_started";
-  return session.finalSubmission === null ? "in_progress" : "submitted";
+  if (session.finalSubmission !== null || session.status === "submitted" || session.status === "completed") return "submitted";
+  return "in_progress";
 };

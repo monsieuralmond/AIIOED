@@ -1,4 +1,6 @@
 import type { CoachRequest, CoachResponse, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types";
+import { calibrationRequestTags } from "../shared/calibration-ai";
+import type { CalibrationChatRequest, CalibrationChatResponse, CalibrationRequestTag } from "../shared/calibration-ai";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -39,6 +41,13 @@ const isReviewSuggestionCheckResponse = (value: unknown): value is ReviewSuggest
   return typeof value["message"] === "string" && typeof value["resolved"] === "boolean" && typeof value["suggestionId"] === "string";
 };
 
+const isCalibrationRequestTag = (value: unknown): value is CalibrationRequestTag => calibrationRequestTags.some((tag) => tag === value);
+
+const isCalibrationChatResponse = (value: unknown): value is CalibrationChatResponse => {
+  if (!isRecord(value) || !Array.isArray(value["requestTags"])) return false;
+  return typeof value["text"] === "string" && value["type"] === "clarify" && value["requestTags"].every(isCalibrationRequestTag);
+};
+
 export const requestCoachResponse = async (request: CoachRequest): Promise<CoachResponse> => {
   const payload = await postJson("/api/coach/message", request);
   if (!isCoachResponse(payload)) throw new Error("AI 응답 형식이 올바르지 않습니다.");
@@ -54,5 +63,11 @@ export const requestReviewSuggestions = async (request: { readonly draft: string
 export const requestSuggestionCheck = async (request: { readonly draft: string; readonly outline: CoachRequest["outline"]; readonly suggestion: ReviewSuggestion }): Promise<ReviewSuggestionCheckResponse> => {
   const payload = await postJson("/api/review/check", request);
   if (!isReviewSuggestionCheckResponse(payload)) throw new Error("AI 수정 확인 형식이 올바르지 않습니다.");
+  return payload;
+};
+
+export const requestCalibrationChatResponse = async (request: CalibrationChatRequest): Promise<CalibrationChatResponse> => {
+  const payload = await postJson("/api/calibration/chat", request);
+  if (!isCalibrationChatResponse(payload)) throw new Error("AI 이해 보정 응답 형식이 올바르지 않습니다.");
   return payload;
 };

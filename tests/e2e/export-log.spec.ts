@@ -26,9 +26,12 @@ test("export view exposes research JSON shape", async ({ page }) => {
   await expect(page.getByText("라벨링 행 0개")).toBeVisible();
   await expect(page.getByRole("link", { name: "JSON 다운로드" })).toHaveAttribute("download", "reading-coach-pilot-dataset.json");
   await expect(page.getByRole("link", { name: "라벨링 CSV 다운로드" })).toHaveAttribute("download", "reading-coach-labeling-rows.csv");
+  await expect(page.getByRole("link", { name: "이벤트 CSV 다운로드" })).toHaveAttribute("download", "research-events.csv");
+  await expect(page.getByRole("link", { name: "산출물·측정값 CSV 다운로드" })).toHaveAttribute("download", "research-artifacts-measures.csv");
   await expect(page.getByRole("link", { name: "JSON 스키마 다운로드" })).toHaveAttribute("download", "pilot-dataset.schema.json");
   await expect(page.getByRole("link", { name: "라벨링 코드북 다운로드" })).toHaveAttribute("download", "labeling-codebook.md");
   await expect(page.getByRole("link", { name: "데이터 딕셔너리 다운로드" })).toHaveAttribute("download", "data-dictionary.md");
+  await expect(page.getByText("연구 원자료")).toBeVisible();
 });
 
 test("export captures revision check attempts for later labeling", async ({ page }) => {

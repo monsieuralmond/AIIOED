@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
   const aiHandlers = createAiHandlers({
     apiKey: env["GEMINI_API_KEY"],
     mode: aiMode(env["READING_COACH_AI_MODE"]),
-    model: env["GEMINI_MODEL"] ?? "gemini-3.5-flash"
+    model: env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite"
   });
   return {
     plugins: [
@@ -48,12 +48,14 @@ export default defineConfig(({ mode }) => {
         name: "pilot-state-file-sync",
         configureServer(server) {
           server.middlewares.use("/api/pilot-state", handlePilotStatePost);
+          server.middlewares.use("/api/calibration/chat", aiHandlers.calibrationChat);
           server.middlewares.use("/api/coach/message", aiHandlers.coach);
           server.middlewares.use("/api/review/suggestions", aiHandlers.reviewSuggestions);
           server.middlewares.use("/api/review/check", aiHandlers.reviewCheck);
         },
         configurePreviewServer(server) {
           server.middlewares.use("/api/pilot-state", handlePilotStatePost);
+          server.middlewares.use("/api/calibration/chat", aiHandlers.calibrationChat);
           server.middlewares.use("/api/coach/message", aiHandlers.coach);
           server.middlewares.use("/api/review/suggestions", aiHandlers.reviewSuggestions);
           server.middlewares.use("/api/review/check", aiHandlers.reviewCheck);

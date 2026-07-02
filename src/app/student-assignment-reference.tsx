@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
-import type { PilotSession, Stage } from "../shared/types";
+import type { PilotSession, WritingStage } from "../shared/types";
 
-const assignmentChecklist: Readonly<Record<Stage, { readonly title: string; readonly items: readonly string[] }>> = {
+const assignmentChecklist: Readonly<Record<WritingStage, { readonly title: string; readonly items: readonly string[] }>> = {
   reading: {
     items: ["문제가 무엇을 묻는지 한 문장으로 말할 수 있나요?", "지문에서 찬성 쪽과 반대 쪽 단서를 모두 찾았나요?", "내가 쓸 글의 길이와 조건을 확인했나요?"],
     title: "읽기 전에 확인"
@@ -20,8 +20,13 @@ const assignmentChecklist: Readonly<Record<Stage, { readonly title: string; read
   }
 };
 
+const writingStageForReference = (stage: PilotSession["currentStage"]): WritingStage => {
+  if (stage === "thinking" || stage === "writing" || stage === "review") return stage;
+  return "reading";
+};
+
 export function AssignmentReference(props: { readonly session: PilotSession; readonly onClose: () => void }): ReactElement {
-  const checklist = assignmentChecklist[props.session.currentStage];
+  const checklist = assignmentChecklist[writingStageForReference(props.session.currentStage)];
   const teacherRequirements = props.session.assignment.requirements ?? checklist.items;
   return (
     <div aria-label="과제 내용" className="preview-dialog" role="dialog">

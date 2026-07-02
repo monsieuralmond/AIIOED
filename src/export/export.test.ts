@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DATASET_SCHEMA_ID, LABELING_CODEBOOK_ID, exportDataset, exportLabelingRows, exportSession, stringifyLabelingCsv } from "./export";
+import { DATASET_SCHEMA_ID, LABELING_CODEBOOK_ID, exportDataset, exportLabelingRows, exportResearchArtifactMeasureRows, exportResearchEventRows, exportSession, stringifyLabelingCsv, stringifyResearchArtifactMeasuresCsv, stringifyResearchEventsCsv } from "./export";
 import { createInitialPilotState } from "../session/session";
 import { addAssistantCoachTurn, addChatTurn, createSession, recordFeedbackGenerated, recordSuggestionCheck, resolveSuggestion, submitFinal, updateTeacherReview } from "../session/session";
 import { sampleAssignment, sampleStudents } from "../shared/fixtures";
+import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
+import type { PilotSession } from "../shared/types";
 
 describe("session export", () => {
   it("exports the research dataset shape with final submission separated", () => {
@@ -105,5 +107,70 @@ describe("session export", () => {
     expect(eventEvidence).toContain("suggestionId");
     expect(eventEvidence).toContain("teacher-research");
     expect(eventEvidence).toContain("근거 요청과 반론 작성 확인");
+  });
+
+  it("exports raw research event CSV and artifact-measure CSV", () => {
+    const student = sampleStudents[0];
+    if (student === undefined) throw new Error("Expected a sample student.");
+    const assignment = { ...sampleAssignment, researchMode: ResearchModes.understandingCalibration };
+    const baseSession = createSession(assignment, student);
+    const session: PilotSession = {
+      ...baseSession,
+      artifacts: [
+        {
+          createdAt: "2026-07-02T00:00:00.000Z",
+          id: "artifact-explanation",
+          kind: "independent_explanation",
+          payload: { text: "플라스틱은 오래 남는다." },
+          stage: UnderstandingCalibrationStages.independentTasks
+        }
+      ],
+      events: [
+        {
+          id: "event-chat-turn",
+          payload: {
+            aiMode: "mock",
+            assistantMessage: "핵심은 오래 남는다는 점이에요.",
+            model: "mock-understanding-calibration-v0",
+            requestTags: ["summary_request"],
+            userMessage: "핵심만 정리해줘"
+          },
+          stage: UnderstandingCalibrationStages.chat,
+          timestamp: "2026-07-02T00:01:00.000Z",
+          type: "calibration_chat_turn_created"
+        }
+      ],
+      measures: [
+        {
+          collectedAt: "2026-07-02T00:02:00.000Z",
+          id: "measure-prediction",
+          kind: "prediction_self_report",
+          payload: { ratings: { pred_can_describe: 4 } },
+          stage: UnderstandingCalibrationStages.predictionSurvey
+        }
+      ],
+      researchMode: ResearchModes.understandingCalibration
+    };
+    const state = { ...createInitialPilotState(), sessions: [session] };
+
+    const eventRows = exportResearchEventRows(state);
+    const artifactMeasureRows = exportResearchArtifactMeasureRows(state);
+    const eventsCsv = stringifyResearchEventsCsv(state);
+    const artifactMeasuresCsv = stringifyResearchArtifactMeasuresCsv(state);
+
+    expect(eventRows[0]).toEqual(expect.objectContaining({
+      aiMode: "mock",
+      assistantMessage: "핵심은 오래 남는다는 점이에요.",
+      eventType: "calibration_chat_turn_created",
+      requestTags: "[\"summary_request\"]",
+      researchMode: ResearchModes.understandingCalibration,
+      userMessage: "핵심만 정리해줘"
+    }));
+    expect(artifactMeasureRows).toHaveLength(2);
+    expect(artifactMeasureRows.map((row) => row.recordGroup)).toEqual(["artifact", "measure"]);
+    expect(eventsCsv.split("\n")[0]).toContain("payloadJson");
+    expect(eventsCsv).toContain("\"핵심만 정리해줘\"");
+    expect(artifactMeasuresCsv).toContain("independent_explanation");
+    expect(artifactMeasuresCsv).toContain("prediction_self_report");
   });
 });

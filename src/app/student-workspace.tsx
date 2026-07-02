@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ClipboardEvent, ReactElement } from "react";
-import { requestCoachResponse, requestReviewSuggestions, requestSuggestionCheck } from "../ai/api-client";
-import { createReviewSuggestions } from "../review/review";
+import { requestCoachResponse } from "../ai/api-client";
+import { createReviewSuggestionCheckResult, createReviewSuggestions } from "../review/review";
 import { addAssistantCoachTurn, addChatTurn, enterStage, latestDraft, latestOutline, outlineMissingFields, recordFeedbackGenerated, recordPaste, recordSuggestionCheck, resolveSuggestion, submitFinal, updateDraft, updateOutline, updateSessionLlmMetadata, warnWeakOutline } from "../session/session";
 import { emptyOutline } from "../shared/fixtures";
 import type { LlmMode, Outline, PilotSession, ReviewSuggestion, Stage } from "../shared/types";
@@ -23,9 +23,6 @@ const resolvedSuggestionIdsFromSession = (session: PilotSession): readonly strin
     const suggestionId = event.payload["suggestionId"];
     return event.type === "suggestion_resolved" && typeof suggestionId === "string" ? [suggestionId] : [];
   });
-
-const sameSuggestionIds = (left: readonly ReviewSuggestion[], right: readonly ReviewSuggestion[]): boolean =>
-  left.length === right.length && left.every((suggestion, index) => suggestion.id === right[index]?.id);
 
 export function StudentWorkspace(props: { readonly session: PilotSession; readonly setSession: (updater: (session: PilotSession) => PilotSession) => void }): ReactElement {
   const [outline, setOutline] = useState<Outline>(() => latestOutline(props.session) ?? emptyOutline);
@@ -100,32 +97,16 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
   const openReview = (): void => {
     const localSuggestions = createReviewSuggestions({ draft, outline });
     setApiError("");
-    setWarning("먼저 기본 피드백을 열었어요. AI 제안이 도착하면 갱신됩니다.");
+    setWarning("기본 피드백을 열었어요.");
     setReviewSuggestions(localSuggestions);
     setSelectedSuggestionId(localSuggestions[0]?.id ?? null);
     setSuggestionCheckResult(null);
     setCheckingSuggestionId(null);
-    setReviewBusy(true);
+    setReviewBusy(false);
     props.setSession((session) => {
       const reviewSession = session.currentStage === "review" ? session : enterStage(session, "review");
       return recordFeedbackGenerated(reviewSession, localSuggestions);
     });
-    requestReviewSuggestions({ draft, outline })
-      .then((response) => {
-        setReviewSuggestions(response.suggestions);
-        setSelectedSuggestionId((current) => (response.suggestions.some((suggestion) => suggestion.id === current) ? current : response.suggestions[0]?.id ?? null));
-        props.setSession((session) => {
-          const reviewSession = session.currentStage === "review" ? session : enterStage(session, "review");
-          const shouldRecordGenerated = response.llmMode !== "mock" || !sameSuggestionIds(response.suggestions, localSuggestions);
-          return withLlmMetadata(shouldRecordGenerated ? recordFeedbackGenerated(reviewSession, response.suggestions) : reviewSession, response.llmMode, response.model);
-        });
-        setWarning("");
-      })
-      .catch((error: unknown) => {
-        setApiError(error instanceof Error ? error.message : "AI 피드백 생성에 실패했습니다.");
-        setWarning("");
-      })
-      .finally(() => setReviewBusy(false));
   };
   const markSuggestion = (suggestion: ReviewSuggestion): void => {
     setResolvedSuggestionIds((items) => (items.includes(suggestion.id) ? items : [...items, suggestion.id]));
@@ -137,28 +118,19 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
     setSelectedSuggestionId(id);
   };
   const checkSuggestion = (suggestion: ReviewSuggestion): void => {
-    setCheckingSuggestionId(suggestion.id);
+    const result = createReviewSuggestionCheckResult({ draft, outline, suggestion });
+    setCheckingSuggestionId(null);
     setSuggestionCheckResult(null);
-    requestSuggestionCheck({ draft, outline, suggestion })
-      .then((response) => {
-        setSuggestionCheckResult({
-          message: response.message,
-          status: response.resolved ? "resolved" : "open",
-          suggestionId: response.suggestionId
-        });
-        if (response.resolved) setResolvedSuggestionIds((items) => (items.includes(suggestion.id) ? items : [...items, suggestion.id]));
-        props.setSession((session) => {
-          const checkedSession = recordSuggestionCheck(session, suggestion, { message: response.message, resolved: response.resolved });
-          const resolvedSession = response.resolved ? resolveSuggestion(checkedSession, suggestion) : checkedSession;
-          return withLlmMetadata(resolvedSession, response.llmMode, response.model);
-        });
-      })
-      .catch((error: unknown) => setSuggestionCheckResult({
-        message: error instanceof Error ? error.message : "AI 수정 확인에 실패했습니다.",
-        status: "open",
-        suggestionId: suggestion.id
-      }))
-      .finally(() => setCheckingSuggestionId(null));
+    setSuggestionCheckResult({
+      message: result.message,
+      status: result.resolved ? "resolved" : "open",
+      suggestionId: suggestion.id
+    });
+    if (result.resolved) setResolvedSuggestionIds((items) => (items.includes(suggestion.id) ? items : [...items, suggestion.id]));
+    props.setSession((session) => {
+      const checkedSession = recordSuggestionCheck(session, suggestion, result);
+      return result.resolved ? resolveSuggestion(checkedSession, suggestion) : checkedSession;
+    });
   };
   const advance = (): void => {
     if (props.session.currentStage === "reading") {

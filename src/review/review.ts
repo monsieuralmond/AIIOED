@@ -1,5 +1,10 @@
 import type { Outline, ReviewSuggestion } from "../shared/types";
 
+export type ReviewSuggestionCheckResult = {
+  readonly message: string;
+  readonly resolved: boolean;
+};
+
 const normalizedWords = (text: string): readonly string[] => text.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/u).filter((word) => word.length >= 2);
 
 const includesClaimWords = (draft: string, claim: string): boolean => normalizedWords(claim).some((word) => draft.includes(word));
@@ -47,4 +52,21 @@ export const reviewSuggestionIsResolved = (input: { readonly outline: Outline; r
   if (input.suggestion.id === "length") return input.draft.trim().length >= 300;
   if (input.suggestion.id === "positive") return true;
   return !createReviewSuggestions({ draft: input.draft, outline: input.outline }).some((suggestion) => suggestion.id === input.suggestion.id);
+};
+
+const unresolvedSuggestionMessage = (suggestion: ReviewSuggestion): string => {
+  if (suggestion.id === "claim") return "주장이 아직 초안에 분명히 들어가지 않았어요.";
+  if (suggestion.id === "evidence") return "개요에 쓴 근거 두 가지가 초안에 아직 모두 들어가지 않았어요.";
+  if (suggestion.id === "source") return "근거가 어디에서 온 것인지 초안에 아직 표시되지 않았어요.";
+  if (suggestion.id === "counterargument") return "반론을 인정한 뒤 내 주장으로 돌아오는 연결 문장이 아직 필요해요.";
+  if (suggestion.id === "length") return "설명이 아직 짧아요. 근거가 왜 중요한지 한두 문장 더 보태보세요.";
+  return "이 제안은 아직 해결되지 않았어요.";
+};
+
+export const createReviewSuggestionCheckResult = (input: { readonly outline: Outline; readonly draft: string; readonly suggestion: ReviewSuggestion }): ReviewSuggestionCheckResult => {
+  const resolved = reviewSuggestionIsResolved(input);
+  return {
+    message: resolved ? "수정이 확인됐어요. 이 제안을 해결로 표시했어요." : unresolvedSuggestionMessage(input.suggestion),
+    resolved
+  };
 };

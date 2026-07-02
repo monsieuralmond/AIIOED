@@ -65,6 +65,15 @@ test("revision stage exposes category-based suggestions with resolution controls
   await page.getByLabel("반대 의견").fill("편리함이 중요하다는 반론이 있다.");
   await page.getByRole("button", { name: "초안 쓰기 시작" }).click();
   await page.getByTestId("draft-editor").fill("일회용 플라스틱은 줄여야 한다. 분해가 오래 걸리기 때문이다.");
+  let reviewApiCalls = 0;
+  await page.route("**/api/review/check", async (route) => {
+    reviewApiCalls += 1;
+    await route.continue();
+  });
+  await page.route("**/api/review/suggestions", async (route) => {
+    reviewApiCalls += 1;
+    await route.continue();
+  });
   await page.getByRole("button", { name: "고쳐쓰기 시작" }).click();
 
   await expect(page.getByRole("tab", { name: "피드백" })).toBeVisible();
@@ -77,14 +86,8 @@ test("revision stage exposes category-based suggestions with resolution controls
   await page.getByRole("button", { name: "제안 보기" }).first().click();
   await expect(page.getByTestId("draft-highlighted-span")).toContainText("분해가 오래 걸리기 때문이다.");
   await expect(page.getByLabel("현재 볼 곳")).toContainText("근거가 들어가야 할 문장");
-  await page.route("**/api/review/check", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await route.continue();
-  });
   await expect(page.getByRole("button", { name: "내 수정 확인" })).toBeVisible();
   await page.getByRole("button", { name: "내 수정 확인" }).click();
-  await expect(page.getByRole("button", { name: "확인 중" })).toBeDisabled();
-  await expect(page.getByText("수정 내용을 확인하고 있어요.")).toBeVisible();
   await expect(page.getByText("개요에 쓴 근거 두 가지가 초안에 아직 모두 들어가지 않았어요.")).toBeVisible();
   await page.getByTestId("draft-editor").fill("일회용 플라스틱은 줄여야 한다. 지문에서는 플라스틱이 분해가 오래 걸린다고 했다. 또 강과 바다로 흘러가 생태계에 피해를 준다고 설명했다. 위생과 편리함이 중요하다는 의견도 있다. 하지만 한 번 쓰고 버리는 물건이 계속 늘어나면 피해가 오래 남는다. 그래서 학교와 집에서는 재사용 가능한 물건을 더 쓰고 불필요한 포장을 줄여야 한다.");
   await page.getByRole("button", { name: "내 수정 확인" }).click();
@@ -96,4 +99,5 @@ test("revision stage exposes category-based suggestions with resolution controls
   await expect(page.getByText("지금 볼 곳")).toBeVisible();
   await expect(page.getByTestId("work-pane").getByText("근거가 들어가야 할 문장")).toBeVisible();
   await expect(page.getByTestId("draft-highlighted-span")).toContainText("지문에서는 플라스틱이 분해가 오래 걸린다고 했다.");
+  expect(reviewApiCalls).toBe(0);
 });

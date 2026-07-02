@@ -27,6 +27,14 @@ const roleLabels: Readonly<Record<ChatRole, string>> = {
 };
 
 const stageLabels: Readonly<Record<PilotSession["currentStage"], string>> = {
+  calibration_chat: "AI에게 질문하기",
+  calibration_reading: "글 읽기",
+  chat_review: "대화 다시 보기",
+  completed: "완료",
+  independent_tasks: "활동하기",
+  post_task_survey: "활동 후 확인",
+  pre_survey: "시작 전 확인",
+  prediction_survey: "다음 활동 전 확인",
   reading: "과제 이해",
   review: "고쳐쓰기",
   thinking: "개요 작성",

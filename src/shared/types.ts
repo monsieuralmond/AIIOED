@@ -1,4 +1,11 @@
-export type Stage = "reading" | "thinking" | "writing" | "review";
+import type { PilotEventType } from "./events";
+import type { ResearchArtifact, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research";
+
+export type { PilotEventType } from "./events";
+
+export type WritingStage = "reading" | "thinking" | "writing" | "review";
+
+export type Stage = WritingStage | UnderstandingCalibrationStage;
 
 export type LlmMode = "mock" | "real";
 
@@ -44,7 +51,9 @@ export type Assignment = {
   readonly question: string;
   readonly gradeLevel: string;
   readonly targetLength: string;
+  readonly researchMode?: ResearchMode;
   readonly assignmentMode?: "full_process" | "revision_feedback";
+  readonly calibrationConfig?: UnderstandingCalibrationConfig;
   readonly essayType?: string;
   readonly minimumWordCount?: string;
   readonly requirements?: readonly string[];
@@ -76,26 +85,6 @@ export type ChatTurn = {
   readonly timestamp: string;
   readonly responseType?: CoachResponseType;
 };
-
-export type PilotEventType =
-  | "stage_entered"
-  | "stage_completed"
-  | "student_message"
-  | "assistant_message"
-  | "outline_edited"
-  | "claim_revised"
-  | "evidence_added"
-  | "source_added"
-  | "counterargument_added"
-  | "draft_edited"
-  | "paste_detected"
-  | "outline_warning_shown"
-  | "feedback_generated"
-  | "feedback_viewed"
-  | "suggestion_checked"
-  | "suggestion_resolved"
-  | "submission_created"
-  | "teacher_review_updated";
 
 export type PilotEvent = {
   readonly id: string;
@@ -144,6 +133,8 @@ export type TeacherReviewUpdate = {
 export type PilotSession = {
   readonly sessionId: string;
   readonly assignment: Assignment;
+  readonly researchMode: ResearchMode;
+  readonly status: ResearchSessionStatus;
   readonly student: {
     readonly anonymousId: string;
     readonly accountId?: string;
@@ -155,8 +146,14 @@ export type PilotSession = {
   readonly outlineSnapshots: readonly Outline[];
   readonly draftSnapshots: readonly DraftSnapshot[];
   readonly pasteEvents: readonly PasteEvent[];
+  readonly artifacts: readonly ResearchArtifact[];
+  readonly measures: readonly ResearchMeasure[];
+  readonly modules: ResearchModules;
   readonly finalSubmission: FinalSubmission | null;
   readonly teacherReview: TeacherReviewNote;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly completedAt?: string;
   readonly metadata: {
     readonly appVersion: string;
     readonly llmMode: LlmMode;

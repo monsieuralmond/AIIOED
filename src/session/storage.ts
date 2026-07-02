@@ -1,5 +1,7 @@
 import type { Assignment, ClassGroup, PilotSession, PilotState, SelectedActor, Stage, StudentAccount, TeacherAccount, TeacherReviewNote, TeacherReviewStatus } from "../shared/types";
+import { UnderstandingCalibrationStages } from "../shared/research";
 import { TEACHER_LOGIN_ID, TEACHER_PASSWORD } from "./access";
+import { parseResearchSessionFields } from "./research-storage";
 
 const STORAGE_KEY = "reading-coach-lab:v1";
 const DEFAULT_TEACHER_ID = "teacher-research";
@@ -8,21 +10,56 @@ const LEGACY_TEACHER_PASSWORD = "TEACHER-PILOT-2026";
 
 type PersistedState = PilotState;
 
-type PersistedPilotSession = Omit<PilotSession, "teacherReview"> & {
+type PersistedPilotSession = Omit<PilotSession, "artifacts" | "assignment" | "completedAt" | "createdAt" | "measures" | "modules" | "researchMode" | "status" | "teacherReview" | "updatedAt"> & {
+  readonly assignment: Assignment;
+  readonly artifacts?: unknown;
+  readonly completedAt?: unknown;
+  readonly createdAt?: unknown;
+  readonly measures?: unknown;
+  readonly modules?: unknown;
+  readonly researchMode?: unknown;
+  readonly status?: unknown;
   readonly teacherReview?: unknown;
+  readonly updatedAt?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
-const isStage = (value: unknown): value is Stage => value === "reading" || value === "thinking" || value === "writing" || value === "review";
+const isStage = (value: unknown): value is Stage =>
+  value === "reading" ||
+  value === "thinking" ||
+  value === "writing" ||
+  value === "review" ||
+  Object.values(UnderstandingCalibrationStages).some((stage) => value === stage);
 
 const isTeacherReviewStatus = (value: unknown): value is TeacherReviewStatus => value === "not_reviewed" || value === "needs_follow_up" || value === "reviewed";
 
 const isAssignmentMode = (value: unknown): value is Assignment["assignmentMode"] => value === undefined || value === "full_process" || value === "revision_feedback";
 
 const isStringArray = (value: unknown): value is readonly string[] => Array.isArray(value) && value.every(isString);
+
+const isTransferChoice = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+  return isString(value["id"]) && isString(value["label"]) && isString(value["text"]);
+};
+
+const isTransferChoices = (value: unknown): boolean => Array.isArray(value) && value.every(isTransferChoice);
+
+const isCalibrationConfig = (value: unknown): value is Assignment["calibrationConfig"] => {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return (
+    (value["aiContext"] === undefined || isString(value["aiContext"])) &&
+    (value["errorStatement"] === undefined || isString(value["errorStatement"])) &&
+    (value["independentTasks"] === undefined || isStringArray(value["independentTasks"])) &&
+    (value["maxChatMinutes"] === undefined || (typeof value["maxChatMinutes"] === "number" && Number.isFinite(value["maxChatMinutes"]))) &&
+    (value["sourceText"] === undefined || isString(value["sourceText"])) &&
+    (value["topic"] === undefined || isString(value["topic"])) &&
+    (value["transferChoices"] === undefined || isTransferChoices(value["transferChoices"]))
+  );
+};
 
 const isAssignment = (value: unknown): value is Assignment => {
   if (!isRecord(value)) return false;
@@ -33,7 +70,9 @@ const isAssignment = (value: unknown): value is Assignment => {
     isString(value["question"]) &&
     isString(value["gradeLevel"]) &&
     isString(value["targetLength"]) &&
+    (value["researchMode"] === undefined || isString(value["researchMode"])) &&
     isAssignmentMode(value["assignmentMode"]) &&
+    isCalibrationConfig(value["calibrationConfig"]) &&
     (value["essayType"] === undefined || isString(value["essayType"])) &&
     (value["minimumWordCount"] === undefined || isString(value["minimumWordCount"])) &&
     (value["requirements"] === undefined || isStringArray(value["requirements"])) &&
@@ -149,7 +188,22 @@ const parsePilotSession = (value: unknown): PilotSession | null => {
   if (!isPersistedPilotSession(value)) return null;
   const teacherReview = parseTeacherReview(value.teacherReview, value.metadata.createdAt);
   if (teacherReview === null) return null;
-  return { ...value, teacherReview };
+  const researchFields = parseResearchSessionFields(value, value.assignment, value.metadata.createdAt, value.finalSubmission);
+  if (researchFields === null) return null;
+  return {
+    chatTurns: value.chatTurns,
+    currentStage: value.currentStage,
+    draftSnapshots: value.draftSnapshots,
+    events: value.events,
+    finalSubmission: value.finalSubmission,
+    metadata: value.metadata,
+    outlineSnapshots: value.outlineSnapshots,
+    pasteEvents: value.pasteEvents,
+    sessionId: value.sessionId,
+    student: value.student,
+    teacherReview,
+    ...researchFields
+  };
 };
 
 const parseSessions = (value: unknown): readonly PilotSession[] | null => {
@@ -185,7 +239,8 @@ const parsePersistedState = (value: unknown): PersistedState | null => {
   const students = parseStudents(value["students"]);
   if (students === null) return null;
   if (!Array.isArray(value["classGroups"]) || !value["classGroups"].every(isClassGroup)) return null;
-  if (!Array.isArray(value["assignments"]) || !value["assignments"].every(isAssignment)) return null;
+  const assignments = value["assignments"];
+  if (!Array.isArray(assignments) || !assignments.every(isAssignment)) return null;
   const sessions = parseSessions(value["sessions"]);
   if (sessions === null) return null;
   if (!isSelectedActor(value["selectedActor"])) return null;
@@ -195,7 +250,7 @@ const parsePersistedState = (value: unknown): PersistedState | null => {
   return {
     activeAssignmentId: value["activeAssignmentId"],
     activeSessionId: value["activeSessionId"],
-    assignments: value["assignments"],
+    assignments,
     classGroups: value["classGroups"],
     metadata: {
       appVersion: value["metadata"]["appVersion"],

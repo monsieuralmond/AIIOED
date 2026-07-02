@@ -115,6 +115,8 @@
         "question": { "type": "string", "minLength": 1 },
         "gradeLevel": { "type": "string" },
         "targetLength": { "type": "string" },
+        "researchMode": { "type": "string" },
+        "calibrationConfig": { "$ref": "#/$defs/calibrationConfig" },
         "assignmentMode": { "enum": ["full_process", "revision_feedback"] },
         "essayType": { "type": "string" },
         "minimumWordCount": { "type": "string" },
@@ -129,6 +131,35 @@
         "startTime": { "type": "string" },
         "dueDate": { "type": "string" },
         "dueTime": { "type": "string" }
+      }
+    },
+    "calibrationConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "topic": { "type": "string" },
+        "sourceText": { "type": "string" },
+        "aiContext": { "type": "string" },
+        "maxChatMinutes": { "type": "number", "minimum": 0 },
+        "errorStatement": { "type": "string" },
+        "independentTasks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transferChoices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transferChoice" }
+        }
+      }
+    },
+    "transferChoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "text"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "text": { "type": "string" }
       }
     },
     "outline": {
@@ -182,9 +213,21 @@
             "outline_warning_shown",
             "feedback_generated",
             "feedback_viewed",
+            "suggestion_checked",
             "suggestion_resolved",
             "submission_created",
-            "teacher_review_updated"
+            "teacher_review_updated",
+            "calibration_pre_survey_submitted",
+            "calibration_reading_started",
+            "calibration_reading_completed",
+            "calibration_chat_started",
+            "calibration_chat_turn_created",
+            "calibration_chat_completed",
+            "calibration_prediction_survey_submitted",
+            "calibration_independent_tasks_submitted",
+            "calibration_post_task_survey_submitted",
+            "calibration_chat_review_submitted",
+            "calibration_study_completed"
           ]
         },
         "timestamp": { "type": "string" },
@@ -251,6 +294,8 @@
       "required": [
         "sessionId",
         "assignment",
+        "researchMode",
+        "status",
         "student",
         "currentStage",
         "events",
@@ -258,6 +303,9 @@
         "outlineSnapshots",
         "draftSnapshots",
         "pasteEvents",
+        "artifacts",
+        "measures",
+        "modules",
         "finalSubmission",
         "teacherReview",
         "metadata"
@@ -265,6 +313,8 @@
       "properties": {
         "sessionId": { "type": "string", "minLength": 1 },
         "assignment": { "$ref": "#/$defs/assignment" },
+        "researchMode": { "type": "string" },
+        "status": { "type": "string" },
         "student": { "$ref": "#/$defs/sessionStudent" },
         "currentStage": { "$ref": "#/$defs/stage" },
         "events": {
@@ -287,6 +337,15 @@
           "type": "array",
           "items": { "$ref": "#/$defs/pasteEvent" }
         },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/researchArtifact" }
+        },
+        "measures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/researchMeasure" }
+        },
+        "modules": { "$ref": "#/$defs/researchModules" },
         "finalSubmission": {
           "anyOf": [
             { "type": "null" },
@@ -294,7 +353,93 @@
           ]
         },
         "teacherReview": { "$ref": "#/$defs/teacherReviewNote" },
-        "metadata": { "$ref": "#/$defs/sessionMetadata" }
+        "metadata": { "$ref": "#/$defs/sessionMetadata" },
+        "completedAt": { "type": "string" }
+      }
+    },
+    "researchArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["createdAt", "id", "kind", "payload", "stage"],
+      "properties": {
+        "createdAt": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "stage": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "researchMeasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collectedAt", "id", "kind", "payload", "stage"],
+      "properties": {
+        "collectedAt": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "stage": { "type": "string" }
+      }
+    },
+    "researchModules": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "understandingCalibration": { "$ref": "#/$defs/understandingCalibrationModule" }
+      }
+    },
+    "understandingCalibrationModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "const": "1.0" },
+        "topic": { "type": "string" },
+        "sourceText": { "type": "string" },
+        "aiContext": { "type": "string" },
+        "maxChatMinutes": { "type": "number", "minimum": 0 },
+        "errorStatement": { "type": "string" },
+        "independentTasks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transferChoices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transferChoice" }
+        },
+        "stageRecords": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/understandingStageRecord" }
+        }
+      }
+    },
+    "understandingStageRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage"],
+      "properties": {
+        "stage": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "eventIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "measureIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "sessionStudent": {
@@ -372,6 +517,21 @@
         "fileSync": { "$ref": "#/$defs/fileSyncStatus" }
       }
     },
-    "stage": { "enum": ["reading", "thinking", "writing", "review"] }
+    "stage": {
+      "enum": [
+        "reading",
+        "thinking",
+        "writing",
+        "review",
+        "pre_survey",
+        "calibration_reading",
+        "calibration_chat",
+        "prediction_survey",
+        "independent_tasks",
+        "post_task_survey",
+        "chat_review",
+        "completed"
+      ]
+    }
   }
 }

@@ -1,8 +1,11 @@
-import type { Assignment, ChatRole, ChatTurn, CoachResponseType, DraftSnapshot, FinalSubmission, LlmMode, Outline, PasteEvent, PilotEvent, PilotEventType, PilotSession, ReviewSuggestion, Stage, StudentAccount, TeacherReviewNote, TeacherReviewUpdate } from "../shared/types";
+import type { Assignment, ChatRole, CoachResponseType, FinalSubmission, LlmMode, Outline, PasteEvent, PilotEvent, PilotEventType, PilotSession, ReviewSuggestion, Stage, StudentAccount, TeacherReviewNote, TeacherReviewUpdate } from "../shared/types";
+import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
+import { initialResearchSessionFields, normalizeAssignmentResearchMode } from "./research-session";
 
 export { deleteClassGroup, deleteStudentAccount, deleteTeacherAccount } from "./pilot-delete";
 export { activeSession, assignmentsForStudent, createClassGroup, createInitialPilotState, createStudentAccount, createTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, sessionForStudent, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession } from "./pilot-state";
 export type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "./pilot-state";
+export { researchModeForAssignment } from "./research-session";
 
 const APP_VERSION = "0.1.0";
 
@@ -18,15 +21,22 @@ const event = (type: PilotEventType, stage: Stage, payload: Record<string, unkno
   payload
 });
 
+const touchSession = (): Pick<PilotSession, "updatedAt"> => ({
+  updatedAt: nowIso()
+});
+
 export const createSession = (assignment: Assignment, student?: StudentAccount): PilotSession => {
   const createdAt = nowIso();
+  const normalizedAssignment = normalizeAssignmentResearchMode(assignment);
+  const researchFields = initialResearchSessionFields(normalizedAssignment, createdAt);
   const sessionStudent: PilotSession["student"] =
     student === undefined ? { anonymousId: makeId("student") } : { anonymousId: student.id, accountId: student.id, displayName: student.displayName };
   return {
     sessionId: makeId("session"),
-    assignment,
+    assignment: normalizedAssignment,
+    ...researchFields,
     student: sessionStudent,
-    currentStage: "reading",
+    currentStage: researchFields.researchMode === ResearchModes.understandingCalibration ? UnderstandingCalibrationStages.preSurvey : "reading",
     events: [],
     chatTurns: [],
     outlineSnapshots: [],
@@ -53,12 +63,14 @@ export const enterStage = (session: PilotSession, stage: Stage): PilotSession =>
   return {
     ...session,
     currentStage: stage,
+    ...touchSession(),
     events: [...session.events, ...completion, event("stage_entered", stage, { stage })]
   };
 };
 
 export const updateOutline = (session: PilotSession, outline: Outline): PilotSession => ({
   ...session,
+  ...touchSession(),
   outlineSnapshots: [...session.outlineSnapshots, outline],
   events: [
     ...session.events,
@@ -82,23 +94,27 @@ export const outlineMissingFields = (outline: Outline): readonly string[] => {
 
 export const warnWeakOutline = (session: PilotSession, outline: Outline): PilotSession => ({
   ...session,
+  ...touchSession(),
   events: [...session.events, event("outline_warning_shown", "thinking", { missing: outlineMissingFields(outline), stage: "thinking" })]
 });
 
 export const addChatTurn = (session: PilotSession, role: ChatRole, text: string): PilotSession => ({
   ...session,
+  ...touchSession(),
   chatTurns: [...session.chatTurns, { id: makeId("chat"), role, text, timestamp: nowIso() }],
   events: [...session.events, event(role === "student" ? "student_message" : "assistant_message", session.currentStage, { text })]
 });
 
 export const addAssistantCoachTurn = (session: PilotSession, text: string, responseType: CoachResponseType): PilotSession => ({
   ...session,
+  ...touchSession(),
   chatTurns: [...session.chatTurns, { id: makeId("chat"), responseType, role: "assistant", text, timestamp: nowIso() }],
   events: [...session.events, event("assistant_message", session.currentStage, { responseType, text })]
 });
 
 export const updateSessionLlmMetadata = (session: PilotSession, llmMode: LlmMode, model: string): PilotSession => ({
   ...session,
+  ...touchSession(),
   metadata: {
     ...session.metadata,
     llmMode,
@@ -108,6 +124,7 @@ export const updateSessionLlmMetadata = (session: PilotSession, llmMode: LlmMode
 
 export const updateDraft = (session: PilotSession, text: string): PilotSession => ({
   ...session,
+  ...touchSession(),
   draftSnapshots: [...session.draftSnapshots, { id: makeId("draft"), timestamp: nowIso(), text }],
   events: [...session.events, event("draft_edited", "writing", { length: text.length })]
 });
@@ -123,11 +140,12 @@ export const recordPaste = (session: PilotSession, text: string): PilotSession =
     textPreviewFirst80: text.slice(0, 80),
     fromClipboard: true
   };
-  return { ...session, pasteEvents: [...session.pasteEvents, paste], events: [...session.events, event("paste_detected", "writing", paste)] };
+  return { ...session, ...touchSession(), pasteEvents: [...session.pasteEvents, paste], events: [...session.events, event("paste_detected", "writing", paste)] };
 };
 
 export const recordFeedbackGenerated = (session: PilotSession, suggestions: readonly ReviewSuggestion[]): PilotSession => ({
   ...session,
+  ...touchSession(),
   events: [
     ...session.events,
     event("feedback_generated", "review", { suggestions: suggestions.map(reviewSuggestionPayload), suggestionIds: suggestions.map((suggestion) => suggestion.id), count: suggestions.length }),
@@ -145,11 +163,13 @@ const reviewSuggestionPayload = (suggestion: ReviewSuggestion): Record<string, u
 
 export const resolveSuggestion = (session: PilotSession, suggestion: ReviewSuggestion): PilotSession => ({
   ...session,
+  ...touchSession(),
   events: [...session.events, event("suggestion_resolved", "review", { suggestionId: suggestion.id, category: suggestion.category })]
 });
 
 export const recordSuggestionCheck = (session: PilotSession, suggestion: ReviewSuggestion, result: { readonly message: string; readonly resolved: boolean }): PilotSession => ({
   ...session,
+  ...touchSession(),
   events: [
     ...session.events,
     event("suggestion_checked", "review", {
@@ -171,13 +191,21 @@ export const updateTeacherReview = (session: PilotSession, teacherId: string, in
   return {
     ...session,
     teacherReview,
+    ...touchSession(),
     events: [...session.events, event("teacher_review_updated", "review", teacherReview)]
   };
 };
 
 export const submitFinal = (session: PilotSession, text: string): PilotSession => {
   const finalSubmission: FinalSubmission = { text, submittedAt: nowIso() };
-  return { ...session, finalSubmission, events: [...session.events, event("stage_completed", "review", { stage: "review" }), event("submission_created", "review", { submittedAt: finalSubmission.submittedAt })] };
+  return {
+    ...session,
+    completedAt: finalSubmission.submittedAt,
+    finalSubmission,
+    status: "submitted",
+    updatedAt: finalSubmission.submittedAt,
+    events: [...session.events, event("stage_completed", "review", { stage: "review" }), event("submission_created", "review", { submittedAt: finalSubmission.submittedAt })]
+  };
 };
 
 export const latestDraft = (session: PilotSession): string => session.draftSnapshots.at(-1)?.text ?? "";

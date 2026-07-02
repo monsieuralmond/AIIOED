@@ -6,7 +6,7 @@ test("right support pane keeps assignment details in the top task dialog", async
   await expect(page.getByRole("tab", { name: "코치" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "과제" })).toHaveCount(0);
   await expect(page.getByText("Gemini 연결됨")).toHaveCount(0);
-  await expect(page.getByText("gemini-3.5-flash")).toHaveCount(0);
+  await expect(page.getByText("gemini-2.5-flash-lite")).toHaveCount(0);
   await expect(page.getByText("대신 쓰지 않고 질문으로 돕습니다")).toHaveCount(0);
   await expect(page.getByText("로컬 모의 코치")).toHaveCount(0);
   await expect(page.getByText("API 없이 규칙 기반으로만 응답합니다.")).toHaveCount(0);

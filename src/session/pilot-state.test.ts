@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { exportDataset } from "../export/export";
 import { sampleAssignment } from "../shared/fixtures";
-import { createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session";
+import { ResearchModes } from "../shared/research";
+import { createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session";
 
 describe("local pilot state", () => {
   it("keeps student sessions distinct for the same assignment", () => {
@@ -32,6 +33,55 @@ describe("local pilot state", () => {
     expect(firstStarted.session.sessionId).not.toBe(secondStarted.session.sessionId);
     expect(secondStarted.state.sessions).toHaveLength(2);
     expect(secondStarted.state.activeSessionId).toBe(secondStarted.session.sessionId);
+  });
+
+  it("defaults legacy assignments to writing-coach research sessions", () => {
+    const initial = createInitialPilotState();
+    const student = initial.students[0];
+    if (student === undefined) throw new Error("fixture student missing");
+
+    const started = startStudentSession(initial, student.id, sampleAssignment.id);
+
+    expect(started.session.researchMode).toBe(ResearchModes.writingCoach);
+    expect(started.session.assignment.researchMode).toBe(ResearchModes.writingCoach);
+    expect(started.session.status).toBe("in_progress");
+    expect(started.session.artifacts).toEqual([]);
+    expect(started.session.measures).toEqual([]);
+    expect(started.session.modules).toEqual({});
+    expect(started.session.createdAt).toBe(started.session.metadata.createdAt);
+    expect(started.session.updatedAt).toBe(started.session.createdAt);
+  });
+
+  it("starts an understanding-calibration session with a blank module shell", () => {
+    const initial = createInitialPilotState();
+    const student = initial.students[0];
+    if (student === undefined) throw new Error("fixture student missing");
+    const assignment = {
+      ...sampleAssignment,
+      id: "assignment-understanding-calibration",
+      researchMode: ResearchModes.understandingCalibration,
+      title: "플라스틱 사용 이해 점검",
+      calibrationConfig: {
+        independentTasks: ["핵심 근거 두 가지 쓰기"],
+        topic: "일회용 플라스틱 사용",
+        transferChoices: [{ id: "A", label: "A", text: "새로운 기사에 적용하기" }]
+      }
+    };
+
+    const withAssignment = saveAssignmentInState(initial, assignment);
+    const started = startStudentSession(withAssignment, student.id, assignment.id);
+
+    expect(started.session.researchMode).toBe(ResearchModes.understandingCalibration);
+    expect(started.session.currentStage).toBe("pre_survey");
+    expect(started.session.status).toBe("in_progress");
+    expect(started.session.artifacts).toEqual([]);
+    expect(started.session.measures).toEqual([]);
+    expect(started.session.modules.understandingCalibration).toEqual({
+      independentTasks: ["핵심 근거 두 가지 쓰기"],
+      topic: "일회용 플라스틱 사용",
+      transferChoices: [{ id: "A", label: "A", text: "새로운 기사에 적용하기" }],
+      version: "1.0"
+    });
   });
 
   it("reports not-started, in-progress, and submitted student statuses", () => {

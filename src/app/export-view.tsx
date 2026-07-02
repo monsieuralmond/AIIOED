@@ -1,14 +1,20 @@
 import type { ReactElement } from "react";
-import { exportLabelingRows, stringifyDataset, stringifyLabelingCsv } from "../export/export";
+import { exportLabelingRows, exportResearchArtifactMeasureRows, exportResearchEventRows, stringifyDataset, stringifyLabelingCsv, stringifyResearchArtifactMeasuresCsv, stringifyResearchEventsCsv } from "../export/export";
 import type { FileSyncStatus, PilotState } from "../shared/types";
 import { Button } from "./ui";
 
 export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly state: PilotState; readonly onStudent: () => void }): ReactElement {
   const dataset = stringifyDataset(props.state, props.fileSync);
   const labelingCsv = stringifyLabelingCsv(props.state);
+  const researchEventsCsv = stringifyResearchEventsCsv(props.state);
+  const researchArtifactMeasuresCsv = stringifyResearchArtifactMeasuresCsv(props.state);
   const labelingRows = exportLabelingRows(props.state);
+  const researchEventRows = exportResearchEventRows(props.state);
+  const researchArtifactMeasureRows = exportResearchArtifactMeasureRows(props.state);
   const downloadHref = `data:application/json;charset=utf-8,${encodeURIComponent(dataset)}`;
   const csvDownloadHref = `data:text/csv;charset=utf-8,${encodeURIComponent(labelingCsv)}`;
+  const researchEventsHref = `data:text/csv;charset=utf-8,${encodeURIComponent(researchEventsCsv)}`;
+  const researchArtifactMeasuresHref = `data:text/csv;charset=utf-8,${encodeURIComponent(researchArtifactMeasuresCsv)}`;
   const previewRows = labelingRows.slice(0, 5);
   return (
     <main className="export-page">
@@ -21,11 +27,18 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
           <h2>라벨링 행 {labelingRows.length}개</h2>
           <p>학생 메시지, AI 응답, 과정 이벤트를 코드북 열 구조에 맞춘 CSV로 함께 내보냅니다.</p>
         </div>
+        <div>
+          <p className="eyebrow">연구 원자료</p>
+          <h2>이벤트 {researchEventRows.length}개 · 산출물/측정값 {researchArtifactMeasureRows.length}개</h2>
+          <p>events, artifacts, measures를 분석용 CSV로 분리해 JSON과 함께 내보냅니다.</p>
+        </div>
       </section>
       <div className="export-actions">
         <Button variant="primary" onClick={props.onStudent}>학생 화면 보기</Button>
         <a className="ui-button ui-button-secondary" download="reading-coach-pilot-dataset.json" href={downloadHref}>JSON 다운로드</a>
         <a className="ui-button ui-button-secondary" download="reading-coach-labeling-rows.csv" href={csvDownloadHref}>라벨링 CSV 다운로드</a>
+        <a className="ui-button ui-button-secondary" download="research-events.csv" href={researchEventsHref}>이벤트 CSV 다운로드</a>
+        <a className="ui-button ui-button-secondary" download="research-artifacts-measures.csv" href={researchArtifactMeasuresHref}>산출물·측정값 CSV 다운로드</a>
         <a className="ui-button ui-button-secondary" download="pilot-dataset.schema.json" href="/artifacts/pilot-dataset.schema.json">JSON 스키마 다운로드</a>
         <a className="ui-button ui-button-secondary" download="labeling-codebook.md" href="/artifacts/labeling-codebook.md">라벨링 코드북 다운로드</a>
         <a className="ui-button ui-button-secondary" download="data-dictionary.md" href="/artifacts/data-dictionary.md">데이터 딕셔너리 다운로드</a>

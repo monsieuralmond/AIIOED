@@ -20,10 +20,13 @@ This dictionary explains the exported JSON dataset and labeling CSV without requ
 | Teacher | `teacher.id`, `teacher.displayName`, `teacher.loginId`, `teachers[]` | Account setup | Teacher text for display name | Identifies the teacher account without exporting password. |
 | Class group | `classGroups[].id`, `name`, `teacherId`, `studentIds` | Account setup | Teacher text for class name | Links students to a class for roster analysis. |
 | Student | `students[].id`, `displayName`, `classGroupId`, `studentNumber`, `loginId`, `participantCode` | Account setup | Student name may identify a participant | Links session rows to participant code, login id, and class number. Student passwords are used for local login but are not included in exported datasets. |
-| Assignment | `assignments[].id`, `title`, `passage`, `question`, `gradeLevel`, `targetLength`, `assignmentMode`, `essayType`, `minimumWordCount`, `requirements`, `sourceGuidance`, `classGroupId`, `createdByTeacherId`, `startDate`, `startTime`, `dueDate`, `dueTime` | Teacher assignment form or fixture | System or teacher text; `passage`, `question`, `requirements`, and `sourceGuidance` are task text | Defines the nonfiction task that bounds student and assistant turns and preserves how the teacher configured the assignment. |
-| Session identity | `sessions[].sessionId`, `student.anonymousId`, `student.accountId`, `student.displayName`, `currentStage` | Session creation | Student display name may identify a participant | Groups events, chat turns, outline, draft, paste, final, and review for one student attempt. |
+| Assignment | `assignments[].id`, `title`, `passage`, `question`, `gradeLevel`, `targetLength`, `researchMode`, `calibrationConfig`, `assignmentMode`, `essayType`, `minimumWordCount`, `requirements`, `sourceGuidance`, `classGroupId`, `createdByTeacherId`, `startDate`, `startTime`, `dueDate`, `dueTime` | Teacher assignment form or fixture | System or teacher text; `passage`, `question`, `requirements`, `sourceGuidance`, and `calibrationConfig` are task text | Defines the nonfiction task that bounds student and assistant turns and preserves how the teacher configured the assignment. `researchMode` distinguishes writing coach sessions from understanding calibration sessions. |
+| Session identity | `sessions[].sessionId`, `researchMode`, `status`, `student.anonymousId`, `student.accountId`, `student.displayName`, `currentStage` | Session creation | Student display name may identify a participant | Groups events, chat turns, outline, draft, paste, final, review, artifacts, measures, and module records for one student attempt. |
 | Event log | `sessions[].events[].id`, `type`, `timestamp`, `stage`, `payload` | App instrumentation | Mixed; `payload.text`, `payload.outline`, `payload.claim`, and `payload.evidence` may contain student or assistant text | Primary source for row-level process labeling. |
 | Chat turn | `sessions[].chatTurns[].id`, `role`, `text`, `timestamp`, `responseType` | Student chat and coach response | Student text or assistant text | Used to label critical thinking, cognitive offloading, and sycophancy in dialogue. |
+| Research artifacts | `sessions[].artifacts[].id`, `kind`, `stage`, `createdAt`, `updatedAt`, `payload` | Research module steps | Student text for free responses and independent tasks | Stores module-specific written products such as pre-free responses, independent explanations, error-judgment reasons, transfer reasons, and chat-review reflections. |
+| Research measures | `sessions[].measures[].id`, `kind`, `stage`, `collectedAt`, `payload` | Research module steps | Mostly system text and numeric responses | Stores self-report ratings, choices, and manual-evaluation placeholders. |
+| Research modules | `sessions[].modules.understandingCalibration` | Research module initialization and step completion | System, teacher task text, and id references | Stores module configuration and stage record pointers. Raw text remains in `events`, `artifacts`, and `measures`. |
 | Outline | `sessions[].outlineSnapshots[].claim`, `evidence`, `reasoning`, `counterargument`, `question` | Student outline fields | Student text | Shows claim revision, evidence use, reasoning, and counterargument development. `question` is currently used as the source note field in the pilot UI. |
 | Draft | `sessions[].draftSnapshots[].id`, `timestamp`, `text` | Student writing area | Student text | Shows composition progress and possible unreviewed acceptance after AI turns. |
 | Paste | `sessions[].pasteEvents[].id`, `timestamp`, `stage`, `target`, `textLength`, `lineCount`, `textPreviewFirst80`, `fromClipboard` | Clipboard event in writing/review surface | Student or copied external text preview | Identifies possible copy/paste behavior. Important for cognitive offloading review. |
@@ -47,6 +50,45 @@ This dictionary explains the exported JSON dataset and labeling CSV without requ
 | `evidenceText` | string | Event payload summary | Student text, assistant text, teacher text, or system text | Text excerpt used by the rater. |
 | `raterNotes` | string | Human/LLM judge label | Teacher or rater text | Short justification for labels. |
 
+## Research Events CSV Columns
+
+File: `research-events.csv`
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId` | string | `sessions[].sessionId` | System text | Session being exported. |
+| `studentAnonymousId` | string | `sessions[].student.anonymousId` | System text | Participant-level identifier. |
+| `assignmentId` | string | `sessions[].assignment.id` | System text | Assignment identifier. |
+| `researchMode` | string | `sessions[].researchMode` | System text | Research module or writing flow. |
+| `eventId` | string | `events[].id` | System text | Raw event identifier. |
+| `eventType` | string | `events[].type` | System text | Raw event type. |
+| `timestamp` | ISO string | `events[].timestamp` | System text | Event time. |
+| `stage` | string | `events[].stage` | System text | Stage at event time. |
+| `speaker` | `student`, `assistant`, `system_event` | Event type mapping | System text | Main actor for the event row. |
+| `userMessage` | string | `payload.userMessage` or student `payload.text` | Student text | Student message when present. |
+| `assistantMessage` | string | `payload.assistantMessage` or assistant `payload.text` | Assistant text | Assistant message when present. |
+| `requestTags` | JSON string | `payload.requestTags` | System text | Rule-based request tags for calibration chat turns. |
+| `aiMode` | string | `payload.aiMode` | System text | AI mode used for that turn when recorded. |
+| `model` | string | `payload.model` | System text | Model used for that turn when recorded. |
+| `payloadJson` | JSON string | `events[].payload` | Mixed | Full raw event payload for reproducible analysis. |
+
+## Research Artifacts And Measures CSV Columns
+
+File: `research-artifacts-measures.csv`
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId` | string | `sessions[].sessionId` | System text | Session being exported. |
+| `studentAnonymousId` | string | `sessions[].student.anonymousId` | System text | Participant-level identifier. |
+| `assignmentId` | string | `sessions[].assignment.id` | System text | Assignment identifier. |
+| `researchMode` | string | `sessions[].researchMode` | System text | Research module or writing flow. |
+| `recordGroup` | `artifact` or `measure` | Export process | System text | Whether this row came from `artifacts` or `measures`. |
+| `recordId` | string | `id` | System text | Artifact or measure identifier. |
+| `recordKind` | string | `kind` | System text | Artifact or measure kind. |
+| `timestamp` | ISO string | `createdAt` or `collectedAt` | System text | Record creation time. |
+| `stage` | string | `stage` | System text | Stage where the record was collected. |
+| `payloadJson` | JSON string | `payload` | Mixed | Full raw artifact or measure payload. |
+
 ## Required Labeling Terms
 
 - `criticalThinkingLabel`: labels evidence request, source verification, counterargument exploration, alternative comparison, claim revision, or uncertainty acknowledgment.
@@ -54,7 +96,9 @@ This dictionary explains the exported JSON dataset and labeling CSV without requ
 - `sycophancyLabel`: labels unsupported agreement, overpraise, missed correction, or balanced challenge.
 - `pasteEvents`: records paste attempts in the writing surface with only a short text preview.
 - `teacherReview`: records teacher inspection status and memo; it is not an automated score.
+- `understandingCalibration`: module block for the eight-step calibration flow. Use `artifacts`, `measures`, and `research-events.csv` as the raw source of analysis.
+- `manual_evaluation_placeholder`: empty rubric fields for later human scoring of recognition, description, mechanism, boundary, and transfer.
 
 ## Notes For LLM Judge Experiments
 
-Use `events` as the stable row source and `chatTurns` as the readable transcript source. Assistant `responseType` is a policy label generated at response time; it should help analysis but should not replace human or LLM judging of actual sycophancy or offloading.
+Use `events` as the stable row source and `chatTurns` as the readable transcript source. For understanding calibration analyses, use `research-events.csv` for turn-level process data and `research-artifacts-measures.csv` for survey responses, independent-task products, and manual-evaluation placeholders. Assistant `responseType` and calibration `requestTags` are process metadata; they should help analysis but should not replace human or LLM judging.

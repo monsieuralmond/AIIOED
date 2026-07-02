@@ -1,5 +1,7 @@
 import type { FileSyncStatus, LabelingRow, LabelingSpeaker, PilotDataset, PilotEventType, PilotSession, PilotState, PublicStudentAccount, PublicTeacherAccount, StudentAccount, TeacherAccount } from "../shared/types";
 
+export { exportResearchArtifactMeasureRows, exportResearchEventRows, stringifyResearchArtifactMeasuresCsv, stringifyResearchEventsCsv } from "./research-csv";
+
 export const DATASET_SCHEMA_ID = "reading-coach-pilot-dataset.v1";
 export const LABELING_CODEBOOK_ID = "critical-thinking-cognitive-offloading-sycophancy.v1";
 
@@ -57,7 +59,18 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   submission_created: "system_event",
   suggestion_checked: "system_event",
   suggestion_resolved: "system_event",
-  teacher_review_updated: "system_event"
+  teacher_review_updated: "system_event",
+  calibration_chat_completed: "system_event",
+  calibration_chat_review_submitted: "system_event",
+  calibration_chat_started: "system_event",
+  calibration_chat_turn_created: "system_event",
+  calibration_independent_tasks_submitted: "system_event",
+  calibration_post_task_survey_submitted: "system_event",
+  calibration_pre_survey_submitted: "system_event",
+  calibration_prediction_survey_submitted: "system_event",
+  calibration_reading_completed: "system_event",
+  calibration_reading_started: "system_event",
+  calibration_study_completed: "system_event"
 };
 
 const evidenceText = (payload: Record<string, unknown>, eventType: PilotEventType): string => {

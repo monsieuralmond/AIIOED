@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
+import { ResearchModes } from "../shared/research";
 import type { Assignment, ClassGroup, PilotState } from "../shared/types";
 import { defaultRequirements } from "./assignment-requirements";
 import { Button, Field, TextInput } from "./ui";
@@ -21,7 +22,8 @@ type ResearcherListProps = {
 
 const normalizeFilterText = (value: string): string => value.trim().toLocaleLowerCase("ko-KR");
 
-const assignmentCategory = (assignment: Assignment): string => assignment.essayType ?? "주장 글쓰기";
+const assignmentCategory = (assignment: Assignment): string =>
+  assignment.researchMode === ResearchModes.understandingCalibration ? "이해 보정 연구" : assignment.essayType ?? "주장 글쓰기";
 
 const uniqueStrings = (values: readonly string[]): readonly string[] => [...new Set(values.filter((value) => value.trim().length > 0))];
 
@@ -51,6 +53,8 @@ const assignmentMatchesSearch = (assignment: Assignment, classGroup: ClassGroup 
     assignment.gradeLevel,
     assignment.targetLength,
     assignmentCategory(assignment),
+    assignment.calibrationConfig?.topic ?? "",
+    assignment.calibrationConfig?.errorStatement ?? "",
     classGroup?.name ?? "전체 학생"
   ].join(" ");
   return normalizeFilterText(searchableText).includes(normalizedSearch);
@@ -146,6 +150,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                       </dl>
                       <div className="tag-row">
                         <span>비문학</span>
+                        <span>{assignment.researchMode === ResearchModes.understandingCalibration ? "이해 보정 연구" : "글쓰기 코치"}</span>
                         <span>{assignment.gradeLevel}</span>
                         <span>{assignment.essayType ?? "주장 글쓰기"}</span>
                         <span>{classGroup?.name ?? "전체 학생"}</span>
@@ -179,6 +184,9 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
 function AssignmentPreview(props: { readonly assignment: Assignment; readonly classGroups: readonly ClassGroup[]; readonly onAssign: (assignment: Assignment) => void; readonly onClose: () => void }): ReactElement {
   const [classGroupId, setClassGroupId] = useState(props.assignment.classGroupId ?? props.classGroups[0]?.id ?? "");
   const selectedClassGroup = props.classGroups.find((classGroup) => classGroup.id === classGroupId);
+  const isCalibrationAssignment = props.assignment.researchMode === ResearchModes.understandingCalibration;
+  const chatLimitLabel =
+    props.assignment.calibrationConfig?.maxChatMinutes === undefined ? "제한 없음" : `${props.assignment.calibrationConfig.maxChatMinutes}분`;
   const saveAssignment = (): void => {
     props.onAssign({ ...props.assignment, classGroupId });
   };
@@ -187,14 +195,29 @@ function AssignmentPreview(props: { readonly assignment: Assignment; readonly cl
     <div aria-label="과제 미리보기" className="preview-dialog" role="dialog">
       <button aria-label="닫기" className="preview-close" type="button" onClick={props.onClose}>x</button>
       <h1>{props.assignment.title}</h1>
-      <div className="tag-row"><span>비문학</span><span>{props.assignment.gradeLevel}</span><span>{props.assignment.targetLength}</span><span>{props.assignment.essayType ?? "주장 글쓰기"}</span></div>
+      <div className="tag-row"><span>비문학</span><span>{isCalibrationAssignment ? "이해 보정 연구" : "글쓰기 코치"}</span><span>{props.assignment.gradeLevel}</span><span>{props.assignment.targetLength}</span><span>{props.assignment.essayType ?? "주장 글쓰기"}</span></div>
       <p>{props.assignment.question}</p>
-      <section className="preview-requirements" aria-label="학생에게 보일 요구사항">
-        <h2>학생에게 보일 요구사항</h2>
-        <ul>
-          {defaultRequirements(props.assignment).map((requirement) => <li key={requirement}>{requirement}</li>)}
-        </ul>
-      </section>
+      {isCalibrationAssignment ? (
+        <section className="preview-requirements" aria-label="이해 보정 연구 설정">
+          <h2>연구 활동 설정</h2>
+          <dl className="preview-config-list">
+            <div><dt>주제</dt><dd>{props.assignment.calibrationConfig?.topic ?? props.assignment.title}</dd></div>
+            <div><dt>오류 판단 문장</dt><dd>{props.assignment.calibrationConfig?.errorStatement ?? "설정되지 않음"}</dd></div>
+            <div><dt>채팅 권장 시간</dt><dd>{chatLimitLabel}</dd></div>
+          </dl>
+          <h2>적용 선택지</h2>
+          <ul>
+            {props.assignment.calibrationConfig?.transferChoices?.map((choice) => <li key={choice.id}>{choice.label}. {choice.text}</li>)}
+          </ul>
+        </section>
+      ) : (
+        <section className="preview-requirements" aria-label="학생에게 보일 요구사항">
+          <h2>학생에게 보일 요구사항</h2>
+          <ul>
+            {defaultRequirements(props.assignment).map((requirement) => <li key={requirement}>{requirement}</li>)}
+          </ul>
+        </section>
+      )}
       <h2>지문</h2>
       <p>{props.assignment.passage}</p>
       <section className="preview-requirements" aria-label="배정 대상">
