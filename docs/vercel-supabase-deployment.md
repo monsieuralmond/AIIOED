@@ -41,12 +41,12 @@ Vercel Project Settings에 다음 값을 서버 환경 변수로 등록한다.
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
-OPENAI_API_KEY=your-server-only-openai-api-key
-OPENAI_MODEL=gpt-5.2
+GEMINI_API_KEY=your-server-only-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash-lite
 MAX_CHAT_TURNS=20
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`와 `OPENAI_API_KEY`는 브라우저 코드에 노출하지 않는다.
+`SUPABASE_SERVICE_ROLE_KEY`와 `GEMINI_API_KEY`는 브라우저 코드에 노출하지 않는다.
 
 ## Supabase 준비
 
@@ -81,7 +81,7 @@ MAX_CHAT_TURNS=20
 
 1. `requestId` 중복 여부 확인
 2. 학생 메시지 저장
-3. OpenAI API 또는 mock mode 호출
+3. Gemini API 또는 mock mode 호출
 4. assistant 응답 저장
 5. 응답 반환
 

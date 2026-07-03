@@ -2,8 +2,8 @@ import { ApiError } from "./http";
 
 export type ResearchServerEnv = {
   readonly aiMode: "mock" | "real";
-  readonly openAiApiKey: string | undefined;
-  readonly openAiModel: string;
+  readonly geminiApiKey: string | undefined;
+  readonly geminiModel: string;
   readonly supabaseServiceRoleKey: string;
   readonly supabaseUrl: string;
 };
@@ -24,8 +24,8 @@ export const researchServerEnv = (): ResearchServerEnv => {
   const aiMode = readEnv("READING_COACH_AI_MODE") === "mock" ? "mock" : "real";
   return {
     aiMode,
-    openAiApiKey: readEnv("OPENAI_API_KEY"),
-    openAiModel: readEnv("OPENAI_MODEL") ?? "gpt-5.2",
+    geminiApiKey: readEnv("GEMINI_API_KEY"),
+    geminiModel: readEnv("GEMINI_MODEL") ?? "gemini-2.5-flash-lite",
     supabaseServiceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
     supabaseUrl: requiredEnv("SUPABASE_URL")
   };

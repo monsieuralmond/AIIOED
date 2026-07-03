@@ -111,6 +111,7 @@ class MemoryResearchStore implements ResearchStore {
 describe("research API handlers", () => {
   beforeEach(() => {
     process.env["READING_COACH_AI_MODE"] = "mock";
+    process.env["GEMINI_MODEL"] = "gemini-2.5-flash-lite";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
     process.env["SUPABASE_URL"] = "https://example.supabase.co";
   });
@@ -136,5 +137,27 @@ describe("research API handlers", () => {
 
     expect((first as { readonly text: string }).text).toBe((second as { readonly text: string }).text);
     expect(store.chatInsertCount).toBe(2);
+  });
+
+  it("reports the Gemini model for duplicate real chat requestIds", async () => {
+    process.env["READING_COACH_AI_MODE"] = "real";
+    process.env["GEMINI_MODEL"] = "gemini-test-model";
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, {} as never) as { readonly sessionId: string };
+    store.assistantTurnsByRequest.set(`${started.sessionId}:request-2`, {
+      id: "chat-assistant-existing",
+      requestId: "request-2",
+      responseType: "clarify",
+      role: "assistant",
+      sessionId: started.sessionId,
+      stage: "ai_chat",
+      text: "이미 저장된 답변입니다.",
+      timestamp: "2026-07-03T00:00:00.000Z"
+    });
+
+    const response = await handlers.chat({ message: "아까 말한 내용 이어서 설명해줘", requestId: "request-2", sessionId: started.sessionId }, {} as never);
+
+    expect((response as { readonly model: string }).model).toBe("gemini-test-model");
   });
 });

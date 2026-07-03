@@ -1,6 +1,6 @@
 import type { JsonHandler } from "./http";
 import { ApiError } from "./http";
-import { completeResearchChat } from "./openai-chat";
+import { completeResearchChat } from "./research-chat";
 import { researchServerEnv } from "./env";
 import {
   artifactWriteSchema,
@@ -72,7 +72,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     if (existing !== null) {
       return {
         llmMode: env.aiMode,
-        model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.openAiModel,
+        model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.geminiModel,
         requestTags: [],
         text: existing.text,
         type: "clarify"
@@ -94,12 +94,12 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     });
     const response = await completeResearchChat({
       ...(session.assignment.calibrationConfig?.aiContext === undefined ? {} : { aiContext: session.assignment.calibrationConfig.aiContext }),
-      apiKey: env.openAiApiKey,
+      apiKey: env.geminiApiKey,
       assignment: session.assignment,
       history: session.chatTurns,
       message: input.message,
       mode: env.aiMode,
-      model: env.openAiModel,
+      model: env.geminiModel,
       researchCondition: session.researchCondition
     });
     await store.insertChatTurn({

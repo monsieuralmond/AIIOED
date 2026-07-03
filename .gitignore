@@ -6,3 +6,5 @@
 .omo/
 dist/
 node_modules/
+.vercel
+.env*
