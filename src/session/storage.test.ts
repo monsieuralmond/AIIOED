@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ResearchModes } from "../shared/research";
-import { createInitialPilotState, startStudentSession } from "./session";
+import { createInitialPilotState } from "./session";
+import { loadBrowserSessionIdentity, saveBrowserSessionIdentity } from "./browser-session";
 import { loadPersistedState, savePersistedState } from "./storage";
 
 describe("browser storage", () => {
@@ -8,12 +8,13 @@ describe("browser storage", () => {
     window.localStorage.clear();
   });
 
-  it("round-trips the class-level pilot state through localStorage", () => {
+  it("does not persist class-level pilot state in localStorage", () => {
     const state = createInitialPilotState();
 
     savePersistedState(state);
 
-    expect(loadPersistedState()).toEqual(state);
+    expect(window.localStorage.getItem("reading-coach-lab:v1")).toBeNull();
+    expect(loadPersistedState()).toBeNull();
   });
 
   it("ignores malformed stored state", () => {
@@ -22,53 +23,29 @@ describe("browser storage", () => {
     expect(loadPersistedState()).toBeNull();
   });
 
-  it("updates the stored default teacher credentials to the current easy login", () => {
+  it("removes legacy class-level state instead of migrating it", () => {
     const state = createInitialPilotState();
-    const legacyTeacher = { ...state.teacher, loginId: "teacher", password: "TEACHER-PILOT-2026" };
-    window.localStorage.setItem("reading-coach-lab:v1", JSON.stringify({
-      ...state,
-      teacher: legacyTeacher,
-      teachers: [legacyTeacher]
-    }));
+    window.localStorage.setItem("reading-coach-lab:v1", JSON.stringify(state));
 
-    const loaded = loadPersistedState();
-
-    expect(loaded?.teacher).toEqual({ ...state.teacher, loginId: "test", password: "test" });
-    expect(loaded?.teachers[0]).toEqual({ ...state.teacher, loginId: "test", password: "test" });
+    expect(loadPersistedState()).toBeNull();
+    expect(window.localStorage.getItem("reading-coach-lab:v1")).toBeNull();
   });
 
-  it("migrates stored sessions that predate research-mode fields", () => {
-    const state = createInitialPilotState();
-    const student = state.students[0];
-    if (student === undefined) throw new Error("fixture student missing");
-    const started = startStudentSession(state, student.id, state.assignments[0]?.id ?? "");
-    const legacySessions = started.state.sessions.map((session) => ({
-      assignment: session.assignment,
-      chatTurns: session.chatTurns,
-      currentStage: session.currentStage,
-      draftSnapshots: session.draftSnapshots,
-      events: session.events,
-      finalSubmission: session.finalSubmission,
-      metadata: session.metadata,
-      outlineSnapshots: session.outlineSnapshots,
-      pasteEvents: session.pasteEvents,
-      sessionId: session.sessionId,
-      student: session.student,
-      teacherReview: session.teacherReview
-    }));
-    window.localStorage.setItem("reading-coach-lab:v1", JSON.stringify({
-      ...started.state,
-      sessions: legacySessions
-    }));
+  it("stores only the browser session identity needed to resume", () => {
+    saveBrowserSessionIdentity({
+      assignmentId: "assignment-a",
+      classGroupId: "class-a",
+      sessionId: "session-a",
+      studentAnonymousId: "student-anon-a"
+    });
 
-    const loaded = loadPersistedState();
-
-    expect(loaded?.sessions[0]?.researchMode).toBe(ResearchModes.writingCoach);
-    expect(loaded?.sessions[0]?.assignment.researchMode).toBe(ResearchModes.writingCoach);
-    expect(loaded?.sessions[0]?.status).toBe("in_progress");
-    expect(loaded?.sessions[0]?.artifacts).toEqual([]);
-    expect(loaded?.sessions[0]?.measures).toEqual([]);
-    expect(loaded?.sessions[0]?.modules).toEqual({});
+    expect(loadBrowserSessionIdentity()).toEqual({
+      assignmentId: "assignment-a",
+      classGroupId: "class-a",
+      sessionId: "session-a",
+      studentAnonymousId: "student-anon-a"
+    });
+    expect(window.localStorage.getItem("reading-coach-lab:v1")).toBeNull();
   });
 
   it("does not migrate a legacy single-session value into an unrelated user", () => {

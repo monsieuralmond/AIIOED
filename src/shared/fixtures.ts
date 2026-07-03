@@ -1,4 +1,5 @@
 import type { Assignment, ClassGroup, Outline, StudentAccount, TeacherAccount } from "./types";
+import { ResearchConditions, ResearchModes } from "./research";
 
 export const sampleTeacher: TeacherAccount = {
   id: "teacher-research",
@@ -47,6 +48,8 @@ export const sampleAssignment: Assignment = {
   question: "위 지문을 바탕으로 일회용 플라스틱 사용을 줄여야 하는지에 대한 자신의 주장을 쓰세요. 근거와 반론을 포함하세요.",
   gradeLevel: "초등 고학년",
   targetLength: "400자",
+  researchMode: ResearchModes.writingCoach,
+  researchCondition: ResearchConditions.singleGroupBaseline,
   assignmentMode: "full_process",
   essayType: "주장 글쓰기",
   minimumWordCount: "400",

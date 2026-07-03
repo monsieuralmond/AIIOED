@@ -1,7 +1,9 @@
 import type { ReactElement } from "react";
 import { latestOutline } from "../session/session";
+import { ResearchModes } from "../shared/research";
 import type { ChatRole, PilotEvent, PilotSession, TeacherReviewUpdate } from "../shared/types";
 import { TeacherReviewNoteEditor } from "./teacher-review-note";
+import { hasUnderstandingReflection, TeacherUnderstandingRecord, understandingAnswerCount, understandingConfidenceCount } from "./teacher-understanding-record";
 
 type SummaryTone = "good" | "neutral" | "warning";
 
@@ -31,10 +33,18 @@ const stageLabels: Readonly<Record<PilotSession["currentStage"], string>> = {
   calibration_reading: "글 읽기",
   chat_review: "대화 다시 보기",
   completed: "완료",
-  independent_tasks: "활동하기",
-  post_task_survey: "활동 후 확인",
+  final_reflection: "마무리 생각",
   pre_survey: "시작 전 확인",
   prediction_survey: "다음 활동 전 확인",
+  problem_1: "문제 1",
+  problem_1_confidence: "문제 1 확신도",
+  problem_2: "문제 2",
+  problem_2_confidence: "문제 2 확신도",
+  problem_3: "문제 3",
+  problem_3_confidence: "문제 3 확신도",
+  problem_4: "문제 4",
+  problem_4_confidence: "문제 4 확신도",
+  reflection_survey: "활동 돌아보기",
   reading: "과제 이해",
   review: "고쳐쓰기",
   thinking: "개요 작성",
@@ -143,6 +153,7 @@ export const processSignalsForSession = (session: PilotSession): readonly Proces
 export function TeacherProcessRecord(props: { readonly session: PilotSession; readonly onUpdateReview: (sessionId: string, input: TeacherReviewUpdate) => void }): ReactElement {
   const outline = latestOutline(props.session);
   const latestDraft = latestDraftText(props.session);
+  const isUnderstandingSession = props.session.researchMode === ResearchModes.understandingCalibration;
   const evidenceCount = outline?.evidence.filter((item) => item.trim().length > 0).length ?? 0;
   const hasClaim = outline !== null && outline.claim.trim().length > 0;
   const hasCounterargument = outline !== null && outline.counterargument.trim().length > 0;
@@ -152,22 +163,41 @@ export function TeacherProcessRecord(props: { readonly session: PilotSession; re
   const sourceCount = sourceMemoCount(props.session.events);
   const signalItems = processSignalsForSession(props.session);
   const llmLabel = props.session.metadata.llmMode === "real" ? props.session.metadata.model : "모의 코치";
-  const summaryItems: readonly ProcessSummaryItem[] = [
-    { label: "주장", tone: hasClaim ? "good" : "warning", value: hasClaim ? "주장 있음" : "주장 없음" },
-    { label: "근거", tone: evidenceCount >= 2 ? "good" : "warning", value: `근거 ${evidenceCount}개` },
-    { label: "출처", tone: sourceCount > 0 ? "good" : "warning", value: sourceCount > 0 ? `${sourceCount}개 메모` : "기록 없음" },
-    { label: "수정 확인", tone: unresolvedChecks.length > 0 ? "warning" : checkEvents.length > 0 ? "good" : "neutral", value: checkEvents.length === 0 ? "없음" : `${checkEvents.length}회` },
-    { label: "반론", tone: hasCounterargument ? "good" : "warning", value: hasCounterargument ? "반론 있음" : "반론 없음" },
-    { label: "제출", tone: props.session.finalSubmission === null ? "neutral" : "good", value: props.session.finalSubmission === null ? "미제출" : "최종 제출됨" }
-  ];
-  const metrics = [
-    { label: "대화", value: `${props.session.chatTurns.length}턴` },
-    { label: "생각 정리", value: outline === null ? "없음" : "있음" },
-    { label: "초안", value: `${props.session.draftSnapshots.length}개` },
-    { label: "붙여넣기", value: `${props.session.pasteEvents.length}회` },
-    { label: "피드백", value: `${feedbackEvents.length}회` },
-    { label: "이벤트", value: `${props.session.events.length}개` }
-  ];
+  const answerCount = understandingAnswerCount(props.session);
+  const confidenceCount = understandingConfidenceCount(props.session);
+  const hasReflection = hasUnderstandingReflection(props.session);
+  const hasSubmitted = props.session.status === "submitted" || props.session.status === "completed";
+  const summaryItems: readonly ProcessSummaryItem[] = isUnderstandingSession
+    ? [
+        { label: "문제 응답", tone: answerCount === 4 ? "good" : answerCount > 0 ? "neutral" : "warning", value: `${answerCount}/4개` },
+        { label: "확신도", tone: confidenceCount === 4 ? "good" : confidenceCount > 0 ? "neutral" : "warning", value: `${confidenceCount}/4개` },
+        { label: "AI 대화", tone: props.session.chatTurns.length > 0 ? "good" : "neutral", value: `${props.session.chatTurns.length}턴` },
+        { label: "회고", tone: hasReflection ? "good" : "neutral", value: hasReflection ? "기록 있음" : "기록 없음" },
+        { label: "제출", tone: hasSubmitted ? "good" : "neutral", value: hasSubmitted ? "완료" : "진행 중" }
+      ]
+    : [
+        { label: "주장", tone: hasClaim ? "good" : "warning", value: hasClaim ? "주장 있음" : "주장 없음" },
+        { label: "근거", tone: evidenceCount >= 2 ? "good" : "warning", value: `근거 ${evidenceCount}개` },
+        { label: "출처", tone: sourceCount > 0 ? "good" : "warning", value: sourceCount > 0 ? `${sourceCount}개 메모` : "기록 없음" },
+        { label: "수정 확인", tone: unresolvedChecks.length > 0 ? "warning" : checkEvents.length > 0 ? "good" : "neutral", value: checkEvents.length === 0 ? "없음" : `${checkEvents.length}회` },
+        { label: "반론", tone: hasCounterargument ? "good" : "warning", value: hasCounterargument ? "반론 있음" : "반론 없음" },
+        { label: "제출", tone: props.session.finalSubmission === null ? "neutral" : "good", value: props.session.finalSubmission === null ? "미제출" : "최종 제출됨" }
+      ];
+  const metrics = isUnderstandingSession
+    ? [
+        { label: "대화", value: `${props.session.chatTurns.length}턴` },
+        { label: "문제 응답", value: `${answerCount}/4` },
+        { label: "확신도", value: `${confidenceCount}/4` },
+        { label: "이벤트", value: `${props.session.events.length}개` }
+      ]
+    : [
+        { label: "대화", value: `${props.session.chatTurns.length}턴` },
+        { label: "생각 정리", value: outline === null ? "없음" : "있음" },
+        { label: "초안", value: `${props.session.draftSnapshots.length}개` },
+        { label: "붙여넣기", value: `${props.session.pasteEvents.length}회` },
+        { label: "피드백", value: `${feedbackEvents.length}회` },
+        { label: "이벤트", value: `${props.session.events.length}개` }
+      ];
 
   return (
     <article className="process-record">
@@ -192,30 +222,42 @@ export function TeacherProcessRecord(props: { readonly session: PilotSession; re
           ))}
         </div>
       </section>
-      <ProcessSignalPanel signals={signalItems} />
+      {isUnderstandingSession ? null : <ProcessSignalPanel signals={signalItems} />}
       <TeacherReviewNoteEditor key={props.session.sessionId} note={props.session.teacherReview} onSave={(input) => props.onUpdateReview(props.session.sessionId, input)} />
+      {isUnderstandingSession ? (
+        <TeacherUnderstandingRecord session={props.session} />
+      ) : (
+        <WritingProcessDetails latestDraft={latestDraft} outline={outline} session={props.session} />
+      )}
+    </article>
+  );
+}
+
+function WritingProcessDetails(props: { readonly latestDraft: string; readonly outline: ReturnType<typeof latestOutline>; readonly session: PilotSession }): ReactElement {
+  return (
+    <>
       <section>
         <h3>최종 글</h3>
         <p>{props.session.finalSubmission?.text ?? "아직 제출하지 않았습니다."}</p>
       </section>
-      <section>
+      <section className="teacher-chat-log-section">
         <h3>대화 기록</h3>
         {props.session.chatTurns.length === 0 ? <p>아직 대화가 없습니다.</p> : <ol className="turn-list">{props.session.chatTurns.map((turn) => <li key={turn.id}><strong>{roleLabels[turn.role]}</strong><p>{turn.text}</p></li>)}</ol>}
       </section>
       <section>
         <h3>생각 정리 기록</h3>
-        {outline === null ? <p>아직 생각 정리가 없습니다.</p> : <dl className="process-outline"><div><dt>주장</dt><dd>{outline.claim}</dd></div><div><dt>근거</dt><dd>{outline.evidence.filter((item) => item.trim().length > 0).join(" / ")}</dd></div><div><dt>출처</dt><dd>{outline.question}</dd></div><div><dt>반론</dt><dd>{outline.counterargument}</dd></div></dl>}
+        {props.outline === null ? <p>아직 생각 정리가 없습니다.</p> : <dl className="process-outline"><div><dt>주장</dt><dd>{props.outline.claim}</dd></div><div><dt>근거</dt><dd>{props.outline.evidence.filter((item) => item.trim().length > 0).join(" / ")}</dd></div><div><dt>출처</dt><dd>{props.outline.question}</dd></div><div><dt>반론</dt><dd>{props.outline.counterargument}</dd></div></dl>}
       </section>
       <section>
         <h3>초안 기록</h3>
-        <p>{props.session.draftSnapshots.length}개 저장, 최근 {latestDraft.length}자</p>
-        {latestDraft.length > 0 ? <blockquote>{latestDraft}</blockquote> : null}
+        <p>{props.session.draftSnapshots.length}개 저장, 최근 {props.latestDraft.length}자</p>
+        {props.latestDraft.length > 0 ? <blockquote>{props.latestDraft}</blockquote> : null}
       </section>
       <section>
         <h3>붙여넣기 기록</h3>
         {props.session.pasteEvents.length === 0 ? <p>붙여넣기 기록이 없습니다.</p> : <ol className="paste-list">{props.session.pasteEvents.map((paste) => <li key={paste.id}>{paste.textLength}자, {paste.lineCount}줄: {paste.textPreviewFirst80}</li>)}</ol>}
       </section>
-    </article>
+    </>
   );
 }
 

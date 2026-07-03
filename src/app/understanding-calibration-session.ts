@@ -1,5 +1,6 @@
 import type { ChatTurn, PilotEvent, PilotEventType, PilotSession, Stage } from "../shared/types";
 import type { ResearchArtifact, ResearchMeasure, ResearchSessionStatus, UnderstandingCalibrationStageRecord } from "../shared/research";
+import { UNDERSTANDING_CALIBRATION_PROMPT_VERSION } from "./understanding-calibration-data";
 
 type NewArtifact = {
   readonly kind: string;
@@ -38,11 +39,9 @@ export type CalibrationSessionUpdate = {
   readonly status?: ResearchSessionStatus;
 };
 
-type ChatReviewCompletionInput = {
+type FinalReflectionCompletionInput = {
   readonly completedAt: string;
-  readonly mostHelpful: string;
-  readonly ratings: Readonly<Record<string, number>>;
-  readonly shouldHaveChecked: string;
+  readonly finalReflection: string;
   readonly topic: string;
 };
 
@@ -138,15 +137,14 @@ export const appendCalibrationRecords = (session: PilotSession, input: Calibrati
   };
 };
 
-export const makeChatReviewCompletionUpdate = (input: ChatReviewCompletionInput): CalibrationSessionUpdate => ({
-  artifacts: [{ kind: "chat_review_reflection", payload: { mostHelpful: input.mostHelpful, shouldHaveChecked: input.shouldHaveChecked, topic: input.topic } }],
+export const makeFinalReflectionCompletionUpdate = (input: FinalReflectionCompletionInput): CalibrationSessionUpdate => ({
+  artifacts: [{ kind: "final_reflection", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, text: input.finalReflection, topic: input.topic } }],
   completedAt: input.completedAt,
   events: [
-    { type: "calibration_chat_review_submitted", payload: { mostHelpfulLength: input.mostHelpful.length, ratings: input.ratings, shouldHaveCheckedLength: input.shouldHaveChecked.length, topic: input.topic } },
+    { type: "reflection_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, questionNumber: 0, reflectionKind: "final", textLength: input.finalReflection.length, topic: input.topic } },
     { type: "calibration_study_completed", payload: { completedAt: input.completedAt, topic: input.topic }, stage: "completed" }
   ],
-  measures: [{ kind: "chat_review_self_report", payload: { ratings: input.ratings, topic: input.topic } }],
   nextStage: "completed",
-  stage: "chat_review",
+  stage: "final_reflection",
   status: "submitted"
 });

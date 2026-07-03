@@ -13,6 +13,8 @@ Label each student or assistant turn and relevant app event. Use one row per tur
 | `sessionId` | Stable session identifier from the exported dataset. |
 | `studentAnonymousId` | Participant-level identifier from `session.student.anonymousId`. |
 | `assignmentId` | Assignment identifier. |
+| `researchMode` | Research module or writing flow. |
+| `researchCondition` | Experimental condition. The current pilot assigns only `single_group_baseline`. |
 | `turnOrEventId` | `chatTurns.id` or `events.id`. |
 | `timestamp` | ISO timestamp. |
 | `stage` | Writing stages (`reading`, `thinking`, `writing`, `review`) or understanding-calibration stages listed below. |
@@ -59,19 +61,25 @@ Label each student or assistant turn and relevant app event. Use one row per tur
 | Mode | Meaning |
 | --- | --- |
 | `writing_coach` | Nonfiction writing coach flow with reading, outline, draft, revision, and submission records. |
-| `understanding_calibration` | Calibration flow for studying whether AI chat changes students' perceived and demonstrated understanding. |
+| `understanding_calibration` | Flow for observing students' self-judgments after AI-supported learning and their later independent explanatory performance. |
+
+## Research Conditions
+
+| Condition | Meaning |
+| --- | --- |
+| `single_group_baseline` | Single active pilot condition. The understanding-calibration AI uses the baseline Korean reading-support prompt. |
 
 ## Stage Values
 
 Writing coach stages: `reading`, `thinking`, `writing`, `review`.
 
-Understanding calibration stages: `pre_survey`, `calibration_reading`, `calibration_chat`, `prediction_survey`, `independent_tasks`, `post_task_survey`, `chat_review`, `completed`.
+Understanding calibration stages: `pre_survey`, `calibration_reading`, `calibration_chat`, `prediction_survey`, `problem_1`, `problem_1_confidence`, `problem_2`, `problem_2_confidence`, `problem_3`, `problem_3_confidence`, `problem_4`, `problem_4_confidence`, `reflection_survey`, `chat_review`, `final_reflection`, `completed`.
 
 ## Event Types
 
 Writing coach event types: `stage_entered`, `stage_completed`, `student_message`, `assistant_message`, `outline_edited`, `claim_revised`, `evidence_added`, `counterargument_added`, `draft_edited`, `paste_detected`, `outline_warning_shown`, `feedback_generated`, `feedback_viewed`, `suggestion_checked`, `suggestion_resolved`, `submission_created`, `teacher_review_updated`.
 
-Understanding calibration event types: `calibration_pre_survey_submitted`, `calibration_reading_started`, `calibration_reading_completed`, `calibration_chat_started`, `calibration_chat_turn_created`, `calibration_chat_completed`, `calibration_prediction_survey_submitted`, `calibration_independent_tasks_submitted`, `calibration_post_task_survey_submitted`, `calibration_chat_review_submitted`, `calibration_study_completed`.
+Understanding calibration event types: `calibration_pre_survey_submitted`, `calibration_reading_started`, `calibration_reading_completed`, `calibration_chat_started`, `calibration_chat_turn_created`, `calibration_chat_completed`, `calibration_prediction_survey_submitted`, `question_started`, `question_submitted`, `confidence_submitted`, `reflection_submitted`, `calibration_chat_review_submitted`, `calibration_study_completed`.
 
 ## Understanding Calibration Request Tags
 
@@ -102,8 +110,17 @@ Use this as process metadata. It does not replace `sycophancyLabel`, because a r
 | `reading-coach-labeling-rows.csv` | Labeler-facing row sheet initialized with empty critical-thinking, offloading, and sycophancy labels. |
 | `research-events.csv` | Raw event-level process table for every session, including calibration chat turns and model/request metadata. |
 | `research-artifacts-measures.csv` | Raw student products, survey measures, choices, and manual-evaluation placeholders from research modules. |
+| `sessions.csv` | Understanding-calibration session-level table with prompt/rubric version, self-report means, chat metrics, duration estimates, and blank performance/gap fields until human scoring exists. |
+| `items.csv` | Understanding-calibration item-level table with problem prompt, student answer, answer length, confidence, and blank item-gap field. |
+| `chat-turns.csv` | Chat-turn table for understanding-calibration sessions, including role, text, response type, and request tags when present. |
+| `rubric-codes.csv` | Rubric code table for human scoring of independent explanatory performance. |
+| `understanding-calibration-rubric.md` | Human-readable rubric for Problem 1-4 manual evaluation. |
 | `pilot-dataset.schema.json` | JSON Schema for validating exported JSON. |
 | `data-dictionary.md` | Field-level explanation for exported JSON and CSV files. |
+
+## Understanding Calibration Manual Evaluation
+
+The platform exports `manualEvaluation` as a stable placeholder but does not automatically score student answers. Use `understanding-calibration-rubric.md` and `rubric-codes.csv` for human coding. Empty `totalScore`, code values, and gap fields mean that no human score has been entered yet.
 
 ## Teacher Review Fields
 

@@ -116,6 +116,7 @@
         "gradeLevel": { "type": "string" },
         "targetLength": { "type": "string" },
         "researchMode": { "type": "string" },
+        "researchCondition": { "type": "string" },
         "calibrationConfig": { "$ref": "#/$defs/calibrationConfig" },
         "assignmentMode": { "enum": ["full_process", "revision_feedback"] },
         "essayType": { "type": "string" },
@@ -146,10 +147,46 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "independentProblems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingProblemPrompt" }
+        },
+        "preSurveyItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingSurveyItem" }
+        },
+        "predictionSurveyItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingSurveyItem" }
+        },
+        "reflectionSurveyItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingSurveyItem" }
+        },
         "transferChoices": {
           "type": "array",
           "items": { "$ref": "#/$defs/transferChoice" }
         }
+      }
+    },
+    "understandingProblemPrompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "title", "prompt"],
+      "properties": {
+        "number": { "enum": [1, 2, 3, 4] },
+        "title": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "understandingSurveyItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "helper": { "type": "string" }
       }
     },
     "transferChoice": {
@@ -224,10 +261,12 @@
             "calibration_chat_turn_created",
             "calibration_chat_completed",
             "calibration_prediction_survey_submitted",
-            "calibration_independent_tasks_submitted",
-            "calibration_post_task_survey_submitted",
             "calibration_chat_review_submitted",
-            "calibration_study_completed"
+            "calibration_study_completed",
+            "question_started",
+            "question_submitted",
+            "confidence_submitted",
+            "reflection_submitted"
           ]
         },
         "timestamp": { "type": "string" },
@@ -295,6 +334,7 @@
         "sessionId",
         "assignment",
         "researchMode",
+        "researchCondition",
         "status",
         "student",
         "currentStage",
@@ -308,12 +348,16 @@
         "modules",
         "finalSubmission",
         "teacherReview",
+        "analysisArtifacts",
+        "derivedFeatures",
+        "manualEvaluation",
         "metadata"
       ],
       "properties": {
         "sessionId": { "type": "string", "minLength": 1 },
         "assignment": { "$ref": "#/$defs/assignment" },
         "researchMode": { "type": "string" },
+        "researchCondition": { "type": "string" },
         "status": { "type": "string" },
         "student": { "$ref": "#/$defs/sessionStudent" },
         "currentStage": { "$ref": "#/$defs/stage" },
@@ -353,8 +397,202 @@
           ]
         },
         "teacherReview": { "$ref": "#/$defs/teacherReviewNote" },
+        "analysisArtifacts": { "$ref": "#/$defs/calibrationAnalysisArtifacts" },
+        "derivedFeatures": { "$ref": "#/$defs/calibrationDerivedFeatures" },
+        "manualEvaluation": { "$ref": "#/$defs/calibrationManualEvaluation" },
         "metadata": { "$ref": "#/$defs/sessionMetadata" },
         "completedAt": { "type": "string" }
+      }
+    },
+    "nullableNumber": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "number" }
+      ]
+    },
+    "nullableBoolean": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "boolean" }
+      ]
+    },
+    "nullableScore": {
+      "anyOf": [
+        { "type": "null" },
+        { "enum": [0, 1, 2] }
+      ]
+    },
+    "calibrationAnalysisProblemArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["answer", "answerLength", "problemDurationMs", "promptText", "promptVersion", "questionNumber", "rubricVersion", "submittedAt", "title", "topic"],
+      "properties": {
+        "answer": { "type": "string" },
+        "answerLength": { "type": "number", "minimum": 0 },
+        "problemDurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "promptText": { "type": "string" },
+        "promptVersion": { "type": "string" },
+        "questionNumber": { "enum": [1, 2, 3, 4] },
+        "rubricVersion": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "title": { "type": "string" },
+        "topic": { "type": "string" }
+      }
+    },
+    "calibrationAnalysisArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["problem1", "problem2", "problem3", "problem4"],
+      "properties": {
+        "problem1": { "$ref": "#/$defs/calibrationAnalysisProblemArtifact" },
+        "problem2": { "$ref": "#/$defs/calibrationAnalysisProblemArtifact" },
+        "problem3": { "$ref": "#/$defs/calibrationAnalysisProblemArtifact" },
+        "problem4": { "$ref": "#/$defs/calibrationAnalysisProblemArtifact" }
+      }
+    },
+    "calibrationDerivedFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "absGapOverall",
+        "analogyRequestCount",
+        "assistantChars",
+        "assignmentVersion",
+        "calibrationGapOverall",
+        "chatTurnCount",
+        "confidenceMean",
+        "containsWhyQuestion",
+        "exampleRequestCount",
+        "hasAllFourAnswers",
+        "hasAllFourConfidence",
+        "hasChat",
+        "hasManualScores",
+        "isCompleteForAnalysis",
+        "itemGaps",
+        "offTopicCount",
+        "overconfidenceIndex",
+        "performanceTotal",
+        "predictionMean",
+        "preSelfMean",
+        "problem1DurationMs",
+        "problem2DurationMs",
+        "problem3DurationMs",
+        "problem4DurationMs",
+        "promptVersion",
+        "promptSetVersion",
+        "questionCount",
+        "readingDurationMs",
+        "requestTagCounts",
+        "rubricVersion",
+        "totalChatAssistantChars",
+        "totalChatDurationMs",
+        "totalChatTurns",
+        "totalChatUserChars",
+        "totalDurationMs",
+        "underconfidenceIndex",
+        "userQuestionChars",
+        "verificationRequestCount"
+      ],
+      "properties": {
+        "absGapOverall": { "$ref": "#/$defs/nullableNumber" },
+        "analogyRequestCount": { "type": "number", "minimum": 0 },
+        "assistantChars": { "type": "number", "minimum": 0 },
+        "assignmentVersion": { "type": "string" },
+        "calibrationGapOverall": { "$ref": "#/$defs/nullableNumber" },
+        "chatTurnCount": { "type": "number", "minimum": 0 },
+        "confidenceMean": { "$ref": "#/$defs/nullableNumber" },
+        "containsWhyQuestion": { "type": "boolean" },
+        "exampleRequestCount": { "type": "number", "minimum": 0 },
+        "hasAllFourAnswers": { "type": "boolean" },
+        "hasAllFourConfidence": { "type": "boolean" },
+        "hasChat": { "type": "boolean" },
+        "hasManualScores": { "type": "boolean" },
+        "isCompleteForAnalysis": { "type": "boolean" },
+        "itemGaps": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["problem1", "problem2", "problem3", "problem4"],
+          "properties": {
+            "problem1": { "$ref": "#/$defs/nullableNumber" },
+            "problem2": { "$ref": "#/$defs/nullableNumber" },
+            "problem3": { "$ref": "#/$defs/nullableNumber" },
+            "problem4": { "$ref": "#/$defs/nullableNumber" }
+          }
+        },
+        "offTopicCount": { "type": "number", "minimum": 0 },
+        "overconfidenceIndex": { "$ref": "#/$defs/nullableNumber" },
+        "performanceTotal": { "$ref": "#/$defs/nullableNumber" },
+        "predictionMean": { "$ref": "#/$defs/nullableNumber" },
+        "preSelfMean": { "$ref": "#/$defs/nullableNumber" },
+        "problem1DurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "problem2DurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "problem3DurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "problem4DurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "promptVersion": { "type": "string" },
+        "promptSetVersion": { "type": "string" },
+        "questionCount": { "type": "number", "minimum": 0 },
+        "readingDurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "requestTagCounts": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
+        "rubricVersion": { "type": "string" },
+        "totalChatAssistantChars": { "type": "number", "minimum": 0 },
+        "totalChatDurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "totalChatTurns": { "type": "number", "minimum": 0 },
+        "totalChatUserChars": { "type": "number", "minimum": 0 },
+        "totalDurationMs": { "$ref": "#/$defs/nullableNumber" },
+        "underconfidenceIndex": { "$ref": "#/$defs/nullableNumber" },
+        "userQuestionChars": { "type": "number", "minimum": 0 },
+        "verificationRequestCount": { "type": "number", "minimum": 0 }
+      }
+    },
+    "calibrationManualEvaluationProblem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adjudicatedScore", "codes", "criterionScores", "masteryFlag", "notes", "raterId", "rubricVersion", "scoredAt", "secondRaterId", "totalScore"],
+      "properties": {
+        "adjudicatedScore": { "$ref": "#/$defs/nullableNumber" },
+        "codes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/nullableScore" }
+        },
+        "criterionScores": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applicationJudgment", "conceptAccuracy", "mechanismUnderstanding", "misconceptionCorrection"],
+          "properties": {
+            "applicationJudgment": { "$ref": "#/$defs/nullableScore" },
+            "conceptAccuracy": { "$ref": "#/$defs/nullableScore" },
+            "mechanismUnderstanding": { "$ref": "#/$defs/nullableScore" },
+            "misconceptionCorrection": { "$ref": "#/$defs/nullableScore" }
+          }
+        },
+        "masteryFlag": { "$ref": "#/$defs/nullableBoolean" },
+        "notes": { "type": "string" },
+        "raterId": { "type": "string" },
+        "rubricVersion": { "type": "string" },
+        "scoredAt": { "type": "string" },
+        "secondRaterId": { "type": "string" },
+        "totalScore": { "$ref": "#/$defs/nullableNumber" }
+      }
+    },
+    "calibrationManualEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notes", "problem1", "problem2", "problem3", "problem4", "raterIds", "rubricVersion", "totalScore"],
+      "properties": {
+        "notes": { "type": "string" },
+        "problem1": { "$ref": "#/$defs/calibrationManualEvaluationProblem" },
+        "problem2": { "$ref": "#/$defs/calibrationManualEvaluationProblem" },
+        "problem3": { "$ref": "#/$defs/calibrationManualEvaluationProblem" },
+        "problem4": { "$ref": "#/$defs/calibrationManualEvaluationProblem" },
+        "raterIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rubricVersion": { "type": "string" },
+        "totalScore": { "$ref": "#/$defs/nullableNumber" }
       }
     },
     "researchArtifact": {
@@ -409,6 +647,22 @@
         "independentTasks": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "independentProblems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingProblemPrompt" }
+        },
+        "preSurveyItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingSurveyItem" }
+        },
+        "predictionSurveyItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingSurveyItem" }
+        },
+        "reflectionSurveyItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/understandingSurveyItem" }
         },
         "transferChoices": {
           "type": "array",
@@ -527,9 +781,17 @@
         "calibration_reading",
         "calibration_chat",
         "prediction_survey",
-        "independent_tasks",
-        "post_task_survey",
+        "problem_1",
+        "problem_1_confidence",
+        "problem_2",
+        "problem_2_confidence",
+        "problem_3",
+        "problem_3_confidence",
+        "problem_4",
+        "problem_4_confidence",
+        "reflection_survey",
         "chat_review",
+        "final_reflection",
         "completed"
       ]
     }

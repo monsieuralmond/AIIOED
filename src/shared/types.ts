@@ -1,7 +1,9 @@
 import type { PilotEventType } from "./events";
-import type { ResearchArtifact, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research";
+import type { ExportPilotSession } from "./calibration-export-types";
+import type { ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research";
 
 export type { PilotEventType } from "./events";
+export type { CalibrationAnalysisArtifacts, CalibrationAnalysisProblemArtifact, CalibrationCriterionScoreKey, CalibrationDerivedFeatures, CalibrationManualEvaluation, CalibrationManualEvaluationProblem, CalibrationProblemKey, CalibrationQuestionNumber, CalibrationRubricScore, ExportPilotSession } from "./calibration-export-types";
 
 export type WritingStage = "reading" | "thinking" | "writing" | "review";
 
@@ -52,6 +54,7 @@ export type Assignment = {
   readonly gradeLevel: string;
   readonly targetLength: string;
   readonly researchMode?: ResearchMode;
+  readonly researchCondition?: ResearchCondition;
   readonly assignmentMode?: "full_process" | "revision_feedback";
   readonly calibrationConfig?: UnderstandingCalibrationConfig;
   readonly essayType?: string;
@@ -134,6 +137,7 @@ export type PilotSession = {
   readonly sessionId: string;
   readonly assignment: Assignment;
   readonly researchMode: ResearchMode;
+  readonly researchCondition: ResearchCondition;
   readonly status: ResearchSessionStatus;
   readonly student: {
     readonly anonymousId: string;
@@ -174,7 +178,6 @@ export type PilotState = {
   readonly sessions: readonly PilotSession[];
   readonly selectedActor: SelectedActor | null;
   readonly activeAssignmentId: string;
-  readonly activeSessionId: string | null;
   readonly metadata: {
     readonly appVersion: string;
     readonly createdAt: string;
@@ -212,6 +215,7 @@ export type PilotDataset = Omit<PilotState, "teacher" | "teachers" | "students">
   readonly teacher: PublicTeacherAccount;
   readonly teachers: readonly PublicTeacherAccount[];
   readonly students: readonly PublicStudentAccount[];
+  readonly sessions: readonly ExportPilotSession[];
   readonly exportMetadata: ExportMetadata;
 };
 
@@ -223,6 +227,8 @@ export type LabelingRow = {
   readonly sessionId: string;
   readonly studentAnonymousId: string;
   readonly assignmentId: string;
+  readonly researchMode: string;
+  readonly researchCondition: string;
   readonly turnOrEventId: string;
   readonly timestamp: string;
   readonly stage: Stage;

@@ -24,7 +24,7 @@ test("student sees the assignment assigned to their own class", async ({ page })
   await page.getByLabel("비문학 지문").fill("새 반 학생이 읽어야 하는 지문입니다. 새로운 자료를 비교하며 자신의 생각을 세우는 연습을 합니다.");
   await page.getByLabel("해결할 문제").fill("새 반 학생은 이 지문을 바탕으로 자신의 주장을 쓰세요.");
   await page.getByRole("button", { name: "과제 저장" }).click();
-  await page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" }).getByRole("button", { name: "선택 및 미리보기" }).click();
+  await page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" }).getByRole("button", { name: "미리보기" }).click();
   await page.getByRole("button", { name: "미리보기 닫기" }).click();
 
   await page.getByRole("button", { name: "역할 바꾸기" }).click();

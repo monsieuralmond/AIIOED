@@ -14,6 +14,7 @@
 | 학생 계정 | 최소 2명 이상 준비 |
 | 반 | 리허설에 사용할 반 1개 이상 준비 |
 | 과제 유형 | `전체 글쓰기 과정`, `이해도 보정 실험` 각각 1개 이상 |
+| 연구 조건 | 현재 기본값 `single_group_baseline`이 export에 포함되는지 확인 |
 | AI 모델 | Gemini 호출 모델과 호출량 제한 확인 |
 | 내보내기 파일 | JSON, research events CSV, artifacts/measures CSV |
 
@@ -61,11 +62,12 @@
 각 단계에서 다음을 확인한다.
 
 - 3단계 AI 대화는 멀티턴으로 저장된다.
-- 4단계에는 대화 직후 학생이 안다고 느끼는 정도가 기록된다.
+- 4단계에는 대화 직후 학생의 수행 예측이 기록된다.
 - 5단계 독립 수행에서는 AI 대화창, 출처 제안, 힌트가 보이지 않는다.
-- 5단계 답안은 독립 설명, 오류 판단, 전이 문제 답변으로 분리되어 저장된다.
-- 7단계에서는 이전 대화를 읽을 수 있지만 새 질문을 하지 못한다.
-- 8단계 완료 후 `modules.understandingCalibration.stageRecords.completed`가 내보내기 JSON에 포함된다.
+- 5단계 이후 문제는 하나씩만 보이며 제출한 이전 문제와 이후 문제를 동시에 볼 수 없다.
+- 각 문제 답안은 `problem1`부터 `problem4`까지, 확신도는 `problem1_confidence`부터 `problem4_confidence`까지 분리 저장된다.
+- 대화 다시 보기 단계에서는 이전 대화를 읽을 수 있지만 새 질문을 하지 못한다.
+- 완료 후 `modules.understandingCalibration.stageRecords.completed`가 내보내기 JSON에 포함된다.
 
 ## 5. 내보내기 데이터 QA
 
@@ -76,6 +78,7 @@
 | JSON | accounts, assignments, sessions, events, chatTurns, artifacts, measures, modules가 있는지 확인 |
 | JSON | 학생/교사 비밀번호가 포함되지 않는지 확인 |
 | JSON | 세션이 학생, 과제, 반과 연결되는지 확인 |
+| JSON | `assignments[].researchCondition`, `sessions[].researchCondition`이 포함되는지 확인 |
 | research-events.csv | 이벤트 ID, 세션 ID, 과제 ID, 학생 ID, 이벤트 유형, requestTags, aiMode, model이 있는지 확인 |
 | research-artifacts-measures.csv | 독립 수행 답안, 자기평가, 대화 되돌아보기, 수동 평가 placeholder가 있는지 확인 |
 | schema/codebook | 라벨링 기준과 실제 export 필드명이 어긋나지 않는지 확인 |

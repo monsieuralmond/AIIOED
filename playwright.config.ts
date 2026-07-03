@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = process.env["PLAYWRIGHT_BASE_URL"] ?? "http://127.0.0.1:5173";
+const playwrightPort = process.env["PLAYWRIGHT_PORT"] ?? "5174";
+const baseURL = process.env["PLAYWRIGHT_BASE_URL"] ?? `http://127.0.0.1:${playwrightPort}`;
+const reuseExistingServer = process.env["PLAYWRIGHT_REUSE_EXISTING_SERVER"] === "1";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -10,9 +12,9 @@ export default defineConfig({
     trace: "retain-on-failure"
   },
   webServer: {
-    command: "READING_COACH_AI_MODE=mock npm run dev -- --host 127.0.0.1 --port 5173",
+    command: `READING_COACH_AI_MODE=mock npm run dev -- --host 127.0.0.1 --port ${playwrightPort}`,
     url: baseURL,
-    reuseExistingServer: true
+    reuseExistingServer
   },
   projects: [
     {

@@ -1,11 +1,5 @@
-import type { Assignment, PilotSession, PilotState, SelectedActor, TeacherAccount } from "../shared/types";
+import type { Assignment, PilotState, SelectedActor, TeacherAccount } from "../shared/types";
 import { PilotStateError } from "./pilot-state";
-
-const activeSessionAfterDelete = (state: PilotState, sessions: readonly PilotSession[]): string | null => {
-  const activeSessionId = state.activeSessionId;
-  if (activeSessionId === null) return null;
-  return sessions.some((session) => session.sessionId === activeSessionId) ? activeSessionId : null;
-};
 
 const selectedActorAfterDelete = (selectedActor: SelectedActor | null, role: SelectedActor["role"], accountIds: readonly string[]): SelectedActor | null => {
   if (selectedActor === null) return null;
@@ -25,7 +19,6 @@ export const deleteStudentAccount = (state: PilotState, studentId: string): Pilo
   const sessions = state.sessions.filter((session) => session.student.accountId !== studentId);
   return {
     ...state,
-    activeSessionId: activeSessionAfterDelete(state, sessions),
     classGroups: state.classGroups.map((classGroup) =>
       classGroup.studentIds.includes(studentId)
         ? { ...classGroup, studentIds: classGroup.studentIds.filter((item) => item !== studentId) }
@@ -43,7 +36,6 @@ export const deleteClassGroup = (state: PilotState, classGroupId: string): Pilot
   const sessions = state.sessions.filter((session) => session.student.accountId === undefined || !removedStudentIds.includes(session.student.accountId));
   return {
     ...state,
-    activeSessionId: activeSessionAfterDelete(state, sessions),
     assignments: state.assignments.map((assignment) => unassignClassGroup(assignment, classGroupId)),
     classGroups: state.classGroups.filter((classGroup) => classGroup.id !== classGroupId),
     selectedActor: selectedActorAfterDelete(state.selectedActor, "student", removedStudentIds),

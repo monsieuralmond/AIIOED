@@ -1,5 +1,20 @@
 import type { FileSyncStatus, LabelingRow, LabelingSpeaker, PilotDataset, PilotEventType, PilotSession, PilotState, PublicStudentAccount, PublicTeacherAccount, StudentAccount, TeacherAccount } from "../shared/types";
+import { exportSessionWithResearchFields } from "./calibration-derived";
 
+export {
+  exportCalibrationAttritionRows,
+  exportCalibrationChatTurnRows,
+  exportCalibrationItemRows,
+  exportCalibrationManualEvaluationRows,
+  exportCalibrationRubricCodeRows,
+  exportCalibrationSessionRows,
+  stringifyCalibrationAttritionCsv,
+  stringifyCalibrationChatTurnsCsv,
+  stringifyCalibrationItemsCsv,
+  stringifyCalibrationManualEvaluationCsv,
+  stringifyCalibrationRubricCodesCsv,
+  stringifyCalibrationSessionsCsv
+} from "./calibration-csv";
 export { exportResearchArtifactMeasureRows, exportResearchEventRows, stringifyResearchArtifactMeasuresCsv, stringifyResearchEventsCsv } from "./research-csv";
 
 export const DATASET_SCHEMA_ID = "reading-coach-pilot-dataset.v1";
@@ -30,6 +45,8 @@ const labelingColumns: readonly (keyof LabelingRow)[] = [
   "sessionId",
   "studentAnonymousId",
   "assignmentId",
+  "researchMode",
+  "researchCondition",
   "turnOrEventId",
   "timestamp",
   "stage",
@@ -64,13 +81,15 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   calibration_chat_review_submitted: "system_event",
   calibration_chat_started: "system_event",
   calibration_chat_turn_created: "system_event",
-  calibration_independent_tasks_submitted: "system_event",
-  calibration_post_task_survey_submitted: "system_event",
   calibration_pre_survey_submitted: "system_event",
   calibration_prediction_survey_submitted: "system_event",
   calibration_reading_completed: "system_event",
   calibration_reading_started: "system_event",
-  calibration_study_completed: "system_event"
+  calibration_study_completed: "system_event",
+  confidence_submitted: "system_event",
+  question_started: "system_event",
+  question_submitted: "system_event",
+  reflection_submitted: "system_event"
 };
 
 const evidenceText = (payload: Record<string, unknown>, eventType: PilotEventType): string => {
@@ -80,14 +99,18 @@ const evidenceText = (payload: Record<string, unknown>, eventType: PilotEventTyp
   return serialized === undefined || serialized === "{}" ? eventType : serialized;
 };
 
-const csvValue = (value: string): string => `"${value.replaceAll("\"", "\"\"")}"`;
+const csvValue = (value: unknown): string => {
+  const text = typeof value === "string" ? value : value === null || value === undefined ? "" : String(value);
+  return `"${text.replaceAll("\"", "\"\"")}"`;
+};
 
-export const exportSession = (session: PilotSession): PilotSession => session;
+export const exportSession = exportSessionWithResearchFields;
 
 export const stringifySession = (session: PilotSession): string => JSON.stringify(exportSession(session), null, 2);
 
 export const exportDataset = (state: PilotState, fileSync: FileSyncStatus = defaultFileSync): PilotDataset => ({
   ...state,
+  sessions: state.sessions.map(exportSession),
   teacher: publicTeacher(state.teacher),
   teachers: state.teachers.map(publicTeacher),
   students: state.students.map(publicStudent),
@@ -109,6 +132,8 @@ export const exportLabelingRows = (state: PilotState): readonly LabelingRow[] =>
       evidenceText: evidenceText(event.payload, event.type),
       offloadingLabel: "none",
       raterNotes: "",
+      researchCondition: session.researchCondition,
+      researchMode: session.researchMode,
       sessionId: session.sessionId,
       speaker: speakerByEventType[event.type],
       stage: event.stage,

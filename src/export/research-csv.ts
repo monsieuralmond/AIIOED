@@ -7,6 +7,7 @@ export type ResearchEventCsvRow = {
   readonly studentAnonymousId: string;
   readonly assignmentId: string;
   readonly researchMode: string;
+  readonly researchCondition: string;
   readonly eventId: string;
   readonly eventType: string;
   readonly timestamp: string;
@@ -25,6 +26,7 @@ export type ResearchArtifactMeasureCsvRow = {
   readonly studentAnonymousId: string;
   readonly assignmentId: string;
   readonly researchMode: string;
+  readonly researchCondition: string;
   readonly recordGroup: "artifact" | "measure";
   readonly recordId: string;
   readonly recordKind: string;
@@ -38,6 +40,7 @@ const eventColumns: readonly (keyof ResearchEventCsvRow)[] = [
   "studentAnonymousId",
   "assignmentId",
   "researchMode",
+  "researchCondition",
   "eventId",
   "eventType",
   "timestamp",
@@ -56,6 +59,7 @@ const artifactMeasureColumns: readonly (keyof ResearchArtifactMeasureCsvRow)[] =
   "studentAnonymousId",
   "assignmentId",
   "researchMode",
+  "researchCondition",
   "recordGroup",
   "recordId",
   "recordKind",
@@ -96,6 +100,7 @@ export const exportResearchEventRows = (state: PilotState): readonly ResearchEve
       model: payloadValue(event.payload, "model"),
       payloadJson: payloadJson(event.payload),
       requestTags: payloadValue(event.payload, "requestTags"),
+      researchCondition: session.researchCondition,
       researchMode: session.researchMode,
       sessionId: session.sessionId,
       speaker: speakerForEvent(event.type),
@@ -114,6 +119,7 @@ export const exportResearchArtifactMeasureRows = (state: PilotState): readonly R
       recordGroup: "artifact",
       recordId: artifact.id,
       recordKind: artifact.kind,
+      researchCondition: session.researchCondition,
       researchMode: session.researchMode,
       sessionId: session.sessionId,
       stage: artifact.stage,
@@ -126,6 +132,7 @@ export const exportResearchArtifactMeasureRows = (state: PilotState): readonly R
       recordGroup: "measure",
       recordId: measure.id,
       recordKind: measure.kind,
+      researchCondition: session.researchCondition,
       researchMode: session.researchMode,
       sessionId: session.sessionId,
       stage: measure.stage,

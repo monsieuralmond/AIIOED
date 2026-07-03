@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { CoachRequest, CoachResponse, CoachResponseType, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types";
 import type { CalibrationChatHistoryTurn, CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai";
-import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPrompt } from "../shared/calibration-ai";
+import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "../shared/calibration-ai";
+import { ResearchConditions } from "../shared/research";
 import { createCoachResponse } from "../coach/coach";
 import { createReviewSuggestionCheckResult, createReviewSuggestions } from "../review/review";
 import { callGeminiJson, callGeminiText } from "./gemini-client";
@@ -65,6 +66,7 @@ const calibrationChatRequestSchema = z.object({
   history: z.array(calibrationHistorySchema),
   message: z.string(),
   passage: z.string(),
+  researchCondition: z.string().optional(),
   topic: z.string()
 });
 
@@ -143,26 +145,37 @@ const assertCalibrationChatRequest = (payload: unknown): CalibrationChatRequest 
     history: request.history.map(toCalibrationHistoryTurn),
     message: request.message,
     passage: request.passage,
+    researchCondition: request.researchCondition ?? ResearchConditions.singleGroupBaseline,
     topic: request.topic
   };
 };
 
-const calibrationContextPrompt = (request: CalibrationChatRequest): string =>
-  [
+const historyTranscript = (history: readonly CalibrationChatHistoryTurn[]): string => {
+  const recentTurns = history.slice(-8);
+  if (recentTurns.length === 0) return "";
+  return recentTurns.map((turn) => `${turn.role === "assistant" ? "AI" : "학생"}: ${turn.text}`).join("\n");
+};
+
+const calibrationContextPrompt = (request: CalibrationChatRequest): string => {
+  const transcript = historyTranscript(request.history);
+  return [
     `주제: ${request.topic}`,
     `지문: ${request.passage}`,
     request.aiContext === undefined || request.aiContext.trim().length === 0 ? "" : `보조자료: ${request.aiContext.trim()}`,
+    transcript.length === 0 ? "" : `이전 대화:\n${transcript}`,
+    request.history.length === 0 ? "" : "학생이 '방금', '아까', '그거'처럼 이전 대화를 가리키면 위 이전 대화의 맥락을 이어서 답한다.",
     `학생 질문: ${request.message}`
   ]
     .filter((line) => line.length > 0)
     .join("\n\n");
+};
 
 const toGeminiContent = (turn: CalibrationChatHistoryTurn): GeminiContent => ({
   parts: [{ text: turn.text }],
   role: turn.role === "assistant" ? "model" : "user"
 });
 
-const calibrationContents = (request: CalibrationChatRequest): readonly GeminiContent[] => [
+export const buildCalibrationContents = (request: CalibrationChatRequest): readonly GeminiContent[] => [
   ...request.history.map(toGeminiContent),
   {
     parts: [{ text: calibrationContextPrompt(request) }],
@@ -201,9 +214,9 @@ const calibrationChatResponse = async (request: CalibrationChatRequest, config: 
     };
   }
   const text = await callGeminiText(config, {
-    contents: calibrationContents(request),
+    contents: buildCalibrationContents(request),
     maxOutputTokens: 512,
-    systemInstruction: understandingCalibrationSystemPrompt,
+    systemInstruction: understandingCalibrationSystemPromptForCondition(request.researchCondition),
     temperature: 0.35
   });
   return { llmMode: config.mode, model: config.model, requestTags, text: text.trim(), type: "clarify" };

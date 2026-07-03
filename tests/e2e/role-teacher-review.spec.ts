@@ -25,11 +25,13 @@ test("teacher can assign, monitor, and review a student's process record", async
   await page.getByLabel("교사 아이디").fill("test");
   await page.getByLabel("교사 비밀번호").fill("test");
   await page.getByRole("button", { name: "교사로 시작" }).click();
-  await page.getByRole("button", { name: "미리보기 및 배정" }).click();
+  const sampleAssignment = page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" });
+  await expect(sampleAssignment.getByRole("button", { name: "미리보기" })).toBeVisible();
+  await expect(sampleAssignment.getByRole("button", { name: "배정" })).toBeVisible();
+  await sampleAssignment.getByRole("button", { name: "미리보기" }).click();
   await expect(page.getByRole("dialog", { name: "과제 미리보기" })).toContainText("플라스틱 사용을 줄여야 할까?");
-  await expect(page.getByLabel("배정할 반")).toHaveValue("class-pilot");
-  await expect(page.getByText("파일럿 반 학생 2명에게 보입니다.")).toBeVisible();
-  await page.getByRole("button", { name: "선택한 반에 배정" }).click();
+  await expect(page.getByLabel("배정할 반")).toHaveCount(0);
+  await page.getByRole("button", { name: "닫기" }).last().click();
   await page.getByRole("button", { name: "학생 현황" }).click();
   await expect(page.getByRole("article", { name: "김민서 상태" })).toBeVisible();
   await expect(page.getByRole("article", { name: "김민서 상태" })).toContainText("시작 전");
@@ -48,6 +50,8 @@ test("teacher can assign, monitor, and review a student's process record", async
   await page.getByLabel("교사 아이디").fill("test");
   await page.getByLabel("교사 비밀번호").fill("test");
   await page.getByRole("button", { name: "교사로 시작" }).click();
+  await expect(page.getByLabel("과제 선택")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "플라스틱 사용을 줄여야 할까?" })).toBeVisible();
   await expect(page.getByRole("article", { name: "김민서 상태" }).getByText("제출 완료", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "제출 완료 1" }).click();
   await expect(page.getByRole("article", { name: "김민서 상태" })).toBeVisible();
@@ -69,6 +73,7 @@ test("teacher can assign, monitor, and review a student's process record", async
   await expect(signalPanel).toContainText("미해결");
   await expect(page.getByRole("heading", { name: "최종 글" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "대화 기록" })).toBeVisible();
+  await expect(page.locator(".teacher-chat-log-section .turn-list")).toHaveCSS("overflow-y", "auto");
   await expect(page.getByText("근거를 어떻게 확인할까?")).toBeVisible();
   await expect(page.getByRole("blockquote")).toContainText("일회용 플라스틱은 줄여야 한다. 분해가 오래 걸리고 생태계에 피해를 주기 때문이다.");
   await expect(page.getByText("생각 정리 기록")).toBeVisible();

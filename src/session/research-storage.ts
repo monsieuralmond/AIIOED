@@ -1,8 +1,8 @@
 import type { ResearchArtifact, ResearchMeasure, ResearchModules, ResearchSessionStatus } from "../shared/research";
 import type { Assignment, FinalSubmission, PilotSession } from "../shared/types";
-import { defaultResearchModules, normalizeAssignmentResearchMode, researchModeForAssignment } from "./research-session";
+import { defaultResearchModules, normalizeAssignmentResearchMode, researchConditionForAssignment, researchModeForAssignment } from "./research-session";
 
-type ResearchSessionFields = Pick<PilotSession, "artifacts" | "assignment" | "completedAt" | "createdAt" | "measures" | "modules" | "researchMode" | "status" | "updatedAt">;
+type ResearchSessionFields = Pick<PilotSession, "artifacts" | "assignment" | "completedAt" | "createdAt" | "measures" | "modules" | "researchCondition" | "researchMode" | "status" | "updatedAt">;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -49,11 +49,14 @@ export const parseResearchSessionFields = (
   finalSubmission: FinalSubmission | null
 ): ResearchSessionFields | null => {
   if (value["researchMode"] !== undefined && !isString(value["researchMode"])) return null;
+  if (value["researchCondition"] !== undefined && !isString(value["researchCondition"])) return null;
   if (value["createdAt"] !== undefined && !isString(value["createdAt"])) return null;
   if (value["updatedAt"] !== undefined && !isString(value["updatedAt"])) return null;
   if (value["completedAt"] !== undefined && !isString(value["completedAt"])) return null;
   const researchMode = value["researchMode"] ?? researchModeForAssignment(assignment);
-  const normalizedAssignment = normalizeAssignmentResearchMode({ ...assignment, researchMode });
+  const researchCondition = value["researchCondition"] ?? researchConditionForAssignment(assignment);
+  const normalizedAssignment = normalizeAssignmentResearchMode({ ...assignment, researchCondition, researchMode });
+  const normalizedResearchCondition = researchConditionForAssignment(normalizedAssignment);
   const artifacts = parseArtifacts(value["artifacts"]);
   const measures = parseMeasures(value["measures"]);
   const modules = parseModules(value["modules"], normalizedAssignment);
@@ -67,6 +70,7 @@ export const parseResearchSessionFields = (
     createdAt: value["createdAt"] ?? fallbackCreatedAt,
     measures,
     modules,
+    researchCondition: normalizedResearchCondition,
     researchMode,
     status,
     updatedAt: value["updatedAt"] ?? completedAt ?? fallbackCreatedAt

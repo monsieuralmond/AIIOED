@@ -7,7 +7,7 @@ type RoleEntryMode = "entry" | "teacher";
 type RoleEntryProps = {
   readonly mode: RoleEntryMode;
   readonly onTeacher: (loginId: string, password: string) => boolean;
-  readonly onStudentCode: (code: string) => boolean;
+  readonly onStudentCode: (code: string) => boolean | Promise<boolean>;
   readonly onStudentCredentials: (loginId: string, password: string) => boolean;
 };
 
@@ -20,10 +20,16 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
   const [studentError, setStudentError] = useState("");
   const [studentCredentialError, setStudentCredentialError] = useState("");
   const [teacherError, setTeacherError] = useState("");
+  const [studentPending, setStudentPending] = useState(false);
 
-  const submitStudentCode = (): void => {
+  const submitStudentCode = async (): Promise<void> => {
     setStudentError("");
-    if (!props.onStudentCode(participantCode)) setStudentError("참여자 코드를 확인하세요");
+    setStudentPending(true);
+    try {
+      if (!(await props.onStudentCode(participantCode))) setStudentError("참여자 코드를 확인하세요");
+    } finally {
+      setStudentPending(false);
+    }
   };
 
   const submitStudentCredentials = (): void => {
@@ -50,7 +56,7 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
               <TextInput autoComplete="off" value={participantCode} onChange={(event) => setParticipantCode(event.currentTarget.value)} />
             </Field>
             {studentError.length > 0 ? <p className="error-text">{studentError}</p> : null}
-            <Button variant="primary" onClick={submitStudentCode}>학생으로 시작</Button>
+            <Button disabled={studentPending} variant="primary" onClick={() => { void submitStudentCode(); }}>학생으로 시작</Button>
             <div className="login-divider">또는</div>
             <div className="account-field-grid login-credential-grid">
               <Field label="학생 아이디">

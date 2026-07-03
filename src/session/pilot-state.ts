@@ -1,5 +1,6 @@
 import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher, sampleTeachers } from "../shared/fixtures";
 import type { Assignment, ClassGroup, PilotSession, PilotState, SelectedActor, StudentAccount, StudentWorkStatus, TeacherAccount } from "../shared/types";
+import { normalizeAssignmentResearchMode } from "./research-session";
 import { createSession } from "./session";
 
 const APP_VERSION = "0.1.0";
@@ -48,7 +49,6 @@ export const createInitialPilotState = (): PilotState => ({
   sessions: [],
   selectedActor: null,
   activeAssignmentId: sampleAssignment.id,
-  activeSessionId: null,
   metadata: {
     appVersion: APP_VERSION,
     createdAt: nowIso()
@@ -164,15 +164,16 @@ export const selectActor = (state: PilotState, actor: SelectedActor | null): Pil
 });
 
 export const saveAssignmentInState = (state: PilotState, assignment: Assignment): PilotState => {
-  const existingIndex = state.assignments.findIndex((item) => item.id === assignment.id);
+  const normalizedAssignment = normalizeAssignmentResearchMode(assignment);
+  const existingIndex = state.assignments.findIndex((item) => item.id === normalizedAssignment.id);
   const assignments =
     existingIndex === -1
-      ? [...state.assignments, assignment]
-      : state.assignments.map((item) => (item.id === assignment.id ? assignment : item));
+      ? [...state.assignments, normalizedAssignment]
+      : state.assignments.map((item) => (item.id === normalizedAssignment.id ? normalizedAssignment : item));
   return {
     ...state,
     assignments,
-    activeAssignmentId: assignment.id
+    activeAssignmentId: normalizedAssignment.id
   };
 };
 
@@ -185,7 +186,6 @@ export const startStudentSession = (state: PilotState, studentId: string, assign
     state: {
       ...state,
       activeAssignmentId: assignmentId,
-      activeSessionId: session.sessionId,
       sessions: [...state.sessions, session]
     }
   };
@@ -197,7 +197,6 @@ export const updatePilotSession = (state: PilotState, session: PilotSession): Pi
   return {
     ...state,
     activeAssignmentId: session.assignment.id,
-    activeSessionId: session.sessionId,
     sessions: state.sessions.map((item) => (item.sessionId === session.sessionId ? session : item))
   };
 };
@@ -206,8 +205,11 @@ export const sessionForStudent = (state: PilotState, studentId: string, assignme
   [...state.sessions].reverse().find((session) => session.assignment.id === assignmentId && session.student.accountId === studentId) ?? null;
 
 export const activeSession = (state: PilotState): PilotSession | null => {
-  if (state.activeSessionId === null) return null;
-  return state.sessions.find((session) => session.sessionId === state.activeSessionId) ?? null;
+  const selected = state.selectedActor;
+  if (selected?.role === "student") {
+    return [...state.sessions].reverse().find((session) => session.assignment.id === state.activeAssignmentId && (session.student.accountId === selected.accountId || session.student.anonymousId === selected.accountId)) ?? null;
+  }
+  return [...state.sessions].reverse().find((session) => session.assignment.id === state.activeAssignmentId) ?? null;
 };
 
 export const sessionStatus = (state: PilotState, studentId: string, assignmentId: string): StudentWorkStatus => {

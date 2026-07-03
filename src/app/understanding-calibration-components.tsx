@@ -5,6 +5,12 @@ import { Button, Surface } from "./ui";
 import { calibrationStageLabels, calibrationStageOrder } from "./understanding-calibration-data";
 import type { LikertItem } from "./understanding-calibration-data";
 
+const likertValues = [1, 2, 3, 4, 5] as const;
+const likertScaleLabels = {
+  high: "매우 그렇다",
+  low: "전혀 아니다"
+} as const;
+
 type StageFrameProps = {
   readonly children: ReactNode;
   readonly disabled?: boolean;
@@ -51,25 +57,31 @@ type LikertGroupProps = {
 };
 
 export function LikertGroup(props: LikertGroupProps): ReactElement {
-  const values = [1, 2, 3, 4, 5];
   return (
     <div className="likert-list">
       {props.items.map((item) => (
         <fieldset className="likert-row" key={item.id}>
           <legend>{item.label}</legend>
           {item.helper === undefined ? null : <p>{item.helper}</p>}
-          <div className="likert-options" role="radiogroup" aria-label={item.label}>
-            {values.map((value) => (
-              <button
-                aria-pressed={props.ratings[item.id] === value}
-                className={props.ratings[item.id] === value ? "selected" : ""}
-                key={value}
-                type="button"
-                onClick={() => props.onChange(item.id, value)}
-              >
-                {value}
-              </button>
-            ))}
+          <div className="likert-scale">
+            <div className="likert-scale-labels" aria-hidden="true">
+              <span>{likertScaleLabels.low}</span>
+              <span>{likertScaleLabels.high}</span>
+            </div>
+            <div className="likert-options" role="radiogroup" aria-label={item.label}>
+              {likertValues.map((value) => (
+                <button
+                  aria-label={`${item.label} ${value}점`}
+                  aria-pressed={props.ratings[item.id] === value}
+                  className={props.ratings[item.id] === value ? "selected" : ""}
+                  key={value}
+                  type="button"
+                  onClick={() => props.onChange(item.id, value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
           </div>
         </fieldset>
       ))}

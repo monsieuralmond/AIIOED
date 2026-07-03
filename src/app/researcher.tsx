@@ -2,10 +2,8 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { ResearchModes } from "../shared/research";
 import type { Assignment, ClassGroup, PilotState } from "../shared/types";
-import { defaultRequirements } from "./assignment-requirements";
+import { AssignmentAssignDialog, AssignmentPreview } from "./assignment-dialogs";
 import { Button, Field, TextInput } from "./ui";
-
-const defaultCategoryFilters = ["주장 글쓰기", "근거 비교", "반론 탐색"] as const;
 
 type ResearcherListProps = {
   readonly assignment: Assignment;
@@ -15,7 +13,6 @@ type ResearcherListProps = {
   readonly onEditAssignment: (assignmentId: string) => void;
   readonly onReview: () => void;
   readonly onAssign: (assignment: Assignment) => void;
-  readonly onSelectAssignment: (assignmentId: string) => void;
   readonly onStudent: () => void;
   readonly onExport: () => void;
 };
@@ -62,17 +59,18 @@ const assignmentMatchesSearch = (assignment: Assignment, classGroup: ClassGroup 
 
 export function ResearcherList(props: ResearcherListProps): ReactElement {
   const [previewAssignmentId, setPreviewAssignmentId] = useState<string | null>(null);
+  const [assignAssignmentId, setAssignAssignmentId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<readonly string[]>([]);
   const [selectedGradeLevel, setSelectedGradeLevel] = useState("all");
   const previewAssignment = props.state.assignments.find((item) => item.id === previewAssignmentId) ?? null;
-  const assignments = [
-    props.assignment,
-    ...props.state.assignments.filter((assignment) => assignment.id !== props.assignment.id)
-  ];
-  const categoryFilters = uniqueStrings([...defaultCategoryFilters, ...assignments.map(assignmentCategory)]);
+  const assignAssignment = props.state.assignments.find((item) => item.id === assignAssignmentId) ?? null;
+  const assignments = [props.assignment, ...props.state.assignments.filter((assignment) => assignment.id !== props.assignment.id)];
+  const categoryFilters = uniqueStrings(assignments.map(assignmentCategory));
   const gradeFilters = uniqueStrings(assignments.map((assignment) => assignment.gradeLevel));
   const normalizedSearch = normalizeFilterText(searchQuery);
+  const activeFilterCount = (normalizedSearch.length > 0 ? 1 : 0) + selectedCategories.length + (selectedGradeLevel === "all" ? 0 : 1);
   const filteredAssignments = assignments.filter((assignment) => {
     const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
     const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(assignmentCategory(assignment));
@@ -84,13 +82,16 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
       current.includes(category) ? current.filter((item) => item !== category) : [...current, category]
     ));
   };
-  const openPreview = (assignment: Assignment): void => {
-    props.onSelectAssignment(assignment.id);
-    setPreviewAssignmentId(assignment.id);
+  const openPreview = (assignment: Assignment): void => setPreviewAssignmentId(assignment.id);
+  const openAssign = (assignment: Assignment): void => setAssignAssignmentId(assignment.id);
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setSelectedCategories([]);
+    setSelectedGradeLevel("all");
   };
-  const assignPreview = (assignment: Assignment): void => {
+  const saveAssignment = (assignment: Assignment): void => {
     props.onAssign(assignment);
-    setPreviewAssignmentId(null);
+    setAssignAssignmentId(null);
   };
   return (
     <main className="researcher-layout">
@@ -104,34 +105,48 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
       </aside>
       <section className="researcher-main">
         <section className="prompt-explorer" aria-label="과제 목록">
-          <div className="prompt-tabs" role="tablist" aria-label="과제 범주">
-            <button aria-selected="true" role="tab" type="button">현재 과제</button>
-            <button aria-selected="false" role="tab" type="button">사회 · 과학</button>
-            <button aria-selected="false" role="tab" type="button">내 보관함</button>
-            <Button className="prompt-create" aria-label="새 과제 만들기" variant="ghost" onClick={props.onCreate}>+ 직접 만들기</Button>
+          <div className="prompt-toolbar">
+            <div className="prompt-toolbar-text">
+              <h1>과제 둘러보기</h1>
+              <p>학생에게 배정할 과제를 고르거나 직접 만듭니다.</p>
+            </div>
+            <div className="prompt-toolbar-actions">
+              <Button aria-expanded={showFilters} aria-controls="assignment-filter-panel" variant="secondary" onClick={() => setShowFilters((current) => !current)}>
+                검색 조건{activeFilterCount === 0 ? "" : ` ${activeFilterCount}`}
+              </Button>
+              <Button aria-label="새 과제 만들기" variant="ghost" onClick={props.onCreate}>+ 직접 만들기</Button>
+            </div>
           </div>
           <div className="prompt-workbench">
-            <aside className="prompt-filter" aria-label="과제 필터">
-              <Field label="검색"><TextInput placeholder="예: 환경, 미디어" value={searchQuery} onChange={(event) => setSearchQuery(event.currentTarget.value)} /></Field>
-              <div className="filter-group" aria-label="범주">
-                <strong>범주</strong>
-                {categoryFilters.map((category) => (
-                  <label key={category}>
-                    <input checked={selectedCategories.includes(category)} type="checkbox" onChange={() => toggleCategory(category)} />
-                    {category}
-                  </label>
-                ))}
-              </div>
-              <div className="filter-group" aria-label="학년 필터">
-                <div className="ui-field">
-                  <label htmlFor="assignment-grade-filter">학년</label>
-                  <select className="ui-control" id="assignment-grade-filter" value={selectedGradeLevel} onChange={(event) => setSelectedGradeLevel(event.currentTarget.value)}>
-                    <option value="all">전체 학년</option>
-                    {gradeFilters.map((gradeLevel) => <option key={gradeLevel} value={gradeLevel}>{gradeLevel}</option>)}
-                  </select>
+            {showFilters ? (
+              <section className="prompt-filter-panel" id="assignment-filter-panel" aria-label="검색 조건">
+                <div className="prompt-filter-grid">
+                  <Field label="검색"><TextInput placeholder="예: 환경, 미디어" value={searchQuery} onChange={(event) => setSearchQuery(event.currentTarget.value)} /></Field>
+                  <div className="filter-group" aria-label="범주">
+                    <strong>범주</strong>
+                    {categoryFilters.map((category) => (
+                      <label key={category}>
+                        <input checked={selectedCategories.includes(category)} type="checkbox" onChange={() => toggleCategory(category)} />
+                        {category}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="filter-group" aria-label="학년 필터">
+                    <div className="ui-field">
+                      <label htmlFor="assignment-grade-filter">학년</label>
+                      <select className="ui-control" id="assignment-grade-filter" value={selectedGradeLevel} onChange={(event) => setSelectedGradeLevel(event.currentTarget.value)}>
+                        <option value="all">전체 학년</option>
+                        {gradeFilters.map((gradeLevel) => <option key={gradeLevel} value={gradeLevel}>{gradeLevel}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </aside>
+                <div className="prompt-filter-actions">
+                  <span>{filteredAssignments.length}개 과제 표시</span>
+                  <Button disabled={activeFilterCount === 0} variant="ghost" onClick={clearFilters}>초기화</Button>
+                </div>
+              </section>
+            ) : null}
             <div className="prompt-list" aria-label="활성 과제">
               {filteredAssignments.length === 0 ? <p className="prompt-empty-state">조건에 맞는 과제가 없습니다.</p> : null}
               {filteredAssignments.map((assignment) => {
@@ -141,7 +156,10 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                 return (
                   <article aria-label={`${assignment.title} 과제`} className={isActive ? "prompt-row active" : "prompt-row"} key={assignment.id}>
                     <div>
-                      <h2>{assignment.title}</h2>
+                      <div className="prompt-row-title">
+                        <h2>{assignment.title}</h2>
+                        {isActive ? <span className="assignment-active-badge">학생 화면에 표시 중</span> : null}
+                      </div>
                       <p>{assignment.question}</p>
                       <dl className="assignment-row-progress" aria-label="문제별 진행 요약">
                         <div><dt>배정 학생</dt><dd>{progress.assignedStudentCount}명</dd></div>
@@ -157,9 +175,9 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                       </div>
                     </div>
                     <div className="prompt-row-actions">
-                      <span className="heart-button" aria-hidden="true">♡</span>
                       <Button variant="ghost" onClick={() => props.onEditAssignment(assignment.id)}>수정</Button>
-                      <Button onClick={() => openPreview(assignment)}>{isActive ? "미리보기 및 배정" : "선택 및 미리보기"}</Button>
+                      <Button variant="secondary" onClick={() => openPreview(assignment)}>미리보기</Button>
+                      <Button variant="primary" onClick={() => openAssign(assignment)}>배정</Button>
                     </div>
                   </article>
                 );
@@ -172,66 +190,18 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
       {previewAssignment === null ? null : (
         <AssignmentPreview
           assignment={previewAssignment}
-          classGroups={props.state.classGroups}
-          onAssign={assignPreview}
           onClose={() => setPreviewAssignmentId(null)}
         />
       )}
-    </main>
-  );
-}
-
-function AssignmentPreview(props: { readonly assignment: Assignment; readonly classGroups: readonly ClassGroup[]; readonly onAssign: (assignment: Assignment) => void; readonly onClose: () => void }): ReactElement {
-  const [classGroupId, setClassGroupId] = useState(props.assignment.classGroupId ?? props.classGroups[0]?.id ?? "");
-  const selectedClassGroup = props.classGroups.find((classGroup) => classGroup.id === classGroupId);
-  const isCalibrationAssignment = props.assignment.researchMode === ResearchModes.understandingCalibration;
-  const chatLimitLabel =
-    props.assignment.calibrationConfig?.maxChatMinutes === undefined ? "제한 없음" : `${props.assignment.calibrationConfig.maxChatMinutes}분`;
-  const saveAssignment = (): void => {
-    props.onAssign({ ...props.assignment, classGroupId });
-  };
-
-  return (
-    <div aria-label="과제 미리보기" className="preview-dialog" role="dialog">
-      <button aria-label="닫기" className="preview-close" type="button" onClick={props.onClose}>x</button>
-      <h1>{props.assignment.title}</h1>
-      <div className="tag-row"><span>비문학</span><span>{isCalibrationAssignment ? "이해 보정 연구" : "글쓰기 코치"}</span><span>{props.assignment.gradeLevel}</span><span>{props.assignment.targetLength}</span><span>{props.assignment.essayType ?? "주장 글쓰기"}</span></div>
-      <p>{props.assignment.question}</p>
-      {isCalibrationAssignment ? (
-        <section className="preview-requirements" aria-label="이해 보정 연구 설정">
-          <h2>연구 활동 설정</h2>
-          <dl className="preview-config-list">
-            <div><dt>주제</dt><dd>{props.assignment.calibrationConfig?.topic ?? props.assignment.title}</dd></div>
-            <div><dt>오류 판단 문장</dt><dd>{props.assignment.calibrationConfig?.errorStatement ?? "설정되지 않음"}</dd></div>
-            <div><dt>채팅 권장 시간</dt><dd>{chatLimitLabel}</dd></div>
-          </dl>
-          <h2>적용 선택지</h2>
-          <ul>
-            {props.assignment.calibrationConfig?.transferChoices?.map((choice) => <li key={choice.id}>{choice.label}. {choice.text}</li>)}
-          </ul>
-        </section>
-      ) : (
-        <section className="preview-requirements" aria-label="학생에게 보일 요구사항">
-          <h2>학생에게 보일 요구사항</h2>
-          <ul>
-            {defaultRequirements(props.assignment).map((requirement) => <li key={requirement}>{requirement}</li>)}
-          </ul>
-        </section>
+      {assignAssignment === null ? null : <button aria-label="배정 닫기" className="preview-backdrop" type="button" onClick={() => setAssignAssignmentId(null)} />}
+      {assignAssignment === null ? null : (
+        <AssignmentAssignDialog
+          assignment={assignAssignment}
+          classGroups={props.state.classGroups}
+          onAssign={saveAssignment}
+          onClose={() => setAssignAssignmentId(null)}
+        />
       )}
-      <h2>지문</h2>
-      <p>{props.assignment.passage}</p>
-      <section className="preview-requirements" aria-label="배정 대상">
-        <Field label="배정할 반">
-          <select className="ui-control" value={classGroupId} onChange={(event) => setClassGroupId(event.currentTarget.value)}>
-            {props.classGroups.map((classGroup) => <option key={classGroup.id} value={classGroup.id}>{classGroup.name}</option>)}
-          </select>
-        </Field>
-        <p>{selectedClassGroup === undefined ? "계정 관리에서 반을 먼저 만들어야 배정할 수 있습니다." : `${selectedClassGroup.name} 학생 ${selectedClassGroup.studentIds.length}명에게 보입니다.`}</p>
-      </section>
-      <div className="preview-actions">
-        <Button onClick={props.onClose}>닫기</Button>
-        <Button disabled={selectedClassGroup === undefined} variant="primary" onClick={saveAssignment}>선택한 반에 배정</Button>
-      </div>
-    </div>
+    </main>
   );
 }

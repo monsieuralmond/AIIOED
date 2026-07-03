@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { ResearchModes } from "../shared/research";
-import type { ResearchMode, UnderstandingTransferChoice } from "../shared/research";
+import type { ResearchMode } from "../shared/research";
 import type { Assignment, PilotState } from "../shared/types";
 import { parseRequirements, requirementText } from "./assignment-requirements";
+import { CalibrationAssignmentConfig, calibrationDraftFromAssignment, resolveCalibrationDraft } from "./calibration-assignment-config";
 import { Button, Field, Surface, TextArea, TextInput } from "./ui";
 
 type CreateAssignmentProps = {
@@ -16,24 +17,11 @@ type CreateAssignmentProps = {
 
 const newAssignmentId = (): string => `assignment-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
 const essayTypeOptions = ["주장 글쓰기", "근거 비교", "반론 탐색", "설명 글쓰기", "비교 글쓰기", "문학 분석"] as const;
-const defaultErrorStatement = "양자컴퓨터는 모든 문제를 일반 컴퓨터보다 빠르게 해결한다.";
-const defaultTransferChoices: readonly UnderstandingTransferChoice[] = [
-  { id: "A", label: "A", text: "오늘의 급식 메뉴 정하기" },
-  { id: "B", label: "B", text: "매우 큰 수를 이용한 암호 해독" },
-  { id: "C", label: "C", text: "친구 생일 기억하기" },
-  { id: "D", label: "D", text: "그림판으로 그림 그리기" }
-];
 
 const researchModeFromValue = (value: string): ResearchMode =>
   value === ResearchModes.understandingCalibration ? ResearchModes.understandingCalibration : ResearchModes.writingCoach;
 
 const defaultCalibrationQuestion = (topic: string): string => `${topic}에 대해 읽고 AI와 질문한 뒤, 내 말로 설명하고 적용해 봅니다.`;
-
-const normalizeTransferChoices = (choices: readonly UnderstandingTransferChoice[] | undefined): readonly UnderstandingTransferChoice[] =>
-  defaultTransferChoices.map((defaultChoice, index) => {
-    const savedChoice = choices?.[index];
-    return savedChoice === undefined ? defaultChoice : { ...defaultChoice, text: savedChoice.text };
-  });
 
 export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
   const [assignmentId] = useState(() => (props.mode === "edit" ? props.assignment.id : newAssignmentId()));
@@ -56,28 +44,23 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
   const [dueDate, setDueDate] = useState(props.assignment.dueDate ?? "");
   const [dueTime, setDueTime] = useState(props.assignment.dueTime ?? "");
   const [calibrationTopic, setCalibrationTopic] = useState(props.mode === "edit" ? initialCalibrationConfig?.topic ?? props.assignment.title : "");
-  const [aiContext, setAiContext] = useState(initialCalibrationConfig?.aiContext ?? "");
-  const [maxChatMinutes, setMaxChatMinutes] = useState(initialCalibrationConfig?.maxChatMinutes?.toString() ?? "10");
-  const [errorStatement, setErrorStatement] = useState(initialCalibrationConfig?.errorStatement ?? defaultErrorStatement);
-  const [transferChoices, setTransferChoices] = useState<readonly UnderstandingTransferChoice[]>(() => normalizeTransferChoices(initialCalibrationConfig?.transferChoices));
+  const [calibrationDraft, setCalibrationDraft] = useState(() => calibrationDraftFromAssignment(props.assignment));
   const [error, setError] = useState("");
   const isCalibrationMode = researchMode === ResearchModes.understandingCalibration;
-
-  const updateTransferChoice = (choiceId: string, text: string): void => {
-    setTransferChoices((current) => current.map((choice) => (choice.id === choiceId ? { ...choice, text } : choice)));
-  };
 
   const save = (): void => {
     if (title.trim().length === 0) { setError("과제 제목을 입력하세요"); return; }
     if (passage.trim().length === 0) { setError("비문학 지문을 입력하세요"); return; }
     const parsedRequirements = parseRequirements(requirements);
     const trimmedTopic = calibrationTopic.trim();
-    const parsedMaxChatMinutes = maxChatMinutes.trim().length === 0 ? undefined : Number(maxChatMinutes);
-    const cleanedTransferChoices = transferChoices.map((choice) => ({ ...choice, text: choice.text.trim() }));
+    const resolvedCalibrationDraft = resolveCalibrationDraft(calibrationDraft);
+    const parsedMaxChatMinutes = resolvedCalibrationDraft.maxChatMinutes.length === 0 ? undefined : Number(resolvedCalibrationDraft.maxChatMinutes);
     if (isCalibrationMode && trimmedTopic.length === 0) { setError("연구 주제명을 입력하세요"); return; }
     if (isCalibrationMode && parsedMaxChatMinutes !== undefined && (!Number.isFinite(parsedMaxChatMinutes) || parsedMaxChatMinutes <= 0)) { setError("최대 채팅 권장 시간은 1 이상의 숫자로 입력하세요"); return; }
-    if (isCalibrationMode && errorStatement.trim().length === 0) { setError("오류 판단 문장을 입력하세요"); return; }
-    if (isCalibrationMode && cleanedTransferChoices.some((choice) => choice.text.length === 0)) { setError("적용 과제 선택지를 모두 입력하세요"); return; }
+    if (isCalibrationMode && resolvedCalibrationDraft.errorStatement.length === 0) { setError("오류 판단 문장을 입력하세요"); return; }
+    if (isCalibrationMode && [...resolvedCalibrationDraft.preSurveyItems, ...resolvedCalibrationDraft.predictionSurveyItems, ...resolvedCalibrationDraft.reflectionSurveyItems].some((item) => item.label.length === 0)) { setError("설문 문항을 모두 입력하세요"); return; }
+    if (isCalibrationMode && resolvedCalibrationDraft.independentProblems.length === 0) { setError("실제 수행 문항을 하나 이상 남겨 두세요"); return; }
+    if (isCalibrationMode && resolvedCalibrationDraft.independentProblems.some((problem) => problem.title.length === 0 || problem.prompt.length === 0)) { setError("실제 수행 문항의 제목과 지시문을 모두 입력하세요"); return; }
     if (!isCalibrationMode && question.trim().length === 0) { setError("해결할 문제를 입력하세요"); return; }
     if (!isCalibrationMode && parsedRequirements.length === 0) { setError("학생에게 보일 요구사항을 하나 이상 입력하세요"); return; }
     const createdByTeacherId = props.state.selectedActor?.role === "teacher" ? props.state.selectedActor.accountId : props.assignment.createdByTeacherId;
@@ -97,12 +80,15 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
       ...(isCalibrationMode
         ? {
             calibrationConfig: {
-              ...(aiContext.trim().length > 0 ? { aiContext: aiContext.trim() } : {}),
-              errorStatement: errorStatement.trim(),
+              ...(resolvedCalibrationDraft.aiContext.length > 0 ? { aiContext: resolvedCalibrationDraft.aiContext } : {}),
+              errorStatement: resolvedCalibrationDraft.errorStatement,
+              independentProblems: resolvedCalibrationDraft.independentProblems,
               ...(parsedMaxChatMinutes === undefined ? {} : { maxChatMinutes: parsedMaxChatMinutes }),
+              predictionSurveyItems: resolvedCalibrationDraft.predictionSurveyItems,
+              preSurveyItems: resolvedCalibrationDraft.preSurveyItems,
+              reflectionSurveyItems: resolvedCalibrationDraft.reflectionSurveyItems,
               sourceText: passage.trim(),
-              topic: trimmedTopic,
-              transferChoices: cleanedTransferChoices
+              topic: trimmedTopic
             }
           }
         : {}),
@@ -162,9 +148,9 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
           )}
           <Field label="과제 제목"><TextInput placeholder={props.assignment.title} value={title} onChange={(event) => setTitle(event.currentTarget.value)} /></Field>
           {isCalibrationMode ? <Field label="주제명"><TextInput placeholder="예: 양자컴퓨터, 플라스틱 사용, 소셜미디어와 민주주의" value={calibrationTopic} onChange={(event) => setCalibrationTopic(event.currentTarget.value)} /></Field> : null}
-          <div className="assignment-form-grid two">
-            <label className="ui-field"><span>학년 또는 난이도</span><select className="ui-control" value={gradeLevel} onChange={(event) => setGradeLevel(event.currentTarget.value)}><option>초등 고학년</option><option>중학생</option><option>고등학생</option></select></label>
-            {!isCalibrationMode ? <label className="ui-field"><span>글 유형</span><select className="ui-control" value={essayType} onChange={(event) => setEssayType(event.currentTarget.value)}>{essayTypeOptions.map((option) => <option key={option}>{option}</option>)}</select></label> : <Field label="최대 채팅 권장 시간"><TextInput inputMode="numeric" value={maxChatMinutes} onChange={(event) => setMaxChatMinutes(event.currentTarget.value)} /></Field>}
+            <div className="assignment-form-grid two">
+              <label className="ui-field"><span>학년 또는 난이도</span><select className="ui-control" value={gradeLevel} onChange={(event) => setGradeLevel(event.currentTarget.value)}><option>초등 고학년</option><option>중학생</option><option>고등학생</option></select></label>
+            {!isCalibrationMode ? <label className="ui-field"><span>글 유형</span><select className="ui-control" value={essayType} onChange={(event) => setEssayType(event.currentTarget.value)}>{essayTypeOptions.map((option) => <option key={option}>{option}</option>)}</select></label> : <Field label="최대 채팅 권장 시간"><TextInput inputMode="numeric" value={calibrationDraft.maxChatMinutes} onChange={(event) => setCalibrationDraft({ ...calibrationDraft, maxChatMinutes: event.currentTarget.value })} /></Field>}
           </div>
           {!isCalibrationMode ? (
             <div className="assignment-form-grid two">
@@ -180,20 +166,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
               <Field label="근거와 출처 안내"><TextArea rows={3} value={sourceGuidance} onChange={(event) => setSourceGuidance(event.currentTarget.value)} /></Field>
             </>
           ) : (
-            <section className="calibration-config-section" aria-label="이해 보정 연구 설정">
-              <Field label="AI 보조자료 또는 설명 자료"><TextArea placeholder="지문만으로 부족한 배경 설명이 있으면 입력하세요. 없으면 비워 둡니다." rows={4} value={aiContext} onChange={(event) => setAiContext(event.currentTarget.value)} /></Field>
-              <Field label="오류 판단 문장"><TextArea rows={3} value={errorStatement} onChange={(event) => setErrorStatement(event.currentTarget.value)} /></Field>
-              <div className="transfer-choice-list">
-                <h2>적용 과제 선택지</h2>
-                <p>학생이 AI 없이 고를 선택지입니다. 주제에 맞게 네 문장을 수정하세요.</p>
-                {transferChoices.map((choice) => (
-                  <label className="transfer-choice-row" key={choice.id}>
-                    <span>{choice.label}</span>
-                    <TextInput value={choice.text} onChange={(event) => updateTransferChoice(choice.id, event.currentTarget.value)} />
-                  </label>
-                ))}
-              </div>
-            </section>
+            <CalibrationAssignmentConfig value={calibrationDraft} onChange={setCalibrationDraft} />
           )}
           <section className="assignment-schedule" aria-label="반 배정과 기간">
             <label className="ui-field"><span>배정할 반</span><select className="ui-control" value={classGroupId} onChange={(event) => setClassGroupId(event.currentTarget.value)}>{props.state.classGroups.map((classGroup) => <option key={classGroup.id} value={classGroup.id}>{classGroup.name}</option>)}</select></label>

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { exportDataset } from "../export/export";
 import { sampleAssignment } from "../shared/fixtures";
-import { ResearchModes } from "../shared/research";
-import { createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session";
+import { ResearchConditions, ResearchModes } from "../shared/research";
+import { activeSession, createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session";
 
 describe("local pilot state", () => {
   it("keeps student sessions distinct for the same assignment", () => {
@@ -32,7 +32,7 @@ describe("local pilot state", () => {
     expect(secondStarted.session.student.accountId).toBe(student.id);
     expect(firstStarted.session.sessionId).not.toBe(secondStarted.session.sessionId);
     expect(secondStarted.state.sessions).toHaveLength(2);
-    expect(secondStarted.state.activeSessionId).toBe(secondStarted.session.sessionId);
+    expect(activeSession(secondStarted.state)?.sessionId).toBe(secondStarted.session.sessionId);
   });
 
   it("defaults legacy assignments to writing-coach research sessions", () => {
@@ -43,7 +43,9 @@ describe("local pilot state", () => {
     const started = startStudentSession(initial, student.id, sampleAssignment.id);
 
     expect(started.session.researchMode).toBe(ResearchModes.writingCoach);
+    expect(started.session.researchCondition).toBe(ResearchConditions.singleGroupBaseline);
     expect(started.session.assignment.researchMode).toBe(ResearchModes.writingCoach);
+    expect(started.session.assignment.researchCondition).toBe(ResearchConditions.singleGroupBaseline);
     expect(started.session.status).toBe("in_progress");
     expect(started.session.artifacts).toEqual([]);
     expect(started.session.measures).toEqual([]);
@@ -72,6 +74,7 @@ describe("local pilot state", () => {
     const started = startStudentSession(withAssignment, student.id, assignment.id);
 
     expect(started.session.researchMode).toBe(ResearchModes.understandingCalibration);
+    expect(started.session.researchCondition).toBe(ResearchConditions.singleGroupBaseline);
     expect(started.session.currentStage).toBe("pre_survey");
     expect(started.session.status).toBe("in_progress");
     expect(started.session.artifacts).toEqual([]);
@@ -82,6 +85,19 @@ describe("local pilot state", () => {
       transferChoices: [{ id: "A", label: "A", text: "새로운 기사에 적용하기" }],
       version: "1.0"
     });
+  });
+
+  it("keeps reserved research conditions inactive when saving assignments", () => {
+    const initial = createInitialPilotState();
+    const assignment = {
+      ...sampleAssignment,
+      id: "assignment-reserved-condition",
+      researchCondition: ResearchConditions.evidenceCheck
+    };
+
+    const withAssignment = saveAssignmentInState(initial, assignment);
+
+    expect(withAssignment.assignments.find((item) => item.id === assignment.id)?.researchCondition).toBe(ResearchConditions.singleGroupBaseline);
   });
 
   it("reports not-started, in-progress, and submitted student statuses", () => {
@@ -168,7 +184,7 @@ describe("local pilot state", () => {
     expect(deleted.students.find((item) => item.id === student.id)).toBeUndefined();
     expect(deleted.classGroups[0]?.studentIds).not.toContain(student.id);
     expect(deleted.sessions).toHaveLength(0);
-    expect(deleted.activeSessionId).toBeNull();
+    expect(activeSession(deleted)).toBeNull();
   });
 
   it("deletes a class with its students and unassigns the class assignment", () => {

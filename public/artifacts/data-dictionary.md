@@ -20,13 +20,17 @@ This dictionary explains the exported JSON dataset and labeling CSV without requ
 | Teacher | `teacher.id`, `teacher.displayName`, `teacher.loginId`, `teachers[]` | Account setup | Teacher text for display name | Identifies the teacher account without exporting password. |
 | Class group | `classGroups[].id`, `name`, `teacherId`, `studentIds` | Account setup | Teacher text for class name | Links students to a class for roster analysis. |
 | Student | `students[].id`, `displayName`, `classGroupId`, `studentNumber`, `loginId`, `participantCode` | Account setup | Student name may identify a participant | Links session rows to participant code, login id, and class number. Student passwords are used for local login but are not included in exported datasets. |
-| Assignment | `assignments[].id`, `title`, `passage`, `question`, `gradeLevel`, `targetLength`, `researchMode`, `calibrationConfig`, `assignmentMode`, `essayType`, `minimumWordCount`, `requirements`, `sourceGuidance`, `classGroupId`, `createdByTeacherId`, `startDate`, `startTime`, `dueDate`, `dueTime` | Teacher assignment form or fixture | System or teacher text; `passage`, `question`, `requirements`, `sourceGuidance`, and `calibrationConfig` are task text | Defines the nonfiction task that bounds student and assistant turns and preserves how the teacher configured the assignment. `researchMode` distinguishes writing coach sessions from understanding calibration sessions. |
-| Session identity | `sessions[].sessionId`, `researchMode`, `status`, `student.anonymousId`, `student.accountId`, `student.displayName`, `currentStage` | Session creation | Student display name may identify a participant | Groups events, chat turns, outline, draft, paste, final, review, artifacts, measures, and module records for one student attempt. |
+| Assignment | `assignments[].id`, `title`, `passage`, `question`, `gradeLevel`, `targetLength`, `researchMode`, `researchCondition`, `calibrationConfig`, `assignmentMode`, `essayType`, `minimumWordCount`, `requirements`, `sourceGuidance`, `classGroupId`, `createdByTeacherId`, `startDate`, `startTime`, `dueDate`, `dueTime` | Teacher assignment form or fixture | System or teacher text; `passage`, `question`, `requirements`, `sourceGuidance`, and `calibrationConfig` are task text | Defines the nonfiction task that bounds student and assistant turns and preserves how the teacher configured the assignment. `researchMode` distinguishes writing coach sessions from understanding calibration sessions. `researchCondition` records the experimental condition; the current active condition is `single_group_baseline`. |
+| Understanding calibration assignment config | `assignments[].calibrationConfig.topic`, `sourceText`, `aiContext`, `maxChatMinutes`, `errorStatement`, `preSurveyItems`, `predictionSurveyItems`, `independentProblems`, `reflectionSurveyItems`, `transferChoices` | Teacher assignment form | Teacher text and system ids | Preserves the exact survey wording, independent performance prompts, and transfer choices used for that assignment. Use these fields to interpret raw student answers when teachers customize a research-mode assignment. |
+| Session identity | `sessions[].sessionId`, `researchMode`, `researchCondition`, `status`, `student.anonymousId`, `student.accountId`, `student.displayName`, `currentStage` | Session creation | Student display name may identify a participant | Groups events, chat turns, outline, draft, paste, final, review, artifacts, measures, and module records for one student attempt. |
 | Event log | `sessions[].events[].id`, `type`, `timestamp`, `stage`, `payload` | App instrumentation | Mixed; `payload.text`, `payload.outline`, `payload.claim`, and `payload.evidence` may contain student or assistant text | Primary source for row-level process labeling. |
 | Chat turn | `sessions[].chatTurns[].id`, `role`, `text`, `timestamp`, `responseType` | Student chat and coach response | Student text or assistant text | Used to label critical thinking, cognitive offloading, and sycophancy in dialogue. |
 | Research artifacts | `sessions[].artifacts[].id`, `kind`, `stage`, `createdAt`, `updatedAt`, `payload` | Research module steps | Student text for free responses and independent tasks | Stores module-specific written products such as pre-free responses, independent explanations, error-judgment reasons, transfer reasons, and chat-review reflections. |
 | Research measures | `sessions[].measures[].id`, `kind`, `stage`, `collectedAt`, `payload` | Research module steps | Mostly system text and numeric responses | Stores self-report ratings, choices, and manual-evaluation placeholders. |
 | Research modules | `sessions[].modules.understandingCalibration` | Research module initialization and step completion | System, teacher task text, and id references | Stores module configuration and stage record pointers. Raw text remains in `events`, `artifacts`, and `measures`. |
+| Analysis artifacts | `sessions[].analysisArtifacts.problem1` through `problem4` | Export process | Student text in `answer` | Provides stable keyed item answers next to the raw artifact array. This is a convenience view; raw artifacts remain the audit source. |
+| Derived features | `sessions[].derivedFeatures` | Export process | System text | Adds analysis-ready summaries such as prompt/rubric version, completion flags, problem durations, pre/prediction/confidence means, chat metrics, request tag counts, and empty gap fields when manual scores are not present. These values do not replace raw data. |
+| Manual evaluation | `sessions[].manualEvaluation` | Export process / future human coding | Rater text when filled later | Provides a stable placeholder for human rubric scores, criterion scores, mastery flags, rater ids, adjudicated scores, and scoring timestamps. The current platform initializes scores as `null`; it does not automatically score independent performance. |
 | Outline | `sessions[].outlineSnapshots[].claim`, `evidence`, `reasoning`, `counterargument`, `question` | Student outline fields | Student text | Shows claim revision, evidence use, reasoning, and counterargument development. `question` is currently used as the source note field in the pilot UI. |
 | Draft | `sessions[].draftSnapshots[].id`, `timestamp`, `text` | Student writing area | Student text | Shows composition progress and possible unreviewed acceptance after AI turns. |
 | Paste | `sessions[].pasteEvents[].id`, `timestamp`, `stage`, `target`, `textLength`, `lineCount`, `textPreviewFirst80`, `fromClipboard` | Clipboard event in writing/review surface | Student or copied external text preview | Identifies possible copy/paste behavior. Important for cognitive offloading review. |
@@ -40,6 +44,8 @@ This dictionary explains the exported JSON dataset and labeling CSV without requ
 | `sessionId` | string | `sessions[].sessionId` | System text | Session being labeled. |
 | `studentAnonymousId` | string | `sessions[].student.anonymousId` | System text | Participant-level identifier. |
 | `assignmentId` | string | `sessions[].assignment.id` | System text | Assigned task identifier. |
+| `researchMode` | string | `sessions[].researchMode` | System text | Research module or writing flow. |
+| `researchCondition` | string | `sessions[].researchCondition` | System text | Experimental condition or baseline marker. |
 | `turnOrEventId` | string | `events[].id` | System text | Specific event row. |
 | `timestamp` | ISO string | `events[].timestamp` | System text | Time of the event. |
 | `stage` | `reading`, `thinking`, `writing`, `review` | `events[].stage` | System text | Student workflow stage. |
@@ -60,6 +66,7 @@ File: `research-events.csv`
 | `studentAnonymousId` | string | `sessions[].student.anonymousId` | System text | Participant-level identifier. |
 | `assignmentId` | string | `sessions[].assignment.id` | System text | Assignment identifier. |
 | `researchMode` | string | `sessions[].researchMode` | System text | Research module or writing flow. |
+| `researchCondition` | string | `sessions[].researchCondition` | System text | Experimental condition or baseline marker. |
 | `eventId` | string | `events[].id` | System text | Raw event identifier. |
 | `eventType` | string | `events[].type` | System text | Raw event type. |
 | `timestamp` | ISO string | `events[].timestamp` | System text | Event time. |
@@ -82,12 +89,131 @@ File: `research-artifacts-measures.csv`
 | `studentAnonymousId` | string | `sessions[].student.anonymousId` | System text | Participant-level identifier. |
 | `assignmentId` | string | `sessions[].assignment.id` | System text | Assignment identifier. |
 | `researchMode` | string | `sessions[].researchMode` | System text | Research module or writing flow. |
+| `researchCondition` | string | `sessions[].researchCondition` | System text | Experimental condition or baseline marker. |
 | `recordGroup` | `artifact` or `measure` | Export process | System text | Whether this row came from `artifacts` or `measures`. |
 | `recordId` | string | `id` | System text | Artifact or measure identifier. |
 | `recordKind` | string | `kind` | System text | Artifact or measure kind. |
 | `timestamp` | ISO string | `createdAt` or `collectedAt` | System text | Record creation time. |
 | `stage` | string | `stage` | System text | Stage where the record was collected. |
 | `payloadJson` | JSON string | `payload` | Mixed | Full raw artifact or measure payload. |
+
+## Understanding Calibration Sessions CSV Columns
+
+File: `calibration-session-wide.csv`
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId` | string | `sessions[].sessionId` | System text | Join key for all calibration tables. |
+| `participantId` | string | `sessions[].student.anonymousId` | System text | Participant identifier. |
+| `assignmentId` | string | `sessions[].assignment.id` | System text | Assignment identifier. |
+| `researchMode` | string | `sessions[].researchMode` | System text | Research module. |
+| `researchCondition` | string | `sessions[].researchCondition` | System text | Experimental condition. |
+| `status` | string | `sessions[].status` | System text | Session completion status. |
+| `currentStage` | string | `sessions[].currentStage` | System text | Last known stage. |
+| `createdAt`, `updatedAt`, `completedAt` | ISO string or blank | session timestamps | System text | Session time markers. |
+| `assignmentVersion` | string | assignment id | System text | Current assignment version marker for this prototype. |
+| `promptSetVersion` | string | fixed protocol | System text | Version of prompt set wording. |
+| `promptVersion` | string | `derivedFeatures.promptVersion` | System text | Version of survey/problem wording. |
+| `rubricVersion` | string | `derivedFeatures.rubricVersion` | System text | Version of manual coding rubric. |
+| `isCompleteForAnalysis` | boolean | derived | System text | True only when the session is submitted, completed, has all four answers, has all four confidence ratings, and has an assistant chat response. |
+| `hasAllFourAnswers`, `hasAllFourConfidence`, `hasChat`, `hasManualScores` | boolean | derived | System text | Quality flags used before psychometric analysis. |
+| `preSelfMean` | number or blank | `pre_self_report` | System text | Mean of baseline self-report items. |
+| `predictionMean` | number or blank | `prediction_self_report` | System text | Mean of performance prediction items. |
+| `confidenceMean` | number or blank | problem confidence measures | System text | Mean of submitted item confidence values. |
+| `performanceTotal` | number or blank | `manualEvaluation.totalScore` | System text | Human-coded total when available; blank by default. |
+| `calibrationGapOverall` | number or blank | derived | System text | Prediction minus manual performance when both exist; blank by default. |
+| `absGapOverall` | number or blank | derived | System text | Absolute gap when calculable. |
+| `chatTurnCount` | number | `chatTurns` | System text | Count of stored chat turns. |
+| `totalChatTurns`, `totalChatUserChars`, `totalChatAssistantChars`, `totalChatDurationMs` | number or blank | chat turns/events | System text | Chat volume and duration summaries. |
+| `questionCount`, `containsWhyQuestion`, `exampleRequestCount`, `analogyRequestCount`, `verificationRequestCount`, `offTopicCount` | number or boolean | request tags and student messages | System text | Process features for later analysis; these are not scores. |
+| `userQuestionChars` | number | `chatTurns` | Student text length only | Total characters in student chat turns. |
+| `assistantChars` | number | `chatTurns` | Assistant text length only | Total characters in assistant chat turns. |
+| `requestTagCountsJson` | JSON string | calibration chat events | System text | Counts of request tags such as summary/example requests. |
+| `readingDurationMs` | number or blank | reading event payload | System text | Reading stage duration estimate. |
+| `totalDurationMs` | number or blank | session timestamps | System text | Session duration estimate. |
+| `problem1DurationMs` through `problem4DurationMs` | number or blank | problem artifacts/events | System text | Independent problem response durations. |
+
+## Understanding Calibration Items CSV Columns
+
+File: `calibration-item-long.csv`
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId` | string | session | System text | Join key. |
+| `participantId` | string | session | System text | Participant identifier. |
+| `assignmentId` | string | session | System text | Assignment identifier. |
+| `researchMode` | string | session | System text | Research module. |
+| `researchCondition` | string | session | System text | Experimental condition. |
+| `problemNumber` | 1-4 | fixed protocol | System text | Independent problem number. |
+| `title` | string | fixed protocol | System text | Problem title. |
+| `prompt` | string | fixed protocol | System text | Exact problem prompt. |
+| `promptVersion`, `rubricVersion` | string | artifact/protocol | System text | Version markers for item wording and scoring rubric. |
+| `answer` | string | artifacts | Student text | Student independent answer for the problem. |
+| `answerLength` | number or blank | export process | System text | Character count of answer. |
+| `submittedAt` | ISO string or blank | artifact | System text | Problem answer artifact timestamp. |
+| `problemDurationMs` | number or blank | artifact/event | System text | Problem response duration. |
+| `confidence` | 1-5 or blank | measures | System text | Confidence submitted after the problem. |
+| `itemScore`, `masteryFlag`, `criterionScoresJson`, `raterId`, `secondRaterId`, `adjudicatedScore`, `scoredAt` | number/boolean/string/JSON or blank | manualEvaluation | System or rater text | Manual scoring placeholders. Blank means not scored. |
+| `itemGap` | number or blank | derived/manual | System text | Item-level gap when manual score exists; blank by default. |
+
+## Understanding Calibration Manual Evaluation CSV Columns
+
+File: `calibration-manual-evaluation.csv`
+
+This file has one row per completed session and problem. Scores are blank until a human rater fills them later. The platform does not score or judge independent performance automatically.
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId`, `studentAnonymousId`, `assignmentId`, `researchMode`, `researchCondition` | string | session | System text | Join keys. |
+| `problemNumber` | 1-4 | fixed protocol | System text | Independent problem number. |
+| `rubricVersion` | string | manualEvaluation | System text | Rubric version for the scoring row. |
+| `totalScore`, `masteryFlag`, `criterionScoresJson`, `raterId`, `secondRaterId`, `adjudicatedScore`, `scoredAt`, `notes` | mixed | manualEvaluation | Rater text in `notes` | Human scoring fields. Blank/null means unscored. |
+
+## Understanding Calibration Attrition CSV Columns
+
+File: `attrition-diagnostic.csv`
+
+This file lists incomplete sessions that are excluded from the default psychometric export.
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId`, `studentAnonymousId`, `assignmentId`, `researchMode`, `researchCondition` | string | session | System text | Join keys. |
+| `status`, `currentStage`, `createdAt`, `updatedAt`, `completedAt` | string | session | System text | Where the session stopped. |
+| `hasAllFourAnswers`, `hasAllFourConfidence`, `hasChat` | boolean | derived | System text | Completion diagnostics. |
+| `lastEventType`, `lastEventTimestamp` | string | events | System text | Last recorded process event. |
+
+## Understanding Calibration Chat Turns CSV Columns
+
+File: `chat-turns.csv`
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `sessionId` | string | session | System text | Join key. |
+| `participantId` | string | session | System text | Participant identifier. |
+| `assignmentId` | string | session | System text | Assignment identifier. |
+| `researchMode` | string | session | System text | Research module. |
+| `researchCondition` | string | session | System text | Experimental condition. |
+| `turnIndex` | number | export process | System text | Order of chat turn inside session. |
+| `turnId` | string | `chatTurns[].id` | System text | Chat turn id. |
+| `timestamp` | ISO string | `chatTurns[].timestamp` | System text | Turn time. |
+| `role` | `student` or `assistant` | `chatTurns[].role` | System text | Speaker. |
+| `responseType` | string or blank | `chatTurns[].responseType` | System text | Assistant response type when available. |
+| `requestTags` | JSON string or blank | calibration chat event payload | System text | Request tags attached to the user-assistant pair. |
+| `text` | string | `chatTurns[].text` | Student or assistant text | Raw chat text. |
+
+## Understanding Calibration Rubric Codes CSV Columns
+
+File: `rubric-codes.csv`
+
+| Column | Type | Source | Text risk | Meaning |
+| --- | --- | --- | --- | --- |
+| `rubricVersion` | string | fixed protocol | System text | Rubric version. |
+| `problemNumber` | 1-4 | fixed protocol | System text | Problem number. |
+| `code` | string | rubric | System text | Rubric code. |
+| `label` | string | rubric | System text | Human-readable code label. |
+| `score0` | string | rubric | System text | Meaning of score 0. |
+| `score1` | string | rubric | System text | Meaning of score 1. |
+| `score2` | string | rubric | System text | Meaning of score 2. |
 
 ## Required Labeling Terms
 
@@ -96,9 +222,14 @@ File: `research-artifacts-measures.csv`
 - `sycophancyLabel`: labels unsupported agreement, overpraise, missed correction, or balanced challenge.
 - `pasteEvents`: records paste attempts in the writing surface with only a short text preview.
 - `teacherReview`: records teacher inspection status and memo; it is not an automated score.
-- `understandingCalibration`: module block for the eight-step calibration flow. Use `artifacts`, `measures`, and `research-events.csv` as the raw source of analysis.
-- `manual_evaluation_placeholder`: empty rubric fields for later human scoring of recognition, description, mechanism, boundary, and transfer.
+- `understandingCalibration`: module block for the staged learning, prediction, independent-problem, confidence, reflection, and chat-review flow. Use `artifacts`, `measures`, and `research-events.csv` as the raw source of analysis.
+- `researchCondition`: current active value is `single_group_baseline`. Reserved future conditions are not exposed or assigned in this pilot.
+- `problem1` through `problem4`: separate independent explanatory answers. The platform stores raw answers only and does not score them.
+- `problem1_confidence` through `problem4_confidence`: separate 1-5 confidence reports collected immediately after each problem.
+- `derivedFeatures`: analysis-ready summaries generated at export time. They are convenience fields, not a replacement for raw events, artifacts, and measures.
+- `manualEvaluation`: human coding placeholder. Null scores mean no human rubric score has been entered.
+- `calibration-session-wide.csv`, `calibration-item-long.csv`, `calibration-manual-evaluation.csv`, `attrition-diagnostic.csv`, `chat-turns.csv`, and `rubric-codes.csv`: table-shaped exports for understanding calibration analysis. Join by `sessionId`, `studentAnonymousId` or `participantId`, and `assignmentId`.
 
-## Notes For LLM Judge Experiments
+## Notes For Later Labeling
 
-Use `events` as the stable row source and `chatTurns` as the readable transcript source. For understanding calibration analyses, use `research-events.csv` for turn-level process data and `research-artifacts-measures.csv` for survey responses, independent-task products, and manual-evaluation placeholders. Assistant `responseType` and calibration `requestTags` are process metadata; they should help analysis but should not replace human or LLM judging.
+Use `events` as the stable row source and `chatTurns` as the readable transcript source. For understanding calibration analyses, use `research-events.csv` for turn-level process data and `research-artifacts-measures.csv` for survey responses, problem answers, confidence reports, and reflections. Assistant `responseType` and calibration `requestTags` are process metadata; they should help later analysis but do not replace raw student work.
