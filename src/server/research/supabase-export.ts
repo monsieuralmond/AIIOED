@@ -1,7 +1,7 @@
-import type { ResearchCondition, ResearchMode } from "../../shared/research";
-import type { ExportBundle } from "./store";
-import { csv } from "./csv";
-import type { SupabaseRestClient } from "./supabase-rest";
+import type { ResearchCondition, ResearchMode } from "../../shared/research.js";
+import type { ExportBundle } from "./store.js";
+import { csv } from "./csv.js";
+import type { SupabaseRestClient } from "./supabase-rest.js";
 
 type SessionExportRow = {
   readonly assignment_id: string;

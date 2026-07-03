@@ -1,5 +1,5 @@
-import type { Assignment, ClassGroup, Outline, StudentAccount, TeacherAccount } from "./types";
-import { ResearchConditions, ResearchModes } from "./research";
+import type { Assignment, ClassGroup, Outline, StudentAccount, TeacherAccount } from "./types.js";
+import { ResearchConditions, ResearchModes } from "./research.js";
 
 export const sampleTeacher: TeacherAccount = {
   id: "teacher-research",

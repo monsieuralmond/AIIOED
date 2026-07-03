@@ -1,8 +1,8 @@
-import { createSession } from "../../session/session";
-import type { Assignment, ChatTurn, CoachResponseType, PilotEvent, PilotSession, Stage } from "../../shared/types";
-import type { ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode } from "../../shared/research";
-import type { SessionContext, StoredChatTurn } from "./store";
-import type { SupabaseRestClient } from "./supabase-rest";
+import { createSession } from "../../session/session.js";
+import type { Assignment, ChatTurn, CoachResponseType, PilotEvent, PilotSession, Stage } from "../../shared/types.js";
+import type { ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode } from "../../shared/research.js";
+import type { SessionContext, StoredChatTurn } from "./store.js";
+import type { SupabaseRestClient } from "./supabase-rest.js";
 
 export type StudentRow = {
   readonly class_group_id: string;

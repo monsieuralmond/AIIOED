@@ -1,7 +1,7 @@
-import type { JsonHandler } from "./http";
-import { ApiError } from "./http";
-import { completeResearchChat } from "./research-chat";
-import { researchServerEnv } from "./env";
+import type { JsonHandler } from "./http.js";
+import { ApiError } from "./http.js";
+import { completeResearchChat } from "./research-chat.js";
+import { researchServerEnv } from "./env.js";
 import {
   artifactWriteSchema,
   chatSchema,
@@ -12,11 +12,11 @@ import {
   rosterUpsertSchema,
   sessionStartSchema,
   stageUpdateSchema
-} from "./schemas";
-import { participantCodeHash, serverId } from "./store";
-import type { ResearchStore } from "./store";
-import { createSupabaseResearchStore } from "./supabase-store";
-import { SupabaseRestClient } from "./supabase-rest";
+} from "./schemas.js";
+import { participantCodeHash, serverId } from "./store.js";
+import type { ResearchStore } from "./store.js";
+import { createSupabaseResearchStore } from "./supabase-store.js";
+import { SupabaseRestClient } from "./supabase-rest.js";
 
 const maxChatTurns = (): number => {
   const raw = process.env["MAX_CHAT_TURNS"];

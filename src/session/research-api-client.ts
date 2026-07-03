@@ -1,8 +1,8 @@
-import type { CalibrationChatResponse } from "../shared/calibration-ai";
-import { ResearchConditions, ResearchModes } from "../shared/research";
-import type { ResearchArtifact, ResearchMeasure } from "../shared/research";
-import type { PilotEvent, PilotState, PilotSession, StudentAccount } from "../shared/types";
-import type { BrowserSessionIdentity } from "./browser-session";
+import type { CalibrationChatResponse } from "../shared/calibration-ai.js";
+import { ResearchConditions, ResearchModes } from "../shared/research.js";
+import type { ResearchArtifact, ResearchMeasure } from "../shared/research.js";
+import type { PilotEvent, PilotState, PilotSession, StudentAccount } from "../shared/types.js";
+import type { BrowserSessionIdentity } from "./browser-session.js";
 
 type StartSessionResponse = BrowserSessionIdentity & {
   readonly session: PilotSession;

@@ -1,6 +1,6 @@
-import type { ResearchArtifact, ResearchMeasure, ResearchModules, ResearchSessionStatus } from "../shared/research";
-import type { Assignment, FinalSubmission, PilotSession } from "../shared/types";
-import { defaultResearchModules, normalizeAssignmentResearchMode, researchConditionForAssignment, researchModeForAssignment } from "./research-session";
+import type { ResearchArtifact, ResearchMeasure, ResearchModules, ResearchSessionStatus } from "../shared/research.js";
+import type { Assignment, FinalSubmission, PilotSession } from "../shared/types.js";
+import { defaultResearchModules, normalizeAssignmentResearchMode, researchConditionForAssignment, researchModeForAssignment } from "./research-session.js";
 
 type ResearchSessionFields = Pick<PilotSession, "artifacts" | "assignment" | "completedAt" | "createdAt" | "measures" | "modules" | "researchCondition" | "researchMode" | "status" | "updatedAt">;
 

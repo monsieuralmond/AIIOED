@@ -1,4 +1,4 @@
-import type { UnderstandingCalibrationEventType } from "./research";
+import type { UnderstandingCalibrationEventType } from "./research.js";
 
 type WritingCoachEventType =
   | "stage_entered"

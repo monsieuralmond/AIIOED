@@ -1,6 +1,6 @@
 import ky from "ky";
 import { z } from "zod";
-import type { LlmMode } from "../shared/types";
+import type { LlmMode } from "../shared/types.js";
 
 export type AiServerConfig = {
   readonly apiKey: string | undefined;

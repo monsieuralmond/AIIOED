@@ -1,11 +1,11 @@
-import type { Assignment, ChatRole, CoachResponseType, FinalSubmission, LlmMode, Outline, PasteEvent, PilotEvent, PilotEventType, PilotSession, ReviewSuggestion, Stage, StudentAccount, TeacherReviewNote, TeacherReviewUpdate } from "../shared/types";
-import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
-import { initialResearchSessionFields, normalizeAssignmentResearchMode } from "./research-session";
+import type { Assignment, ChatRole, CoachResponseType, FinalSubmission, LlmMode, Outline, PasteEvent, PilotEvent, PilotEventType, PilotSession, ReviewSuggestion, Stage, StudentAccount, TeacherReviewNote, TeacherReviewUpdate } from "../shared/types.js";
+import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
+import { initialResearchSessionFields, normalizeAssignmentResearchMode } from "./research-session.js";
 
-export { deleteClassGroup, deleteStudentAccount, deleteTeacherAccount } from "./pilot-delete";
-export { activeSession, assignmentsForStudent, createClassGroup, createInitialPilotState, createStudentAccount, createTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, sessionForStudent, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession } from "./pilot-state";
-export type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "./pilot-state";
-export { researchModeForAssignment } from "./research-session";
+export { deleteClassGroup, deleteStudentAccount, deleteTeacherAccount } from "./pilot-delete.js";
+export { activeSession, assignmentsForStudent, createClassGroup, createInitialPilotState, createStudentAccount, createTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, sessionForStudent, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession } from "./pilot-state.js";
+export type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "./pilot-state.js";
+export { researchModeForAssignment } from "./research-session.js";
 
 const APP_VERSION = "0.1.0";
 

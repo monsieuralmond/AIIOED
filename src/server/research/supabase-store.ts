@@ -1,13 +1,13 @@
-import { createSession } from "../../session/session";
-import type { ChatTurn, CoachResponseType, PilotSession } from "../../shared/types";
-import { ApiError } from "./http";
-import { participantCodeHash, serverId } from "./store";
-import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store";
-import { buildSupabaseExport } from "./supabase-export";
-import { chatTurnFromRow, contextFromSession, encode, inList, rowToSession, rowsForSessionIds } from "./supabase-session-rows";
-import type { AssignmentRow, ChildContext, SessionRow, StudentRow } from "./supabase-session-rows";
-import { SupabaseRestClient } from "./supabase-rest";
-import type { SupabaseConfig } from "./supabase-rest";
+import { createSession } from "../../session/session.js";
+import type { ChatTurn, CoachResponseType, PilotSession } from "../../shared/types.js";
+import { ApiError } from "./http.js";
+import { participantCodeHash, serverId } from "./store.js";
+import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
+import { buildSupabaseExport } from "./supabase-export.js";
+import { chatTurnFromRow, contextFromSession, encode, inList, rowToSession, rowsForSessionIds } from "./supabase-session-rows.js";
+import type { AssignmentRow, ChildContext, SessionRow, StudentRow } from "./supabase-session-rows.js";
+import { SupabaseRestClient } from "./supabase-rest.js";
+import type { SupabaseConfig } from "./supabase-rest.js";
 
 type ChatTurnRow = {
   readonly assignment_id: string;

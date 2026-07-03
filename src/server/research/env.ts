@@ -1,4 +1,4 @@
-import { ApiError } from "./http";
+import { ApiError } from "./http.js";
 
 export type ResearchServerEnv = {
   readonly aiMode: "mock" | "real";

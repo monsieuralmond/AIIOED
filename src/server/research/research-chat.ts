@@ -1,9 +1,9 @@
-import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "../../shared/calibration-ai";
-import type { CalibrationChatResponse } from "../../shared/calibration-ai";
-import type { ResearchCondition } from "../../shared/research";
-import type { Assignment, ChatTurn, LlmMode } from "../../shared/types";
-import { callGeminiText } from "../gemini-client";
-import type { GeminiContent } from "../gemini-client";
+import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "../../shared/calibration-ai.js";
+import type { CalibrationChatResponse } from "../../shared/calibration-ai.js";
+import type { ResearchCondition } from "../../shared/research.js";
+import type { Assignment, ChatTurn, LlmMode } from "../../shared/types.js";
+import { callGeminiText } from "../gemini-client.js";
+import type { GeminiContent } from "../gemini-client.js";
 
 type ResearchChatInput = {
   readonly aiContext?: string;

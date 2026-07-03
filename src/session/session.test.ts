@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createSession, enterStage, recordFeedbackGenerated, recordSuggestionCheck, resolveSuggestion, updateOutline, updateTeacherReview } from "./session";
-import { sampleAssignment } from "../shared/fixtures";
-import type { ReviewSuggestion } from "../shared/types";
+import { createSession, enterStage, recordFeedbackGenerated, recordSuggestionCheck, resolveSuggestion, updateOutline, updateTeacherReview } from "./session.js";
+import { sampleAssignment } from "../shared/fixtures.js";
+import type { ReviewSuggestion } from "../shared/types.js";
 
 describe("pilot session logging", () => {
   it("creates ordered process data with required export fields", () => {

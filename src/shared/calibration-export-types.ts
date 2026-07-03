@@ -1,4 +1,4 @@
-import type { PilotSession } from "./types";
+import type { PilotSession } from "./types.js";
 
 export type CalibrationProblemKey = "problem1" | "problem2" | "problem3" | "problem4";
 export type CalibrationQuestionNumber = 1 | 2 | 3 | 4;

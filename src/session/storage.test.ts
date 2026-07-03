@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInitialPilotState } from "./session";
-import { loadBrowserSessionIdentity, saveBrowserSessionIdentity } from "./browser-session";
-import { loadPersistedState, savePersistedState } from "./storage";
+import { createInitialPilotState } from "./session.js";
+import { loadBrowserSessionIdentity, saveBrowserSessionIdentity } from "./browser-session.js";
+import { loadPersistedState, savePersistedState } from "./storage.js";
 
 describe("browser storage", () => {
   beforeEach(() => {

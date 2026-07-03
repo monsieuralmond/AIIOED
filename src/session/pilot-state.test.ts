@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { exportDataset } from "../export/export";
-import { sampleAssignment } from "../shared/fixtures";
-import { ResearchConditions, ResearchModes } from "../shared/research";
-import { activeSession, createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session";
+import { exportDataset } from "../export/export.js";
+import { sampleAssignment } from "../shared/fixtures.js";
+import { ResearchConditions, ResearchModes } from "../shared/research.js";
+import { activeSession, createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session.js";
 
 describe("local pilot state", () => {
   it("keeps student sessions distinct for the same assignment", () => {

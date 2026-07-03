@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ResearchConditions } from "./research";
-import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "./calibration-ai";
+import { ResearchConditions } from "./research.js";
+import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "./calibration-ai.js";
 
 describe("understanding calibration AI request tags", () => {
   it.each([

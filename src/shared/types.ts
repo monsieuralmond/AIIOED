@@ -1,9 +1,9 @@
-import type { PilotEventType } from "./events";
-import type { ExportPilotSession } from "./calibration-export-types";
-import type { ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research";
+import type { PilotEventType } from "./events.js";
+import type { ExportPilotSession } from "./calibration-export-types.js";
+import type { ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research.js";
 
-export type { PilotEventType } from "./events";
-export type { CalibrationAnalysisArtifacts, CalibrationAnalysisProblemArtifact, CalibrationCriterionScoreKey, CalibrationDerivedFeatures, CalibrationManualEvaluation, CalibrationManualEvaluationProblem, CalibrationProblemKey, CalibrationQuestionNumber, CalibrationRubricScore, ExportPilotSession } from "./calibration-export-types";
+export type { PilotEventType } from "./events.js";
+export type { CalibrationAnalysisArtifacts, CalibrationAnalysisProblemArtifact, CalibrationCriterionScoreKey, CalibrationDerivedFeatures, CalibrationManualEvaluation, CalibrationManualEvaluationProblem, CalibrationProblemKey, CalibrationQuestionNumber, CalibrationRubricScore, ExportPilotSession } from "./calibration-export-types.js";
 
 export type WritingStage = "reading" | "thinking" | "writing" | "review";
 

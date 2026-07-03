@@ -1,4 +1,4 @@
-import type { PilotState } from "../shared/types";
+import type { PilotState } from "../shared/types.js";
 
 const LEGACY_STORAGE_KEY = "reading-coach-lab:v1";
 

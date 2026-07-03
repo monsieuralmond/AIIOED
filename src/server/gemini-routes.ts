@@ -1,15 +1,15 @@
 import { z } from "zod";
-import type { CoachRequest, CoachResponse, CoachResponseType, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types";
-import type { CalibrationChatHistoryTurn, CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai";
-import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "../shared/calibration-ai";
-import { ResearchConditions } from "../shared/research";
-import { createCoachResponse } from "../coach/coach";
-import { createReviewSuggestionCheckResult, createReviewSuggestions } from "../review/review";
-import { callGeminiJson, callGeminiText } from "./gemini-client";
-import type { AiServerConfig, GeminiContent } from "./gemini-client";
-import { handle } from "./ai-route-utils";
-import type { RequestHandler } from "./ai-route-utils";
-import { checkPrompt, coachPrompt, reviewPrompt } from "./writing-coach-prompts";
+import type { CoachRequest, CoachResponse, CoachResponseType, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types.js";
+import type { CalibrationChatHistoryTurn, CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai.js";
+import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "../shared/calibration-ai.js";
+import { ResearchConditions } from "../shared/research.js";
+import { createCoachResponse } from "../coach/coach.js";
+import { createReviewSuggestionCheckResult, createReviewSuggestions } from "../review/review.js";
+import { callGeminiJson, callGeminiText } from "./gemini-client.js";
+import type { AiServerConfig, GeminiContent } from "./gemini-client.js";
+import { handle } from "./ai-route-utils.js";
+import type { RequestHandler } from "./ai-route-utils.js";
+import { checkPrompt, coachPrompt, reviewPrompt } from "./writing-coach-prompts.js";
 
 const coachTypes = ["clarify", "question", "evidence_check", "redirect", "revision_guidance", "refusal"] as const satisfies readonly CoachResponseType[];
 const suggestionCategories = ["주장과 초점", "근거와 설명", "구조와 흐름", "문장 표현", "좋은 점검"] as const satisfies readonly ReviewSuggestion["category"][];

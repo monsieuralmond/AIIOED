@@ -1,6 +1,6 @@
-import { ResearchModes, activeResearchCondition } from "../shared/research";
-import type { ActiveResearchCondition, ResearchMode, ResearchModules } from "../shared/research";
-import type { Assignment, PilotSession } from "../shared/types";
+import { ResearchModes, activeResearchCondition } from "../shared/research.js";
+import type { ActiveResearchCondition, ResearchMode, ResearchModules } from "../shared/research.js";
+import type { Assignment, PilotSession } from "../shared/types.js";
 
 export const researchModeForAssignment = (assignment: Assignment): ResearchMode => assignment.researchMode ?? ResearchModes.writingCoach;
 export const researchConditionForAssignment = (assignment: Assignment): ActiveResearchCondition => activeResearchCondition(assignment.researchCondition);

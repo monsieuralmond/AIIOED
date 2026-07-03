@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createSession, recordPaste } from "./session";
-import { sampleAssignment } from "../shared/fixtures";
+import { createSession, recordPaste } from "./session.js";
+import { sampleAssignment } from "../shared/fixtures.js";
 
 describe("paste logging", () => {
   it("records large draft paste metadata without storing full text", () => {

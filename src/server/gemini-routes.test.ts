@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ResearchConditions } from "../shared/research";
-import { buildCalibrationContents } from "./gemini-routes";
+import { ResearchConditions } from "../shared/research.js";
+import { buildCalibrationContents } from "./gemini-routes.js";
 
 describe("Gemini calibration chat routing", () => {
   it("keeps previous dialogue in the current prompt for follow-up questions", () => {

@@ -1,4 +1,4 @@
-import type { FileSyncStatus } from "../shared/types";
+import type { FileSyncStatus } from "../shared/types.js";
 
 export class FileSyncError extends Error {
   constructor(message: string) {

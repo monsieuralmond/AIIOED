@@ -1,5 +1,5 @@
-import type { Assignment, PilotState, SelectedActor, TeacherAccount } from "../shared/types";
-import { PilotStateError } from "./pilot-state";
+import type { Assignment, PilotState, SelectedActor, TeacherAccount } from "../shared/types.js";
+import { PilotStateError } from "./pilot-state.js";
 
 const selectedActorAfterDelete = (selectedActor: SelectedActor | null, role: SelectedActor["role"], accountIds: readonly string[]): SelectedActor | null => {
   if (selectedActor === null) return null;

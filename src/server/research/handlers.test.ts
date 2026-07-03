@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createSession } from "../../session/session";
-import { sampleAssignment } from "../../shared/fixtures";
-import { ResearchConditions } from "../../shared/research";
-import type { PilotSession } from "../../shared/types";
-import { createResearchApiHandlers } from "./handlers";
-import { serverId } from "./store";
-import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store";
+import { createSession } from "../../session/session.js";
+import { sampleAssignment } from "../../shared/fixtures.js";
+import { ResearchConditions } from "../../shared/research.js";
+import type { PilotSession } from "../../shared/types.js";
+import { createResearchApiHandlers } from "./handlers.js";
+import { serverId } from "./store.js";
+import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
 
 const emptyExport = (): ExportBundle => ({
   "artifacts.csv": "",

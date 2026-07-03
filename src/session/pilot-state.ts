@@ -1,7 +1,7 @@
-import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher, sampleTeachers } from "../shared/fixtures";
-import type { Assignment, ClassGroup, PilotSession, PilotState, SelectedActor, StudentAccount, StudentWorkStatus, TeacherAccount } from "../shared/types";
-import { normalizeAssignmentResearchMode } from "./research-session";
-import { createSession } from "./session";
+import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher, sampleTeachers } from "../shared/fixtures.js";
+import type { Assignment, ClassGroup, PilotSession, PilotState, SelectedActor, StudentAccount, StudentWorkStatus, TeacherAccount } from "../shared/types.js";
+import { normalizeAssignmentResearchMode } from "./research-session.js";
+import { createSession } from "./session.js";
 
 const APP_VERSION = "0.1.0";
 

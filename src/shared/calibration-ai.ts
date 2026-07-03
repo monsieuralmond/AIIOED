@@ -1,6 +1,6 @@
-import type { ChatRole, LlmMode } from "./types";
-import { ResearchConditions, activeResearchCondition } from "./research";
-import type { ActiveResearchCondition, ResearchCondition } from "./research";
+import type { ChatRole, LlmMode } from "./types.js";
+import { ResearchConditions, activeResearchCondition } from "./research.js";
+import type { ActiveResearchCondition, ResearchCondition } from "./research.js";
 
 export const calibrationRequestTags = [
   "definition_request",

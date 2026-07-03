@@ -1,5 +1,5 @@
-import { UnderstandingCalibrationStages } from "../shared/research";
-import type { Assignment, Stage, TeacherReviewStatus } from "../shared/types";
+import { UnderstandingCalibrationStages } from "../shared/research.js";
+import type { Assignment, Stage, TeacherReviewStatus } from "../shared/types.js";
 
 export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 

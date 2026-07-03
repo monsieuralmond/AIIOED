@@ -1,4 +1,4 @@
-import type { CoachRequest, ReviewSuggestion } from "../shared/types";
+import type { CoachRequest, ReviewSuggestion } from "../shared/types.js";
 
 export const coachPrompt = (request: CoachRequest): string => `너는 초등 고학년 학생을 돕는 한국어 글쓰기 코치다.
 역할:

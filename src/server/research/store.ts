@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { Assignment, ChatTurn, CoachResponseType, PilotSession, Stage } from "../../shared/types";
-import type { ResearchCondition, ResearchMode } from "../../shared/research";
+import type { Assignment, ChatTurn, CoachResponseType, PilotSession, Stage } from "../../shared/types.js";
+import type { ResearchCondition, ResearchMode } from "../../shared/research.js";
 
 export type SessionContext = {
   readonly assignmentId: string;
