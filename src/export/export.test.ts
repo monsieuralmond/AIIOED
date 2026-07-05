@@ -10,12 +10,12 @@ import {
   stringifyLabelingCsv,
   stringifyResearchArtifactMeasuresCsv,
   stringifyResearchEventsCsv
-} from "./export";
-import { createInitialPilotState } from "../session/session";
-import { addAssistantCoachTurn, addChatTurn, createSession, recordFeedbackGenerated, recordSuggestionCheck, resolveSuggestion, submitFinal, updateTeacherReview } from "../session/session";
-import { sampleAssignment, sampleStudents } from "../shared/fixtures";
-import { ResearchConditions, ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
-import type { PilotSession } from "../shared/types";
+} from "./export.js";
+import { createInitialPilotState } from "../session/session.js";
+import { addAssistantCoachTurn, addChatTurn, createSession, recordFeedbackGenerated, recordSuggestionCheck, resolveSuggestion, submitFinal, updateTeacherReview } from "../session/session.js";
+import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
+import { ResearchConditions, ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
+import type { PilotSession } from "../shared/types.js";
 
 describe("session export", () => {
   it("exports the research dataset shape with final submission separated", () => {
@@ -51,9 +51,9 @@ describe("session export", () => {
 
     expect(exported.teacher).not.toHaveProperty("password");
     expect(exported.teachers[0]).not.toHaveProperty("password");
-    expect(exported.students[0]).toHaveProperty("loginId", "minseo");
+    expect(exported.students[0]).toHaveProperty("loginId", "s001");
     expect(exported.students[0]).not.toHaveProperty("password");
-    expect(serialized).not.toContain("MINSEO-2026");
+    expect(serialized).not.toContain("\"password\"");
   });
 
   it("flattens event logs into labeling-ready rows and CSV", () => {
@@ -95,7 +95,7 @@ describe("session export", () => {
 
   it("keeps review feedback and teacher review events available for labeling", () => {
     const suggestion = {
-      category: "근거와 설명",
+      category: "자료와 설명",
       focusLabel: "근거가 들어가야 할 문장",
       id: "evidence",
       resolved: false,

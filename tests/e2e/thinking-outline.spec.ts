@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("thinking outline warns when weak and proceeds when complete", async ({ page }) => {
   await enterStudent(page);

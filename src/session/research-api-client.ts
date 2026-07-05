@@ -1,42 +1,134 @@
-import type { CalibrationChatResponse } from "../shared/calibration-ai.js";
+import type { CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ResearchArtifact, ResearchMeasure } from "../shared/research.js";
-import type { PilotEvent, PilotState, PilotSession, StudentAccount } from "../shared/types.js";
+import type { Assignment, ChatTurn, PilotEvent, PilotState, PilotSession, Stage, StudentAccount } from "../shared/types.js";
+import { loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
 import type { BrowserSessionIdentity } from "./browser-session.js";
+import { parseDatabaseRoster } from "./database-roster.js";
+import type { DatabaseRoster } from "./database-roster.js";
 
 type StartSessionResponse = BrowserSessionIdentity & {
   readonly session: PilotSession;
+  readonly sessionToken?: string;
+};
+
+type StartSessionPayload = {
+  readonly assignment?: Pick<Assignment, "id">;
+  readonly assignmentId?: string;
+  readonly classGroupId: string;
+  readonly session: PilotSession;
+  readonly sessionId: string;
+  readonly sessionToken?: string;
+  readonly studentAnonymousId: string;
+};
+
+type StartParticipantSessionInput = {
+  readonly assignmentId?: string;
+  readonly loginId?: string;
+  readonly participantCode: string;
+  readonly password?: string;
+};
+
+export type TeacherAuthResponse = {
+  readonly displayName: string;
+  readonly teacherId: string;
+  readonly teacherToken: string;
+};
+
+export type StudentAuthResponse = {
+  readonly assignments: readonly Assignment[];
+  readonly student: StudentAccount;
+};
+
+export type SessionListResponse = {
+  readonly sessions: readonly PilotSession[];
 };
 
 export type DatabaseExportBundle = {
   readonly "artifacts.csv": string;
+  readonly "benchmark.jsonl": string;
   readonly "chat-turns.csv": string;
+  readonly "data-quality.csv": string;
   readonly "events.csv": string;
   readonly "item-long.csv": string;
   readonly "measures.csv": string;
   readonly "raw-json.json": Record<string, unknown>;
+  readonly "raw-events.csv": string;
   readonly "session-wide.csv": string;
+};
+
+export type RosterSyncResponse = {
+  readonly rosterRevision?: string;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-const postJson = async (path: string, body: unknown): Promise<unknown> => {
+export class ResearchApiClientError extends Error {
+  readonly payload: unknown;
+  readonly status: number;
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.name = "ResearchApiClientError";
+    this.payload = payload;
+    this.status = status;
+  }
+}
+
+const parseJsonPayload = (text: string, status: number): unknown => {
+  if (text.trim().length === 0) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ResearchApiClientError("서버 응답이 JSON 형식이 아닙니다.", status, text);
+  }
+};
+
+const postJson = async (path: string, body: unknown, headers: Readonly<Record<string, string>> = {}): Promise<unknown> => {
   const response = await fetch(path, {
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     method: "POST"
   });
-  const payload: unknown = await response.json();
+  const payload = parseJsonPayload(await response.text(), response.status);
   if (!response.ok) {
     const message = isRecord(payload) && typeof payload["message"] === "string" ? payload["message"] : "요청에 실패했습니다.";
-    throw new Error(message);
+    throw new ResearchApiClientError(message, response.status, payload);
   }
   return payload;
 };
 
-const isStartSessionResponse = (value: unknown): value is StartSessionResponse => {
-  if (!isRecord(value) || !isRecord(value["session"])) return false;
-  return typeof value["assignmentId"] === "string" && typeof value["classGroupId"] === "string" && typeof value["sessionId"] === "string" && typeof value["studentAnonymousId"] === "string";
+const isPilotSession = (value: unknown): value is PilotSession =>
+  isRecord(value) &&
+  typeof value["sessionId"] === "string" &&
+  isRecord(value["assignment"]) &&
+  typeof value["assignment"]["id"] === "string" &&
+  isRecord(value["student"]) &&
+  typeof value["currentStage"] === "string";
+
+const isStartSessionPayload = (value: unknown): value is StartSessionPayload => {
+  if (!isRecord(value) || !isPilotSession(value["session"])) return false;
+  const assignment = value["assignment"];
+  const assignmentId = value["assignmentId"];
+  const hasValidAssignment = assignment === undefined || (isRecord(assignment) && typeof assignment["id"] === "string");
+  const hasValidAssignmentId = assignmentId === undefined || typeof assignmentId === "string";
+  return hasValidAssignment &&
+    hasValidAssignmentId &&
+    typeof value["classGroupId"] === "string" &&
+    typeof value["sessionId"] === "string" &&
+    typeof value["studentAnonymousId"] === "string";
+};
+
+const parseStartSessionResponse = (value: unknown): StartSessionResponse | null => {
+  if (!isStartSessionPayload(value)) return null;
+  return {
+    assignmentId: value.assignmentId ?? value.assignment?.id ?? value.session.assignment.id,
+    classGroupId: value.classGroupId,
+    session: value.session,
+    sessionId: value.sessionId,
+    ...(value.sessionToken === undefined ? {} : { sessionToken: value.sessionToken }),
+    studentAnonymousId: value.studentAnonymousId
+  };
 };
 
 const isCalibrationChatResponse = (value: unknown): value is CalibrationChatResponse => {
@@ -47,27 +139,99 @@ const isCalibrationChatResponse = (value: unknown): value is CalibrationChatResp
 const isDatabaseExportBundle = (value: unknown): value is DatabaseExportBundle =>
   isRecord(value) &&
   typeof value["artifacts.csv"] === "string" &&
+  typeof value["benchmark.jsonl"] === "string" &&
   typeof value["chat-turns.csv"] === "string" &&
+  typeof value["data-quality.csv"] === "string" &&
   typeof value["events.csv"] === "string" &&
   typeof value["item-long.csv"] === "string" &&
   typeof value["measures.csv"] === "string" &&
   isRecord(value["raw-json.json"]) &&
+  typeof value["raw-events.csv"] === "string" &&
   typeof value["session-wide.csv"] === "string";
 
+const sessionHeaders = (): Readonly<Record<string, string>> => {
+  const token = loadBrowserSessionToken();
+  return token === null ? {} : { "x-research-session-token": token };
+};
+
+const teacherHeaders = (): Readonly<Record<string, string>> => {
+  const auth = loadBrowserTeacherAuth();
+  return auth === null ? {} : { "x-research-teacher-id": auth.teacherId, "x-research-teacher-token": auth.teacherToken };
+};
+
+const isTeacherAuthResponse = (value: unknown): value is TeacherAuthResponse =>
+  isRecord(value) &&
+  typeof value["displayName"] === "string" &&
+  typeof value["teacherId"] === "string" &&
+  typeof value["teacherToken"] === "string";
+
+const isAssignmentResponse = (value: unknown): value is Assignment =>
+  isRecord(value) &&
+  typeof value["gradeLevel"] === "string" &&
+  typeof value["id"] === "string" &&
+  typeof value["passage"] === "string" &&
+  typeof value["question"] === "string" &&
+  typeof value["targetLength"] === "string" &&
+  typeof value["title"] === "string";
+
+const isStudentAuthPayload = (value: unknown): value is {
+  readonly assignments: readonly Assignment[];
+  readonly student: Omit<StudentAccount, "password">;
+} =>
+  isRecord(value) &&
+  Array.isArray(value["assignments"]) &&
+  value["assignments"].every(isAssignmentResponse) &&
+  isRecord(value["student"]) &&
+  typeof value["student"]["classGroupId"] === "string" &&
+  typeof value["student"]["displayName"] === "string" &&
+  typeof value["student"]["id"] === "string" &&
+  typeof value["student"]["loginId"] === "string" &&
+  typeof value["student"]["participantCode"] === "string" &&
+  typeof value["student"]["studentNumber"] === "number";
+
+const isSessionListResponse = (value: unknown): value is SessionListResponse =>
+  isRecord(value) && Array.isArray(value["sessions"]) && value["sessions"].every(isPilotSession);
+
 export const resumeResearchSession = async (sessionId: string): Promise<StartSessionResponse> => {
-  const payload = await postJson("/api/session/start", { sessionId });
-  if (!isStartSessionResponse(payload)) throw new Error("세션 응답 형식이 올바르지 않습니다.");
+  const payload = await postJson("/api/session/start", { sessionId }, sessionHeaders());
+  const parsed = parseStartSessionResponse(payload);
+  if (parsed === null) throw new Error("세션 응답 형식이 올바르지 않습니다.");
+  return parsed;
+};
+
+export const startResearchSessionWithParticipantCode = async (input: string | StartParticipantSessionInput): Promise<StartSessionResponse> => {
+  const body = typeof input === "string" ? { participantCode: input } : input;
+  const payload = await postJson("/api/session/start", body);
+  const parsed = parseStartSessionResponse(payload);
+  if (parsed === null) throw new Error("세션 응답 형식이 올바르지 않습니다.");
+  return parsed;
+};
+
+export const startTeacherPreviewSession = async (input: StartParticipantSessionInput): Promise<StartSessionResponse> => {
+  const payload = await postJson("/api/session/start", input, teacherHeaders());
+  const parsed = parseStartSessionResponse(payload);
+  if (parsed === null) throw new Error("세션 응답 형식이 올바르지 않습니다.");
+  return parsed;
+};
+
+const requestPreviewCalibrationChat = async (request: CalibrationChatRequest): Promise<CalibrationChatResponse> => {
+  const payload = await postJson("/api/ai", { kind: "calibrationChat", payload: request });
+  if (!isCalibrationChatResponse(payload)) throw new Error("AI 응답 형식이 올바르지 않습니다.");
   return payload;
 };
 
-export const startResearchSessionWithParticipantCode = async (participantCode: string): Promise<StartSessionResponse> => {
-  const payload = await postJson("/api/session/start", { participantCode });
-  if (!isStartSessionResponse(payload)) throw new Error("세션 응답 형식이 올바르지 않습니다.");
-  return payload;
-};
-
-export const requestSessionCalibrationChat = async (input: { readonly message: string; readonly requestId: string; readonly sessionId: string }): Promise<CalibrationChatResponse> => {
-  const payload = await postJson("/api/chat", input);
+export const requestSessionCalibrationChat = async (input: {
+  readonly message: string;
+  readonly previewRequest?: CalibrationChatRequest;
+  readonly requestId: string;
+  readonly sessionId: string;
+}): Promise<CalibrationChatResponse> => {
+  if (input.previewRequest !== undefined) return requestPreviewCalibrationChat(input.previewRequest);
+  const payload = await postJson("/api/chat", {
+    message: input.message,
+    requestId: input.requestId,
+    sessionId: input.sessionId
+  }, sessionHeaders());
   if (!isCalibrationChatResponse(payload)) throw new Error("AI 응답 형식이 올바르지 않습니다.");
   return payload;
 };
@@ -79,23 +243,69 @@ export const requestDatabaseExport = async (input: { readonly assignmentId?: str
     ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
     ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
     ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
-  });
+  }, teacherHeaders());
   if (!isDatabaseExportBundle(payload)) throw new Error("DB export 응답 형식이 올바르지 않습니다.");
   return payload;
 };
 
+export const loadRosterFromDatabase = async (teacherId?: string): Promise<DatabaseRoster> => {
+  const payload = await postJson("/api/admin/roster", teacherId === undefined ? {} : { teacherId }, teacherHeaders());
+  return parseDatabaseRoster(payload);
+};
+
+export const loadTeacherSessionsFromDatabase = async (input: { readonly assignmentId?: string; readonly classGroupId?: string; readonly teacherId: string }): Promise<SessionListResponse> => {
+  const payload = await postJson("/api/session/list", {
+    completedOnly: false,
+    teacherId: input.teacherId,
+    ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
+    ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId })
+  }, teacherHeaders());
+  if (!isSessionListResponse(payload)) throw new Error("세션 목록 응답 형식이 올바르지 않습니다.");
+  return payload;
+};
+
+export const authenticateTeacherWithDatabase = async (input: { readonly loginId: string; readonly password: string }): Promise<TeacherAuthResponse> => {
+  const payload = await postJson("/api/auth/teacher", input);
+  if (!isTeacherAuthResponse(payload)) throw new Error("교사 인증 응답 형식이 올바르지 않습니다.");
+  return payload;
+};
+
+export const authenticateStudentWithDatabase = async (input: {
+  readonly loginId: string;
+  readonly participantCode: string;
+  readonly password: string;
+}): Promise<StudentAuthResponse> => {
+  const payload = await postJson("/api/auth/student", input);
+  if (!isStudentAuthPayload(payload)) throw new Error("학생 인증 응답 형식이 올바르지 않습니다.");
+  return {
+    assignments: payload.assignments,
+    student: { ...payload.student, password: input.password }
+  };
+};
+
 const anonymousIdForStudent = (student: StudentAccount): string => `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
 
-export const syncRosterToDatabase = async (state: PilotState): Promise<void> => {
-  await postJson("/api/admin/upsert-roster", {
+const optionalPasswordField = (password: string): { readonly password: string } | Record<string, never> => {
+  const trimmedPassword = password.trim();
+  return trimmedPassword.length === 0 ? {} : { password: trimmedPassword };
+};
+
+export const syncRosterToDatabase = async (state: PilotState, deletedIds: {
+  readonly deletedAssignmentIds?: readonly string[];
+  readonly deletedClassIds?: readonly string[];
+  readonly deletedStudentIds?: readonly string[];
+  readonly deletedTeacherIds?: readonly string[];
+} = {}, expectedRosterRevision?: string | null): Promise<RosterSyncResponse> => {
+  const teacherId = state.selectedActor?.role === "teacher" ? state.selectedActor.accountId : state.teacher.id;
+  const payload = await postJson("/api/admin/upsert-roster", {
     assignments: state.assignments.map((assignment) => ({
-      classGroupId: assignment.classGroupId ?? state.classGroups[0]?.id ?? "class-default",
-      createdByTeacherId: assignment.createdByTeacherId ?? state.teacher.id,
+      createdByTeacherId: assignment.createdByTeacherId ?? teacherId,
       id: assignment.id,
       payload: assignment,
       researchCondition: assignment.researchCondition ?? ResearchConditions.singleGroupBaseline,
       researchMode: assignment.researchMode ?? ResearchModes.writingCoach,
-      title: assignment.title
+      title: assignment.title,
+      ...(assignment.classGroupId === undefined ? {} : { classGroupId: assignment.classGroupId })
     })),
     classes: state.classGroups.map((classGroup) => ({
       id: classGroup.id,
@@ -106,10 +316,26 @@ export const syncRosterToDatabase = async (state: PilotState): Promise<void> => 
       classGroupId: student.classGroupId,
       displayLabel: student.displayName,
       id: student.id,
+      loginId: student.loginId,
       participantCode: student.participantCode,
-      studentAnonymousId: anonymousIdForStudent(student)
-    }))
-  });
+      ...optionalPasswordField(student.password),
+      studentAnonymousId: anonymousIdForStudent(student),
+      studentNumber: student.studentNumber
+    })),
+    teachers: state.teachers.map((teacher) => ({
+      displayName: teacher.displayName,
+      id: teacher.id,
+      loginId: teacher.loginId,
+      ...optionalPasswordField(teacher.password)
+    })),
+    ...(deletedIds.deletedAssignmentIds === undefined ? {} : { deletedAssignmentIds: deletedIds.deletedAssignmentIds }),
+    ...(deletedIds.deletedClassIds === undefined ? {} : { deletedClassIds: deletedIds.deletedClassIds }),
+    ...(deletedIds.deletedStudentIds === undefined ? {} : { deletedStudentIds: deletedIds.deletedStudentIds }),
+    ...(deletedIds.deletedTeacherIds === undefined ? {} : { deletedTeacherIds: deletedIds.deletedTeacherIds }),
+    ...(expectedRosterRevision === undefined || expectedRosterRevision === null ? {} : { expectedRosterRevision }),
+    teacherId
+  }, teacherHeaders());
+  return isRecord(payload) && typeof payload["rosterRevision"] === "string" ? { rosterRevision: payload["rosterRevision"] } : {};
 };
 
 const syncEvent = (sessionId: string, event: PilotEvent): Promise<unknown> =>
@@ -120,7 +346,7 @@ const syncEvent = (sessionId: string, event: PilotEvent): Promise<unknown> =>
     stage: event.stage,
     timestamp: event.timestamp,
     type: event.type
-  });
+  }, sessionHeaders());
 
 const syncArtifact = (sessionId: string, artifact: ResearchArtifact): Promise<unknown> =>
   postJson("/api/artifact", {
@@ -131,7 +357,7 @@ const syncArtifact = (sessionId: string, artifact: ResearchArtifact): Promise<un
     stage: artifact.stage,
     timestamp: artifact.createdAt,
     ...(artifact.updatedAt === undefined ? {} : { updatedAt: artifact.updatedAt })
-  });
+  }, sessionHeaders());
 
 const syncMeasure = (sessionId: string, measure: ResearchMeasure): Promise<unknown> =>
   postJson("/api/measure", {
@@ -141,13 +367,31 @@ const syncMeasure = (sessionId: string, measure: ResearchMeasure): Promise<unkno
     sessionId,
     stage: measure.stage,
     timestamp: measure.collectedAt
-  });
+  }, sessionHeaders());
+
+const syncChatTurn = (sessionId: string, stage: Stage, turn: ChatTurn): Promise<unknown> =>
+  postJson("/api/chat-turn", {
+    id: turn.id,
+    role: turn.role,
+    sessionId,
+    stage,
+    text: turn.text,
+    timestamp: turn.timestamp,
+    ...(turn.responseType === undefined ? {} : { responseType: turn.responseType })
+  }, sessionHeaders());
+
+const itemsAddedById = <T extends { readonly id: string }>(previous: readonly T[], next: readonly T[]): readonly T[] => {
+  const previousIds = new Set(previous.map((item) => item.id));
+  return next.filter((item) => !previousIds.has(item.id));
+};
 
 export const syncSessionDelta = async (previous: PilotSession, next: PilotSession): Promise<void> => {
-  const newEvents = next.events.slice(previous.events.length);
-  const newArtifacts = next.artifacts.slice(previous.artifacts.length);
-  const newMeasures = next.measures.slice(previous.measures.length);
+  const newEvents = itemsAddedById(previous.events, next.events);
+  const newArtifacts = itemsAddedById(previous.artifacts, next.artifacts);
+  const newMeasures = itemsAddedById(previous.measures, next.measures);
+  const newChatTurns = next.researchMode === ResearchModes.understandingCalibration ? [] : itemsAddedById(previous.chatTurns, next.chatTurns);
   await Promise.all([
+    ...newChatTurns.map((turn) => syncChatTurn(next.sessionId, next.currentStage, turn)),
     ...newEvents.map((event) => syncEvent(next.sessionId, event)),
     ...newArtifacts.map((artifact) => syncArtifact(next.sessionId, artifact)),
     ...newMeasures.map((measure) => syncMeasure(next.sessionId, measure))
@@ -158,6 +402,6 @@ export const syncSessionDelta = async (previous: PilotSession, next: PilotSessio
       currentStage: next.currentStage,
       sessionId: next.sessionId,
       status: next.status
-    });
+    }, sessionHeaders());
   }
 };

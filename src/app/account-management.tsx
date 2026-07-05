@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session";
-import type { ClassGroup, PilotState, StudentAccount, TeacherAccount } from "../shared/types";
-import { RosterTable } from "./account-roster-table";
-import { Button, Field, Surface, TextInput } from "./ui";
+import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
+import type { ClassGroup, PilotState, StudentAccount, TeacherAccount } from "../shared/types.js";
+import { RosterTable } from "./account-roster-table.js";
+import { Button, Field, Surface, TextInput } from "./ui.js";
 
 type AccountManagementProps = {
   readonly state: PilotState;
   readonly onBack: () => void;
-  readonly onCreateClass: (input: CreateClassGroupInput) => string | null;
-  readonly onCreateStudent: (input: CreateStudentInput) => string | null;
-  readonly onCreateStudents: (inputs: readonly CreateStudentInput[]) => string | null;
-  readonly onCreateTeacher: (input: CreateTeacherInput) => string | null;
-  readonly onDeleteClass: (classGroupId: string) => string | null;
-  readonly onDeleteStudent: (studentId: string) => string | null;
-  readonly onDeleteTeacher: (teacherId: string) => string | null;
+  readonly onCreateClass: (input: CreateClassGroupInput) => Promise<string | null> | string | null;
+  readonly onCreateStudent: (input: CreateStudentInput) => Promise<string | null> | string | null;
+  readonly onCreateStudents: (inputs: readonly CreateStudentInput[]) => Promise<string | null> | string | null;
+  readonly onCreateTeacher: (input: CreateTeacherInput) => Promise<string | null> | string | null;
+  readonly onDeleteClass: (classGroupId: string) => Promise<string | null> | string | null;
+  readonly onDeleteStudent: (studentId: string) => Promise<string | null> | string | null;
+  readonly onDeleteTeacher: (teacherId: string) => Promise<string | null> | string | null;
 };
 
 const firstTeacherId = (teachers: readonly TeacherAccount[]): string => teachers[0]?.id ?? "";
@@ -39,6 +39,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
   const [teacherLoginId, setTeacherLoginId] = useState("");
   const [teacherPassword, setTeacherPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const classNameById = useMemo(() => new Map(props.state.classGroups.map((classGroup) => [classGroup.id, classGroup.name])), [props.state.classGroups]);
 
@@ -52,31 +53,64 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
     if (bulkClassId !== nextClassId && !classIds.has(bulkClassId)) setBulkClassId(nextClassId);
   }, [bulkClassId, classTeacherId, props.state.classGroups, props.state.teachers, studentClassId]);
 
+  useEffect(() => {
+    if (!isSaving) return undefined;
+    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isSaving]);
+
+  const runAccountAction = async (action: () => Promise<string | null> | string | null, successMessage: string, reset?: () => void): Promise<void> => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setMessage("저장 중입니다.");
+    try {
+      const error = await action();
+      if (error !== null) {
+        setMessage(error);
+        return;
+      }
+      reset?.();
+      setMessage(successMessage);
+    } catch (error) {
+      setMessage(error instanceof Error ? `저장에 실패했습니다. ${error.message}` : "저장에 실패했습니다. 다시 시도하세요.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const createClass = (): void => {
-    const error = props.onCreateClass({ name: className, teacherId: classTeacherId });
-    if (error !== null) { setMessage(error); return; }
-    setClassName("");
-    setMessage("반을 만들었습니다.");
+    void runAccountAction(
+      () => props.onCreateClass({ name: className, teacherId: classTeacherId }),
+      "반을 만들었습니다.",
+      () => setClassName("")
+    );
   };
 
   const createStudent = (): void => {
     const parsedNumber = Number(studentNumber);
     const fallbackCredential = participantCode.trim();
-    const error = props.onCreateStudent({
-      classGroupId: studentClassId,
-      displayName: studentName,
-      loginId: studentLoginId.trim().length === 0 ? fallbackCredential.toLowerCase() : studentLoginId,
-      participantCode,
-      password: studentPassword.trim().length === 0 ? fallbackCredential : studentPassword,
-      studentNumber: parsedNumber
-    });
-    if (error !== null) { setMessage(error); return; }
-    setStudentLoginId("");
-    setStudentName("");
-    setStudentNumber("");
-    setStudentPassword("");
-    setParticipantCode("");
-    setMessage("학생 계정을 만들었습니다.");
+    void runAccountAction(
+      () => props.onCreateStudent({
+        classGroupId: studentClassId,
+        displayName: studentName,
+        loginId: studentLoginId.trim().length === 0 ? fallbackCredential.toLowerCase() : studentLoginId,
+        participantCode,
+        password: studentPassword.trim().length === 0 ? fallbackCredential : studentPassword,
+        studentNumber: parsedNumber
+      }),
+      "학생 계정을 만들었습니다.",
+      () => {
+        setStudentLoginId("");
+        setStudentName("");
+        setStudentNumber("");
+        setStudentPassword("");
+        setParticipantCode("");
+      }
+    );
   };
 
   const createStudents = (): void => {
@@ -105,33 +139,31 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
         studentNumber: nextNumber
       };
     });
-    const error = props.onCreateStudents(inputs);
-    if (error !== null) { setMessage(error); return; }
-    setMessage(`학생 계정 ${inputs.length}개를 만들었습니다.`);
+    void runAccountAction(() => props.onCreateStudents(inputs), `학생 계정 ${inputs.length}개를 만들었습니다.`);
   };
 
   const createTeacher = (): void => {
-    const error = props.onCreateTeacher({ displayName: teacherName, loginId: teacherLoginId, password: teacherPassword });
-    if (error !== null) { setMessage(error); return; }
-    setTeacherName("");
-    setTeacherLoginId("");
-    setTeacherPassword("");
-    setMessage("교사 계정을 만들었습니다.");
+    void runAccountAction(
+      () => props.onCreateTeacher({ displayName: teacherName, loginId: teacherLoginId, password: teacherPassword }),
+      "교사 계정을 만들었습니다.",
+      () => {
+        setTeacherName("");
+        setTeacherLoginId("");
+        setTeacherPassword("");
+      }
+    );
   };
 
   const deleteClass = (classGroup: ClassGroup): void => {
-    const error = props.onDeleteClass(classGroup.id);
-    setMessage(error ?? "반을 삭제했습니다.");
+    void runAccountAction(() => props.onDeleteClass(classGroup.id), "반을 삭제했습니다.");
   };
 
   const deleteStudent = (student: StudentAccount): void => {
-    const error = props.onDeleteStudent(student.id);
-    setMessage(error ?? "학생 계정을 삭제했습니다.");
+    void runAccountAction(() => props.onDeleteStudent(student.id), "학생 계정을 삭제했습니다.");
   };
 
   const deleteTeacher = (teacher: TeacherAccount): void => {
-    const error = props.onDeleteTeacher(teacher.id);
-    setMessage(error ?? "교사 계정을 삭제했습니다.");
+    void runAccountAction(() => props.onDeleteTeacher(teacher.id), "교사 계정을 삭제했습니다.");
   };
 
   return (
@@ -159,7 +191,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
                 {props.state.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.displayName}</option>)}
               </select>
             </label>
-            <Button variant="primary" onClick={createClass}>반 만들기</Button>
+            <Button disabled={isSaving} variant="primary" onClick={createClass}>반 만들기</Button>
           </Surface>
           <Surface className="account-section">
             <h3>학생 만들기</h3>
@@ -178,7 +210,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
               <Field label="학생 비밀번호"><TextInput autoComplete="new-password" value={studentPassword} onChange={(event) => setStudentPassword(event.currentTarget.value)} /></Field>
             </div>
             <Field label="학생 이름"><TextInput value={studentName} onChange={(event) => setStudentName(event.currentTarget.value)} /></Field>
-            <Button variant="primary" onClick={createStudent}>학생 만들기</Button>
+            <Button disabled={isSaving} variant="primary" onClick={createStudent}>학생 만들기</Button>
           </Surface>
           <Surface className="account-section">
             <h3>학생 일괄 만들기</h3>
@@ -198,7 +230,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
               <Field label="비밀번호 접두어"><TextInput autoComplete="off" value={bulkPasswordPrefix} onChange={(event) => setBulkPasswordPrefix(event.currentTarget.value)} /></Field>
             </div>
             <Field label="학생 이름 접두어"><TextInput value={bulkNamePrefix} onChange={(event) => setBulkNamePrefix(event.currentTarget.value)} /></Field>
-            <Button variant="primary" onClick={createStudents}>학생 일괄 만들기</Button>
+            <Button disabled={isSaving} variant="primary" onClick={createStudents}>학생 일괄 만들기</Button>
           </Surface>
           <Surface className="account-section">
             <h3>교사 만들기</h3>
@@ -207,7 +239,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
               <Field label="교사 아이디 만들기"><TextInput autoComplete="off" value={teacherLoginId} onChange={(event) => setTeacherLoginId(event.currentTarget.value)} /></Field>
               <Field label="교사 비밀번호 만들기"><TextInput type="password" value={teacherPassword} onChange={(event) => setTeacherPassword(event.currentTarget.value)} /></Field>
             </div>
-            <Button variant="primary" onClick={createTeacher}>교사 만들기</Button>
+            <Button disabled={isSaving} variant="primary" onClick={createTeacher}>교사 만들기</Button>
           </Surface>
         </section>
         <section aria-label="저장된 계정 목록" className="account-list-column">

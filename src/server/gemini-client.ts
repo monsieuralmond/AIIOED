@@ -57,6 +57,15 @@ const parseJsonObject = (text: string): Record<string, unknown> => {
   return parsed;
 };
 
+const parseGeminiHttpPayload = (text: string): unknown => {
+  if (text.trim().length === 0) return {};
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new AiRouteError("Gemini API response was not valid JSON.");
+  }
+};
+
 const geminiOutputText = (payload: unknown): string => {
   const result = geminiResponseSchema.safeParse(payload);
   if (!result.success) throw new AiRouteError("Gemini response did not include text content.");
@@ -74,6 +83,13 @@ const geminiErrorMessage = (payload: unknown): string => {
 
 const normalizeGeminiModel = (model: string): string => (model.startsWith("models/") ? model.slice("models/".length) : model);
 
+const geminiTimeoutMs = (): number => {
+  const raw = process.env["GEMINI_TIMEOUT_MS"];
+  if (raw === undefined) return 45_000;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 45_000;
+};
+
 export const callGeminiText = async (config: AiServerConfig, request: GeminiTextRequest): Promise<string> => {
   if (config.apiKey === undefined || config.apiKey.trim().length === 0) {
     throw new AiRouteError("GEMINI_API_KEY가 설정되지 않았습니다. 프로젝트 루트의 .env.local에 GEMINI_API_KEY를 넣고 dev server를 다시 시작하세요.");
@@ -90,11 +106,15 @@ export const callGeminiText = async (config: AiServerConfig, request: GeminiText
       },
       systemInstruction: request.systemInstruction === undefined ? undefined : { parts: [{ text: request.systemInstruction }] }
     },
-    retry: 0,
+    retry: {
+      limit: 1,
+      methods: ["post"],
+      statusCodes: [408, 429, 500, 502, 503, 504]
+    },
     throwHttpErrors: false,
-    timeout: 60000
+    timeout: geminiTimeoutMs()
   });
-  const payload: unknown = await response.json();
+  const payload = parseGeminiHttpPayload(await response.text());
   if (!response.ok) throw new AiRouteError(geminiErrorMessage(payload));
   return geminiOutputText(payload);
 };

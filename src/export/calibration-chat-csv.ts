@@ -1,8 +1,8 @@
-import { problemRubrics } from "../app/understanding-calibration-data";
-import type { PilotState } from "../shared/types";
-import { chatEventForTurn, exportableSessions, optionsIncludeRawEvents, payloadStringArrayJson, stringifyCsv } from "./calibration-csv-shared";
-import type { CalibrationChatTurnCsvRow, CalibrationExportOptions, CalibrationRubricCodeCsvRow } from "./calibration-csv-types";
-import { chatTurnColumns, rubricCodeColumns } from "./calibration-csv-types";
+import { problemRubrics } from "../app/understanding-calibration-data.js";
+import type { PilotState } from "../shared/types.js";
+import { chatEventForTurn, exportableSessions, optionsIncludeRawEvents, payloadStringArrayJson, stringifyCsv } from "./calibration-csv-shared.js";
+import type { CalibrationChatTurnCsvRow, CalibrationExportOptions, CalibrationRubricCodeCsvRow } from "./calibration-csv-types.js";
+import { chatTurnColumns, rubricCodeColumns } from "./calibration-csv-types.js";
 
 export const exportCalibrationChatTurnRows = (state: PilotState, options?: CalibrationExportOptions): readonly CalibrationChatTurnCsvRow[] =>
   optionsIncludeRawEvents(options)

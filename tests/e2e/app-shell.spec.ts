@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("app shell renders core Khan-style surfaces", async ({ page }) => {
   await enterStudent(page);

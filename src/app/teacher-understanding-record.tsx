@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
-import type { PilotSession } from "../shared/types";
-import { independentProblemsForModule, predictionSurveyItemsForModule, preSurveyItemsForModule, reflectionSurveyItemsForModule, surveyItemsForTopic } from "./understanding-calibration-data";
-import type { IndependentProblem, LikertItem } from "./understanding-calibration-data";
+import type { PilotSession } from "../shared/types.js";
+import { finalReflectionSurveyItemsForModule, independentProblemsForModule, predictionSurveyItemsForModule, preSurveyItemsForModule, reflectionSurveyItemsForModule, surveyItemsForTopic, surveyResponseType } from "./understanding-calibration-data.js";
+import type { IndependentProblem, LikertItem } from "./understanding-calibration-data.js";
 
 type ProblemResponse = {
   readonly answer: string;
@@ -12,6 +12,22 @@ type ProblemResponse = {
 type RatingRow = {
   readonly label: string;
   readonly value: number;
+};
+
+type TextResponseRow = {
+  readonly label: string;
+  readonly value: string;
+};
+
+type AiFailureRow = {
+  readonly reason: string;
+  readonly requestId: string;
+  readonly timestamp: string;
+};
+
+type SurveyResponseRows = {
+  readonly ratings: readonly RatingRow[];
+  readonly texts: readonly TextResponseRow[];
 };
 
 const roleLabels = {
@@ -52,11 +68,32 @@ const problemResponsesForSession = (session: PilotSession): readonly ProblemResp
 const ratingsForMeasure = (session: PilotSession, kind: string, items: readonly LikertItem[]): readonly RatingRow[] => {
   const ratings = measurePayload(session, kind)?.["ratings"];
   if (!isRecord(ratings)) return [];
-  return items.flatMap((item) => {
+  return items.filter((item) => surveyResponseType(item) === "likert").flatMap((item) => {
     const value = ratings[item.id];
     return isNumber(value) ? [{ label: item.label, value }] : [];
   });
 };
+
+const textResponsesForMeasure = (session: PilotSession, kind: string, items: readonly LikertItem[]): readonly TextResponseRow[] => {
+  const textResponses = measurePayload(session, kind)?.["textResponses"];
+  if (!isRecord(textResponses)) return [];
+  return items.filter((item) => surveyResponseType(item) === "text").flatMap((item) => {
+    const value = textResponses[item.id];
+    return isString(value) && value.trim().length > 0 ? [{ label: item.label, value: value.trim() }] : [];
+  });
+};
+
+const surveyResponsesForMeasure = (session: PilotSession, kind: string, items: readonly LikertItem[]): SurveyResponseRows => ({
+  ratings: ratingsForMeasure(session, kind, items),
+  texts: textResponsesForMeasure(session, kind, items)
+});
+
+const aiFailureRowsForSession = (session: PilotSession): readonly AiFailureRow[] =>
+  session.events.filter((event) => event.type === "calibration_chat_failed").map((event) => ({
+    reason: payloadString(event.payload, "reason") || "원인을 기록하지 못했습니다.",
+    requestId: payloadString(event.payload, "requestId") || "요청 ID 없음",
+    timestamp: event.timestamp
+  }));
 
 export const understandingAnswerCount = (session: PilotSession): number =>
   problemResponsesForSession(session).filter((response) => response.answer.length > 0).length;
@@ -66,21 +103,36 @@ export const understandingConfidenceCount = (session: PilotSession): number =>
 
 export const hasUnderstandingReflection = (session: PilotSession): boolean =>
   payloadString(artifactPayload(session, "final_reflection"), "text").length > 0 ||
-  ratingsForMeasure(session, "reflection_self_report", reflectionSurveyItemsForModule(session.modules.understandingCalibration)).length > 0;
+  ratingsForMeasure(session, "reflection_self_report", reflectionSurveyItemsForModule(session.modules.understandingCalibration)).length > 0 ||
+  textResponsesForMeasure(session, "reflection_self_report", reflectionSurveyItemsForModule(session.modules.understandingCalibration)).length > 0 ||
+  ratingsForMeasure(session, "final_reflection_self_report", finalReflectionSurveyItemsForModule(session.modules.understandingCalibration)).length > 0 ||
+  textResponsesForMeasure(session, "final_reflection_self_report", finalReflectionSurveyItemsForModule(session.modules.understandingCalibration)).length > 0;
 
-function RatingGroup(props: { readonly items: readonly RatingRow[]; readonly title: string }): ReactElement {
+function SurveyGroup(props: { readonly responses: SurveyResponseRows; readonly title: string }): ReactElement {
+  const empty = props.responses.ratings.length === 0 && props.responses.texts.length === 0;
   return (
     <section className="understanding-rating-group" aria-label={props.title}>
       <h4>{props.title}</h4>
-      {props.items.length === 0 ? <p>아직 기록이 없습니다.</p> : (
+      {empty ? <p>아직 기록이 없습니다.</p> : null}
+      {props.responses.ratings.length === 0 ? null : (
         <dl>
-          {props.items.map((item) => (
+          {props.responses.ratings.map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
               <dd>{item.value} / 5</dd>
             </div>
           ))}
         </dl>
+      )}
+      {props.responses.texts.length === 0 ? null : (
+        <div className="understanding-text-response-list">
+          {props.responses.texts.map((item) => (
+            <article key={item.label}>
+              <strong>{item.label}</strong>
+              <p>{item.value}</p>
+            </article>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -90,10 +142,12 @@ export function TeacherUnderstandingRecord(props: { readonly session: PilotSessi
   const responses = problemResponsesForSession(props.session);
   const module = props.session.modules.understandingCalibration;
   const topic = props.session.modules.understandingCalibration?.topic ?? props.session.assignment.title;
-  const preRatings = ratingsForMeasure(props.session, "pre_self_report", surveyItemsForTopic(preSurveyItemsForModule(module), topic));
-  const predictionRatings = ratingsForMeasure(props.session, "prediction_self_report", surveyItemsForTopic(predictionSurveyItemsForModule(module), topic));
-  const reflectionRatings = ratingsForMeasure(props.session, "reflection_self_report", reflectionSurveyItemsForModule(module));
+  const preResponses = surveyResponsesForMeasure(props.session, "pre_self_report", surveyItemsForTopic(preSurveyItemsForModule(module), topic));
+  const predictionResponses = surveyResponsesForMeasure(props.session, "prediction_self_report", surveyItemsForTopic(predictionSurveyItemsForModule(module), topic));
+  const reflectionResponses = surveyResponsesForMeasure(props.session, "reflection_self_report", reflectionSurveyItemsForModule(module));
+  const finalReflectionResponses = surveyResponsesForMeasure(props.session, "final_reflection_self_report", finalReflectionSurveyItemsForModule(module));
   const finalReflection = payloadString(artifactPayload(props.session, "final_reflection"), "text");
+  const aiFailures = aiFailureRowsForSession(props.session);
 
   return (
     <>
@@ -118,9 +172,10 @@ export function TeacherUnderstandingRecord(props: { readonly session: PilotSessi
       <section aria-label="확인 문항 응답" className="understanding-survey-section">
         <h3>확인 문항 응답</h3>
         <div className="understanding-rating-grid">
-          <RatingGroup items={preRatings} title="시작 전 확인" />
-          <RatingGroup items={predictionRatings} title="수행 예측" />
-          <RatingGroup items={reflectionRatings} title="활동 돌아보기" />
+          <SurveyGroup responses={preResponses} title="시작 전 확인" />
+          <SurveyGroup responses={predictionResponses} title="수행 예측" />
+          <SurveyGroup responses={reflectionResponses} title="활동 돌아보기" />
+          <SurveyGroup responses={finalReflectionResponses} title="대화 다시 본 뒤" />
         </div>
       </section>
       <section aria-label="AI 대화 기록" className="understanding-chat-section teacher-chat-log-section">
@@ -128,6 +183,20 @@ export function TeacherUnderstandingRecord(props: { readonly session: PilotSessi
         {props.session.chatTurns.length === 0 ? <p>아직 대화가 없습니다.</p> : (
           <ol className="turn-list">
             {props.session.chatTurns.map((turn) => <li key={turn.id}><strong>{roleLabels[turn.role]}</strong><p>{turn.text}</p></li>)}
+          </ol>
+        )}
+      </section>
+      <section aria-label="AI 응답 실패 기록" className="understanding-ai-failure-section">
+        <h3>AI 응답 실패 기록</h3>
+        {aiFailures.length === 0 ? <p>AI 응답 실패 기록이 없습니다.</p> : (
+          <ol className="understanding-text-response-list">
+            {aiFailures.map((failure) => (
+              <li key={`${failure.requestId}-${failure.timestamp}`}>
+                <strong>{failure.requestId}</strong>
+                <p>{failure.reason}</p>
+                <time dateTime={failure.timestamp}>{failure.timestamp}</time>
+              </li>
+            ))}
           </ol>
         )}
       </section>

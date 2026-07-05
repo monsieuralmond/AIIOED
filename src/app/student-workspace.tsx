@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ClipboardEvent, ReactElement } from "react";
-import { requestCoachResponse } from "../ai/api-client";
-import { createReviewSuggestionCheckResult, createReviewSuggestions } from "../review/review";
-import { addAssistantCoachTurn, addChatTurn, enterStage, latestDraft, latestOutline, outlineMissingFields, recordFeedbackGenerated, recordPaste, recordSuggestionCheck, resolveSuggestion, submitFinal, updateDraft, updateOutline, updateSessionLlmMetadata, warnWeakOutline } from "../session/session";
-import { emptyOutline } from "../shared/fixtures";
-import type { LlmMode, Outline, PilotSession, ReviewSuggestion, Stage } from "../shared/types";
-import { Stepper } from "./layout";
-import { DraftEditorWithHighlight, reviewFocus } from "./review-draft-editor";
-import { AssignmentReference } from "./student-assignment-reference";
-import { ReadingStage } from "./student-reading-stage";
-import { StudentSupportPanel } from "./student-support-panel";
-import type { SuggestionCheckResult } from "./student-support-panel";
-import { ThinkingStage } from "./student-thinking-stage";
-import { StudentWritingStage } from "./student-writing-stage";
-import { Button, Surface, WarningBanner } from "./ui";
+import { requestCoachResponse } from "../ai/api-client.js";
+import { createReviewSuggestionCheckResult, createReviewSuggestions } from "../review/review.js";
+import { addAssistantCoachTurn, addChatTurn, enterStage, latestDraft, latestOutline, outlineMissingFields, recordFeedbackGenerated, recordPaste, recordSuggestionCheck, resolveSuggestion, submitFinal, updateDraft, updateOutline, updateSessionLlmMetadata, warnWeakOutline } from "../session/session.js";
+import { emptyOutline } from "../shared/fixtures.js";
+import type { ChatTurn, LlmMode, Outline, PilotSession, ReviewSuggestion, Stage } from "../shared/types.js";
+import { Stepper } from "./layout.js";
+import { DraftEditorWithHighlight, reviewFocus } from "./review-draft-editor.js";
+import { AssignmentReference } from "./student-assignment-reference.js";
+import { ReadingStage } from "./student-reading-stage.js";
+import { StudentSupportPanel } from "./student-support-panel.js";
+import type { SuggestionCheckResult } from "./student-support-panel.js";
+import { ThinkingStage } from "./student-thinking-stage.js";
+import { StudentWritingStage } from "./student-writing-stage.js";
+import { Button, Surface, WarningBanner } from "./ui.js";
 
 const withLlmMetadata = (session: PilotSession, llmMode: LlmMode | undefined, model: string | undefined): PilotSession =>
   llmMode === undefined || model === undefined ? session : updateSessionLlmMetadata(session, llmMode, model);
@@ -60,6 +60,15 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
 
   const goStage = (stage: Stage): void => props.setSession((session) => enterStage(session, stage));
   const saveOutline = (nextOutline: Outline): void => { setOutline(nextOutline); props.setSession((session) => updateOutline(session, nextOutline)); };
+  const coachHistoryWithPendingMessage = (message: string): readonly ChatTurn[] => [
+    ...props.session.chatTurns,
+    {
+      id: `pending-${Date.now()}`,
+      role: "student",
+      text: message,
+      timestamp: new Date().toISOString()
+    }
+  ];
   const sendCoachMessage = (message: string): void => {
     if (message.trim().length === 0) return;
     props.setSession((session) => addChatTurn(session, "student", message));
@@ -67,7 +76,7 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
     setApiError("");
     setWarning("");
     setCoachBusy(true);
-    requestCoachResponse({ assignment: props.session.assignment, outline, draft, message })
+    requestCoachResponse({ assignment: props.session.assignment, draft, history: coachHistoryWithPendingMessage(message), message, outline })
       .then((response) => {
         props.setSession((session) => withLlmMetadata(addAssistantCoachTurn(session, response.text, response.type), response.llmMode, response.model));
       })
@@ -153,12 +162,12 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
   };
 
   return (
-    <main className="student-page">
+    <main className="student-page student-workspace-page">
       <section className="student-session-bar">
         <strong>{props.session.assignment.title}</strong>
         <Button className="assignment-reference-button" variant="ghost" onClick={() => setAssignmentOpen(true)}>과제 보기</Button>
       </section>
-      <section className="student-progress-row">
+      <section className="student-progress-row student-workspace-progress">
         <Stepper current={props.session.currentStage} />
         <div className="stage-navigation-actions">
           <Button aria-label="이전 단계" disabled={previousStage === null} onClick={moveBackward}>이전 단계</Button>
@@ -166,8 +175,8 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
         </div>
       </section>
       {apiError.length > 0 ? <section className="student-api-warning"><WarningBanner>{apiError}</WarningBanner></section> : null}
-      <section className="workspace">
-        <Surface className="work-pane" testId="work-pane">
+      <section className="workspace student-workspace-shell">
+        <Surface className="work-pane student-workspace-pane" testId="work-pane">
           {props.session.currentStage === "reading" ? <ReadingStage session={props.session} onNext={() => goStage("thinking")} /> : null}
           {props.session.currentStage === "thinking" ? <ThinkingStage missing={warningFields} outline={outline} warning={warning} onAddEvidence={() => saveOutline({ ...outline, evidence: [...outline.evidence, ""] })} onAddSource={() => saveOutline({ ...outline, question: outline.question.trim().length === 0 ? "- " : `${outline.question.trimEnd()}\n- ` })} onChange={saveOutline} onCheck={() => { const missing = outlineMissingFields(outline); setWarningFields(missing); setWarning(missing.length === 0 ? "개요가 준비됐어요" : "개요를 점검했어요"); props.setSession((session) => warnWeakOutline(session, outline)); }} onContinue={() => goStage("writing")} onNext={startWriting} /> : null}
           {props.session.currentStage === "writing" ? <StudentWritingStage draft={draft} outline={outline} reviewBusy={reviewBusy} warning={warning} onDraft={changeDraft} onPaste={pasteDraft} onReview={openReview} /> : null}

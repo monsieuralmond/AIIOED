@@ -1,15 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { enterStudent, enterStudentCredentials, expectStudentWorkspace, openTeacherExport } from "./helpers.js";
 
 test("student starts from an assigned task and can reopen assignment details mid-task", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("참여자 코드").fill("S-MINSEO");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
-  await expect(page.getByRole("heading", { name: "배정된 과제" })).toBeVisible();
-  await expect(page.getByText("플라스틱 사용을 줄여야 할까?")).toBeVisible();
-  await expect(page.getByText("내가 제출할 글")).toBeVisible();
-  await expect(page.getByText("지문에서 근거 두 가지를 찾아")).toBeVisible();
+  await enterStudentCredentials(page, { loginId: "s001", participantCode: "S001", password: "test" });
+  await expectStudentWorkspace(page);
+  await expect(page.getByRole("heading", { name: "플라스틱 사용을 줄여야 할까?" })).toBeVisible();
 
-  await page.getByRole("button", { name: "과제 시작" }).click();
   await expect(page.getByTestId("top-stepper")).toContainText("과제 이해하기");
   await page.getByRole("button", { name: "과제 보기" }).click();
   await expect(page.getByRole("dialog", { name: "과제 내용" })).toContainText("근거와 반론");
@@ -17,10 +14,7 @@ test("student starts from an assigned task and can reopen assignment details mid
 });
 
 test("assignment reference preserves outline and draft state while writing", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("참여자 코드").fill("S-MINSEO");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
-  await page.getByRole("button", { name: "과제 시작" }).click();
+  await enterStudent(page);
   await page.getByRole("button", { name: "이해했어요" }).click();
   await page.getByLabel("중심 생각").fill("일회용 플라스틱은 줄여야 한다");
   await page.getByLabel("근거 또는 예시 1").fill("분해가 오래 걸린다");
@@ -41,10 +35,7 @@ test("assignment reference preserves outline and draft state while writing", asy
 });
 
 test("student can return to earlier writing stages without losing work", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("참여자 코드").fill("S-MINSEO");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
-  await page.getByRole("button", { name: "과제 시작" }).click();
+  await enterStudent(page);
   await expect(page.getByRole("button", { name: "이전 단계" })).toBeDisabled();
 
   await page.getByRole("button", { name: "이해했어요" }).click();
@@ -78,29 +69,24 @@ test("student can return to earlier writing stages without losing work", async (
 
 test("student home before starting keeps the assigned-task entry point", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("참여자 코드").fill("S-MINSEO");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
+  await enterStudentCredentials(page, { loginId: "s001", participantCode: "S001", password: "test" });
   await page.getByRole("button", { name: "홈" }).click();
   await expect(page.getByRole("heading", { name: "배정된 과제" })).toBeVisible();
 
-  await page.getByRole("button", { name: "과제 시작" }).click();
+  await expectStudentWorkspace(page);
   await page.getByRole("button", { name: "이해했어요" }).click();
   await expect(page.getByRole("heading", { name: "개요 작성" })).toBeVisible();
 });
 
 test("direct student URL creates the session for the selected student", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("참여자 코드").fill("S-JOON");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
+  await enterStudentCredentials(page, { loginId: "s002", participantCode: "S002", password: "test" });
 
   await page.goto("/student");
   await page.getByRole("button", { name: "이해했어요" }).click();
-  await page.goto("/export");
-  await page.getByLabel("교사 아이디").fill("test");
-  await page.getByLabel("교사 비밀번호").fill("test");
-  await page.getByRole("button", { name: "교사로 시작" }).click();
+  await openTeacherExport(page);
 
   const raw = await page.getByTestId("export-json").textContent();
   const exported: unknown = JSON.parse(raw ?? "{}");
-  expect(exported).toHaveProperty("sessions.0.student.accountId", "student-joon");
+  expect(exported).toHaveProperty("sessions.0.student.accountId", "student-s002");
 });

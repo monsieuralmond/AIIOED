@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { enterStudentCredentials, enterTeacher, switchToTeacher } from "./helpers.js";
 
 const completeStudentWriting = async (page: import("@playwright/test").Page): Promise<void> => {
   await page.getByRole("button", { name: "이해했어요" }).click();
@@ -21,10 +22,7 @@ const completeStudentWriting = async (page: import("@playwright/test").Page): Pr
 };
 
 test("teacher can assign, monitor, and review a student's process record", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("교사 아이디").fill("test");
-  await page.getByLabel("교사 비밀번호").fill("test");
-  await page.getByRole("button", { name: "교사로 시작" }).click();
+  await enterTeacher(page);
   const sampleAssignment = page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" });
   await expect(sampleAssignment.getByRole("button", { name: "미리보기" })).toBeVisible();
   await expect(sampleAssignment.getByRole("button", { name: "배정" })).toBeVisible();
@@ -39,17 +37,13 @@ test("teacher can assign, monitor, and review a student's process record", async
   await expect(page.getByRole("article", { name: "김민서 과정 기록" })).toContainText("과제를 시작하면 자동으로 모입니다");
 
   await page.getByRole("button", { name: "역할 바꾸기" }).click();
-  await page.getByLabel("참여자 코드").fill("S-MINSEO");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
-  await page.getByRole("button", { name: "과제 시작" }).click();
+  await enterStudentCredentials(page, { loginId: "s001", participantCode: "S001", password: "test" });
   await completeStudentWriting(page);
   await expect(page.getByText("제출 완료")).toBeVisible();
   await expect(page.getByRole("button", { name: "역할 바꾸기" })).toHaveCount(0);
 
-  await page.goto("/review");
-  await page.getByLabel("교사 아이디").fill("test");
-  await page.getByLabel("교사 비밀번호").fill("test");
-  await page.getByRole("button", { name: "교사로 시작" }).click();
+  await switchToTeacher(page);
+  await page.getByRole("button", { name: "학생 현황" }).click();
   await expect(page.getByLabel("과제 선택")).toBeVisible();
   await expect(page.getByRole("heading", { name: "플라스틱 사용을 줄여야 할까?" })).toBeVisible();
   await expect(page.getByRole("article", { name: "김민서 상태" }).getByText("제출 완료", { exact: true })).toBeVisible();
@@ -84,7 +78,6 @@ test("teacher can assign, monitor, and review a student's process record", async
   await page.getByRole("button", { name: "검토 저장" }).click();
   await expect(page.getByText("검토 기록이 저장되었습니다.")).toBeVisible();
 
-  await page.reload();
   await expect(page.getByLabel("교사 메모")).toHaveValue("근거 요청과 반론 작성이 확인됨.");
   await expect(page.getByLabel("검토 완료")).toBeChecked();
   await page.getByRole("button", { name: "검토 완료 1" }).click();
@@ -103,10 +96,7 @@ test("teacher can assign, monitor, and review a student's process record", async
 });
 
 test("selected teacher role persists across reloads", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("교사 아이디").fill("test");
-  await page.getByLabel("교사 비밀번호").fill("test");
-  await page.getByRole("button", { name: "교사로 시작" }).click();
+  await enterTeacher(page);
   await expect(page.getByText("연구 교사")).toBeVisible();
 
   await page.reload();

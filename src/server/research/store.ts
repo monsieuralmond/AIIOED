@@ -19,6 +19,10 @@ export type SessionStartResult = {
   readonly session: PilotSession;
 };
 
+export type SessionListResult = {
+  readonly sessions: readonly PilotSession[];
+};
+
 export type StoredChatTurn = ChatTurn & {
   readonly requestId?: string;
   readonly sessionId: string;
@@ -27,11 +31,14 @@ export type StoredChatTurn = ChatTurn & {
 
 export type ExportBundle = {
   readonly "artifacts.csv": string;
+  readonly "benchmark.jsonl": string;
   readonly "chat-turns.csv": string;
+  readonly "data-quality.csv": string;
   readonly "events.csv": string;
   readonly "item-long.csv": string;
   readonly "measures.csv": string;
   readonly "raw-json.json": Record<string, unknown>;
+  readonly "raw-events.csv": string;
   readonly "session-wide.csv": string;
 };
 
@@ -97,7 +104,18 @@ export type ResearchStore = {
   }) => Promise<void>;
   readonly listChatTurns: (sessionId: string) => Promise<readonly StoredChatTurn[]>;
   readonly resumeSession: (sessionId: string) => Promise<SessionStartResult>;
-  readonly startSession: (input: { readonly assignmentId?: string; readonly participantCode: string }) => Promise<SessionStartResult>;
+  readonly listSessions: (input: {
+    readonly assignmentId?: string;
+    readonly classGroupId?: string;
+    readonly teacherId?: string;
+  }) => Promise<SessionListResult>;
+  readonly startSession: (input: {
+    readonly assignmentId?: string;
+    readonly loginId?: string;
+    readonly participantCode: string;
+    readonly password?: string;
+    readonly teacherId?: string;
+  }) => Promise<SessionStartResult>;
   readonly updateStage: (input: {
     readonly completedAt?: string;
     readonly currentStage: string;

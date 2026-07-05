@@ -1,12 +1,12 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { ResearchModes } from "../shared/research";
-import type { Assignment, ClassGroup, PilotState } from "../shared/types";
-import { AssignmentAssignDialog, AssignmentPreview } from "./assignment-dialogs";
-import { Button, Field, TextInput } from "./ui";
+import { ResearchModes } from "../shared/research.js";
+import type { Assignment, ClassGroup, PilotState } from "../shared/types.js";
+import { AssignmentAssignDialog, AssignmentPreview } from "./assignment-dialogs.js";
+import { Button, Field, TextInput } from "./ui.js";
 
 type ResearcherListProps = {
-  readonly assignment: Assignment;
+  readonly activeAssignment: Assignment | null;
   readonly state: PilotState;
   readonly onAccounts: () => void;
   readonly onCreate: () => void;
@@ -66,11 +66,14 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
   const [selectedGradeLevel, setSelectedGradeLevel] = useState("all");
   const previewAssignment = props.state.assignments.find((item) => item.id === previewAssignmentId) ?? null;
   const assignAssignment = props.state.assignments.find((item) => item.id === assignAssignmentId) ?? null;
-  const assignments = [props.assignment, ...props.state.assignments.filter((assignment) => assignment.id !== props.assignment.id)];
+  const assignments = props.activeAssignment === null
+    ? props.state.assignments
+    : [props.activeAssignment, ...props.state.assignments.filter((assignment) => assignment.id !== props.activeAssignment?.id)];
   const categoryFilters = uniqueStrings(assignments.map(assignmentCategory));
   const gradeFilters = uniqueStrings(assignments.map((assignment) => assignment.gradeLevel));
   const normalizedSearch = normalizeFilterText(searchQuery);
   const activeFilterCount = (normalizedSearch.length > 0 ? 1 : 0) + selectedCategories.length + (selectedGradeLevel === "all" ? 0 : 1);
+  const canOpenStudentPreview = props.activeAssignment !== null && assignmentProgress(props.state, props.activeAssignment).assignedStudentCount > 0;
   const filteredAssignments = assignments.filter((assignment) => {
     const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
     const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(assignmentCategory(assignment));
@@ -99,7 +102,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
         <Button className="rail-item active" variant="ghost">과제 둘러보기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onCreate}>내 과제 만들기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onReview}>학생 현황</Button>
-        <Button className="rail-item" variant="ghost" onClick={props.onStudent}>학생 화면 보기</Button>
+        <Button className="rail-item" disabled={!canOpenStudentPreview} variant="ghost" onClick={props.onStudent}>학생 화면 보기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onExport}>로그 보기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onAccounts}>계정 관리</Button>
       </aside>
@@ -148,9 +151,9 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
               </section>
             ) : null}
             <div className="prompt-list" aria-label="활성 과제">
-              {filteredAssignments.length === 0 ? <p className="prompt-empty-state">조건에 맞는 과제가 없습니다.</p> : null}
+              {filteredAssignments.length === 0 ? <p className="prompt-empty-state">{assignments.length === 0 ? "아직 과제가 없습니다. 직접 만들기를 눌러 새 과제를 만드세요." : "조건에 맞는 과제가 없습니다."}</p> : null}
               {filteredAssignments.map((assignment) => {
-                const isActive = assignment.id === props.assignment.id;
+                const isActive = assignment.id === props.activeAssignment?.id;
                 const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
                 const progress = assignmentProgress(props.state, assignment);
                 return (

@@ -1,8 +1,8 @@
 import type { ClipboardEvent, ReactElement } from "react";
-import type { Outline } from "../shared/types";
-import { DraftOutlineBridge } from "./draft-outline-bridge";
-import { DraftReadinessCheck } from "./draft-readiness-check";
-import { Button, TextArea, WarningBanner } from "./ui";
+import type { Outline } from "../shared/types.js";
+import { DraftOutlineBridge } from "./draft-outline-bridge.js";
+import { DraftReadinessCheck } from "./draft-readiness-check.js";
+import { Button, TextArea, WarningBanner } from "./ui.js";
 
 type StudentWritingStageProps = {
   readonly draft: string;

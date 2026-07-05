@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { enterStudent, openTeacherExport } from "./helpers";
+import { enterStudent, openTeacherExport } from "./helpers.js";
 
 test("complete pilot flow", async ({ page }) => {
   await enterStudent(page);
@@ -22,7 +22,7 @@ test("complete pilot flow", async ({ page }) => {
   const raw = await page.getByTestId("export-json").textContent();
   const exported: unknown = JSON.parse(raw ?? "{}");
   expect(exported).toHaveProperty("sessions.0.finalSubmission.text");
-  expect(exported).toHaveProperty("sessions.0.student.accountId", "student-minseo");
+  expect(exported).toHaveProperty("sessions.0.student.accountId", "student-s001");
   expect(exported).toHaveProperty("students.0.displayName", "김민서");
   expect(JSON.stringify(exported)).toContain("submission_created");
   expect(JSON.stringify(exported)).toContain("stage_completed");

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterTeacher, openTeacherExport } from "./helpers";
+import { enterTeacher, openTeacherExport } from "./helpers.js";
 
 const passage =
   "플라스틱은 가볍고 값이 싸서 일상에서 널리 쓰인다. 하지만 한 번 쓰고 버려지는 플라스틱은 분해되는 데 오랜 시간이 걸리며, 강과 바다로 흘러가 생태계에 피해를 줄 수 있다.";
@@ -22,13 +22,13 @@ type StoredState = { readonly sessions: readonly StoredSession[] };
 test("researcher creates a Korean nonfiction assignment", async ({ page }) => {
   await enterTeacher(page);
   await page.getByRole("button", { name: "새 과제 만들기" }).click();
-  await page.getByLabel("과제 제목").fill("플라스틱 사용을 줄여야 할까?");
+  await page.getByLabel("과제 제목").fill("새 플라스틱 토론 과제");
   await page.getByLabel("비문학 지문").fill(passage);
   await page.getByLabel("해결할 문제").fill("일회용 플라스틱 사용을 줄여야 하는지 주장하세요.");
+  await page.getByLabel("학생에게 보일 요구사항").fill("자신의 주장과 이유를 분명히 쓰세요.");
   await page.getByLabel("학년 또는 난이도").selectOption("초등 고학년");
-  await page.getByRole("button", { name: "저장" }).click();
-  const createdAssignment = page.getByRole("article").filter({ hasText: "일회용 플라스틱 사용을 줄여야 하는지 주장하세요." });
-  await expect(createdAssignment.getByRole("heading", { name: "플라스틱 사용을 줄여야 할까?" })).toBeVisible();
+  await page.getByRole("button", { name: "과제 저장" }).click();
+  await expect(page.getByRole("article", { name: "새 플라스틱 토론 과제 과제" })).toBeVisible();
   await page.screenshot({ path: ".omo/evidence/pilot-writing-coach-v0/task-5-create.png", fullPage: true });
 });
 
@@ -82,7 +82,7 @@ test("student completes the understanding calibration flow and stores research r
   await chooseRating("나는 일회용 플라스틱의 개념을 설명할 수 있다.", "3");
   await chooseRating("나는 일회용 플라스틱의 원리나 이유를 설명할 수 있다.", "2");
   await chooseRating("나는 일회용 플라스틱의 한계를 설명할 수 있다.", "2");
-  await page.getByLabel("일회용 플라스틱에 대해 현재 알고 있는 내용을 자유롭게 써 보세요.").fill("플라스틱은 편하지만 버리면 오래 남는다고 알고 있다.");
+  await page.getByRole("textbox", { name: /현재 알고 있는 내용을 써 보세요/ }).fill("플라스틱은 편하지만 버리면 오래 남는다고 알고 있다.");
   await page.getByRole("button", { name: "글 읽기로 이동" }).click();
   await expect(page.getByText("지문")).toBeVisible();
   await page.getByRole("button", { name: "질문하러 가기" }).click();
@@ -104,7 +104,7 @@ test("student completes the understanding calibration flow and stores research r
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     await page.getByLabel(label).fill(answer);
     await page.getByRole("button", { name: "제출" }).click();
-    await page.getByRole("radiogroup", { name: "답변 확신도" }).getByRole("button", { name: `답변 확신도 ${confidence}점` }).click();
+    await chooseRating("방금 답변에 얼마나 확신하나요?", confidence);
     await page.getByRole("button", { name: nextButton }).click();
   };
 
@@ -115,45 +115,53 @@ test("student completes the understanding calibration flow and stores research r
   await answerProblem("오개념 수정", "오개념 수정 답변", "양자컴퓨터가 어떤 문제에서는 빠를 수 있다는 점은 맞지만 모든 문제를 빠르게 푸는 것은 아니다. 특정 알고리즘과 문제에서 장점이 있다.", "4", "다음 문제");
   await answerProblem("적용 판단", "적용 판단 답변", "복잡하다고 무조건 양자컴퓨터가 좋은 것은 아니다. 양자컴퓨터에 맞는 문제에서는 도움이 될 수 있지만 글쓰기나 보통 계산처럼 일반 컴퓨터가 나은 경우도 있다.", "3", "활동 돌아보기");
 
-  await chooseRating("활동 전에는 내가 더 잘 이해했다고 생각했다.", "4");
-  await chooseRating("직접 설명하려니 생각보다 어려웠다.", "5");
-  await chooseRating("AI와 대화할 때는 알 것 같았지만 직접 표현하려니 부족한 부분이 있었다.", "4");
-  await chooseRating("내가 생각한 것보다 실제 수행이 어려웠다.", "4");
+  await chooseRating("활동을 해 보니 생각보다 설명하기 어려운 부분이 있었다.", "5");
+  await chooseRating("활동 전에는 내가 더 잘 이해하고 있다고 생각했다.", "4");
+  await chooseRating("AI와 대화할 때는 알 것 같았지만, 직접 표현하려니 부족한 부분이 있었다.", "4");
+  await chooseRating("주제의 원리나 작동 이유를 설명하는 것이 생각보다 어려웠다.", "4");
+  await chooseRating("주제의 한계나 예외를 설명하는 것이 생각보다 어려웠다.", "4");
+  await chooseRating("주제가 어떤 상황에 도움이 되는지 판단하는 것이 생각보다 어려웠다.", "4");
   await chooseRating("다시 AI와 대화할 수 있다면 더 질문하고 싶은 부분이 있다.", "4");
+  await chooseRating("이번 활동을 통해 내가 정확히 아는 부분과 아직 모르는 부분을 더 잘 구분하게 되었다.", "5");
+  await page.getByLabel("활동을 하면서 가장 어렵게 느껴진 부분은 무엇이었나요?").fill("도움이 되는 경우와 그렇지 않은 경우를 구분하는 부분이 어려웠다.");
+  await page.getByLabel("AI와 대화할 때는 알 것 같았지만, 막상 직접 설명하려니 부족하다고 느낀 부분이 있다면 써 보세요.").fill("왜 모든 문제에 빠르지 않은지 내 말로 설명하는 부분이 부족했다.");
   await page.getByRole("button", { name: "대화 다시 보기" }).click();
 
   await expect(page.getByText("핵심을 글로 정리해줘")).toBeVisible();
   await page.getByRole("button", { name: "마무리 생각 쓰기" }).click();
-  await page.getByLabel("마무리 생각").fill("다음에는 빠른 이유와 모든 문제에 적용되지 않는 이유를 더 자세히 물어보고 싶다.");
+  await chooseRating("다시 보니 내가 놓친 중요한 내용이 있었다.", "4");
+  await chooseRating("AI가 설명해 준 내용을 읽을 때는 이해한 것 같았지만, 실제로는 더 확인이 필요한 부분이 있었다.", "4");
+  await chooseRating("내가 AI에게 더 깊이 질문했어야 하는 부분이 있었다.", "5");
+  await chooseRating("내 답변에서 빠진 중요한 내용이 있었다.", "4");
+  await chooseRating("다시 본 AI 대화는 내가 무엇을 알고 무엇을 모르는지 확인하는 데 도움이 되었다.", "5");
+  await page.getByLabel("다시 본 AI 대화 중 가장 도움이 된 부분은 무엇이었나요?").fill("플라스틱이 오래 남는다는 핵심을 짧게 정리해 준 부분이 도움이 되었다.");
+  await page.getByLabel("다시 보니 더 확인했어야 한다고 느낀 부분은 무엇인가요?").fill("다음에는 빠른 이유와 모든 문제에 적용되지 않는 이유를 더 자세히 물어보고 싶다.");
   await page.getByRole("button", { name: "완료" }).click();
   await expect(page.getByText("활동이 완료되었습니다.").first()).toBeVisible();
 
-  const stored = await page.evaluate(() => {
-    const raw = window.localStorage.getItem("reading-coach-lab:v1");
-    if (raw === null) return null;
-    const state: StoredState = JSON.parse(raw);
-    const session = state.sessions.find((item) => item.assignment.title === "플라스틱 이해 확인");
-    if (session === undefined) return null;
-    const moduleStageRecords = Object.values(session.modules.understandingCalibration?.stageRecords ?? {});
-    return {
-      artifactIds: session.artifacts.map((artifact) => artifact.id),
-      artifactKinds: session.artifacts.map((artifact) => artifact.kind),
-      chatCompletedPayload: session.events.find((event) => event.type === "calibration_chat_completed")?.payload ?? null,
-      chatTurnPayloads: session.events.filter((event) => event.type === "calibration_chat_turn_created").map((event) => event.payload ?? {}),
-      currentStage: session.currentStage,
-      eventIds: session.events.map((event) => event.id),
-      eventPayloads: session.events.filter((event) => ["question_started", "question_submitted", "confidence_submitted", "reflection_submitted"].includes(event.type)).map((event) => event.payload),
-      eventTypes: session.events.map((event) => event.type),
-      measureIds: session.measures.map((measure) => measure.id),
-      measureKinds: session.measures.map((measure) => measure.kind),
-      moduleArtifactIds: moduleStageRecords.flatMap((record) => record.artifactIds ?? []),
-      moduleEventIds: moduleStageRecords.flatMap((record) => record.eventIds ?? []),
-      moduleMeasureIds: moduleStageRecords.flatMap((record) => record.measureIds ?? []),
-      moduleStages: moduleStageRecords.map((record) => record.stage),
-      status: session.status
-    };
-  });
-  if (stored === null) throw new Error("Expected completed calibration session.");
+  await openTeacherExport(page);
+  const rawState = await page.getByTestId("export-json").textContent();
+  const state: StoredState = JSON.parse(rawState ?? "{}");
+  const session = state.sessions.find((item) => item.assignment.title === "플라스틱 이해 확인");
+  if (session === undefined) throw new Error("Expected completed calibration session.");
+  const moduleStageRecords = Object.values(session.modules.understandingCalibration?.stageRecords ?? {});
+  const stored = {
+    artifactIds: session.artifacts.map((artifact) => artifact.id),
+    artifactKinds: session.artifacts.map((artifact) => artifact.kind),
+    chatCompletedPayload: session.events.find((event) => event.type === "calibration_chat_completed")?.payload ?? null,
+    chatTurnPayloads: session.events.filter((event) => event.type === "calibration_chat_turn_created").map((event) => event.payload ?? {}),
+    currentStage: session.currentStage,
+    eventIds: session.events.map((event) => event.id),
+    eventPayloads: session.events.filter((event) => ["question_started", "question_submitted", "confidence_submitted", "reflection_submitted"].includes(event.type)).map((event) => event.payload),
+    eventTypes: session.events.map((event) => event.type),
+    measureIds: session.measures.map((measure) => measure.id),
+    measureKinds: session.measures.map((measure) => measure.kind),
+    moduleArtifactIds: moduleStageRecords.flatMap((record) => record.artifactIds ?? []),
+    moduleEventIds: moduleStageRecords.flatMap((record) => record.eventIds ?? []),
+    moduleMeasureIds: moduleStageRecords.flatMap((record) => record.measureIds ?? []),
+    moduleStages: moduleStageRecords.map((record) => record.stage),
+    status: session.status
+  };
   const lastChatTurnPayload = stored.chatTurnPayloads.at(-1);
   if (lastChatTurnPayload === undefined) throw new Error("Expected a stored calibration chat turn.");
 
@@ -195,13 +203,8 @@ test("student completes the understanding calibration flow and stores research r
   expect(stored.moduleMeasureIds).toEqual(expect.arrayContaining(stored.measureIds));
   expect(stored.moduleEventIds.length).toBeGreaterThanOrEqual(stored.eventIds.length);
 
-  await page.goto("/review");
-  const teacherIdField = page.getByLabel("교사 아이디");
-  if (await teacherIdField.count() > 0) {
-    await teacherIdField.fill("test");
-    await page.getByLabel("교사 비밀번호").fill("test");
-    await page.getByRole("button", { name: "교사로 시작" }).click();
-  }
+  await page.getByRole("button", { name: "홈" }).click();
+  await page.getByRole("button", { name: "학생 현황" }).click();
   await expect(page.getByLabel("과제 선택")).toBeVisible();
   await expect(page.getByRole("heading", { name: "플라스틱 이해 확인" })).toBeVisible();
   await page.getByLabel("과제 선택").selectOption({ label: "플라스틱 사용을 줄여야 할까?" });
@@ -226,13 +229,14 @@ test("student completes the understanding calibration flow and stores research r
   await expect(page.locator(".teacher-chat-log-section .turn-list")).toHaveCSS("overflow-y", "auto");
   await expect(processRecord).toContainText("핵심을 글로 정리해줘");
   await expect(page.getByRole("heading", { name: "마무리 생각" })).toBeVisible();
+  await expect(processRecord).toContainText("플라스틱이 오래 남는다는 핵심을 짧게 정리해 준 부분이 도움이 되었다.");
   await expect(processRecord).toContainText("다음에는 빠른 이유와 모든 문제에 적용되지 않는 이유를 더 자세히 물어보고 싶다.");
 
   await openTeacherExport(page);
   const exportedJson = await page.getByTestId("export-json").textContent();
   if (exportedJson === null) throw new Error("Expected export JSON preview.");
   const eventsHref = await page.getByRole("link", { name: "이벤트 CSV 다운로드" }).getAttribute("href");
-  const artifactMeasuresHref = await page.getByRole("link", { name: "산출물·측정값 CSV 다운로드" }).getAttribute("href");
+  const artifactMeasuresHref = await page.getByRole("link", { name: "산출물·측정값 CSV" }).getAttribute("href");
   if (eventsHref === null) throw new Error("Expected research events CSV link.");
   if (artifactMeasuresHref === null) throw new Error("Expected artifact-measure CSV link.");
   const eventsCsv = decodeURIComponent(eventsHref.replace("data:text/csv;charset=utf-8,", ""));

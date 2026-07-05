@@ -1,4 +1,4 @@
-import type { PilotEventType, PilotState } from "../shared/types";
+import type { PilotEventType, PilotState } from "../shared/types.js";
 
 type ResearchEventSpeaker = "assistant" | "student" | "system_event";
 

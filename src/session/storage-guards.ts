@@ -27,7 +27,10 @@ export const isTransferChoices = (value: unknown): boolean => Array.isArray(valu
 
 const isSurveyItem = (value: unknown): boolean => {
   if (!isRecord(value)) return false;
-  return isString(value["id"]) && isString(value["label"]) && (value["helper"] === undefined || isString(value["helper"]));
+  return isString(value["id"]) &&
+    isString(value["label"]) &&
+    (value["helper"] === undefined || isString(value["helper"])) &&
+    (value["responseType"] === undefined || value["responseType"] === "likert" || value["responseType"] === "text");
 };
 
 export const isSurveyItems = (value: unknown): boolean => Array.isArray(value) && value.every(isSurveyItem);

@@ -1,14 +1,21 @@
-import type { PilotSession } from "../shared/types";
-import type { UnderstandingCalibrationStage } from "../shared/research";
-import type { IndependentProblem } from "./understanding-calibration-data";
-import { durationSince } from "./understanding-calibration-events";
+import type { PilotSession } from "../shared/types.js";
+import type { UnderstandingCalibrationStage } from "../shared/research.js";
+import { UNDERSTANDING_CALIBRATION_PROMPT_VERSION } from "./understanding-calibration-data.js";
+import type { IndependentProblem } from "./understanding-calibration-data.js";
+import { durationSince } from "./understanding-calibration-events.js";
 
 export const startedEventForProblem = (problem: IndependentProblem): {
   readonly payload: Record<string, unknown>;
   readonly stage: UnderstandingCalibrationStage;
   readonly type: "question_started";
 } => ({
-  payload: { questionNumber: problem.number, title: problem.title },
+  payload: {
+    problemKey: problem.answerArtifactKind,
+    prompt: problem.prompt,
+    promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+    questionNumber: problem.number,
+    title: problem.title
+  },
   stage: problem.stage,
   type: "question_started"
 });

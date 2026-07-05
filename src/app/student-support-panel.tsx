@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type { ChatTurn, Outline, ReviewSuggestion, Stage } from "../shared/types";
-import { FeedbackPanel } from "./student-feedback-panel";
-import type { FeedbackPanelActions, FeedbackPanelModel, SuggestionCheckResult } from "./student-feedback-panel";
-import { Button, TextInput } from "./ui";
+import type { ChatTurn, Outline, ReviewSuggestion, Stage } from "../shared/types.js";
+import { FeedbackPanel } from "./student-feedback-panel.js";
+import type { FeedbackPanelActions, FeedbackPanelModel, SuggestionCheckResult } from "./student-feedback-panel.js";
+import { Button, TextInput } from "./ui.js";
 
 type PanelTab = "chat" | "outline" | "feedback";
 
-export type { SuggestionCheckResult } from "./student-feedback-panel";
+export type { SuggestionCheckResult } from "./student-feedback-panel.js";
 
 type SupportPanelProps = {
   readonly checkingSuggestionId: string | null;

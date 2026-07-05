@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
-import { UnderstandingCalibrationStages } from "../shared/research";
-import { Button } from "./ui";
-import { StageFrame } from "./understanding-calibration-components";
+import { UnderstandingCalibrationStages } from "../shared/research.js";
+import { Button } from "./ui.js";
+import { StageFrame } from "./understanding-calibration-components.js";
 
 type Props = {
   readonly sessionTitle: string;

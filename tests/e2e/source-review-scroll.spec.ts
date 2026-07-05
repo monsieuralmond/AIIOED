@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 const completeOutline = async (page: import("@playwright/test").Page): Promise<void> => {
   await page.getByRole("button", { name: "이해했어요" }).click();
@@ -33,8 +33,8 @@ test("revision feedback catches missing source markers and scrolls long drafts",
   await page.getByTestId("draft-editor").fill(longDraft);
   await page.getByRole("button", { name: "고쳐쓰기 시작" }).click();
 
-  await expect(page.getByTestId("work-pane").getByText("근거 출처 표시")).toBeVisible();
-  await expect(page.getByText("근거가 어디에서 온 것인지 초안에 짧게 표시했는지 확인해보세요.")).toBeVisible();
+  await expect(page.getByTestId("work-pane").getByText("자료 출처 표시")).toBeVisible();
+  await expect(page.getByText("자료나 예시가 어디에서 온 것인지 초안에 짧게 표시했는지 확인해보세요.")).toBeVisible();
 
   const scrollInfo = await page.getByTestId("draft-editor").evaluate((node) => {
     const editor = node as HTMLTextAreaElement;
@@ -63,7 +63,7 @@ test("mobile revision editor keeps a visible scrollable writing area", async ({ 
   await completeOutline(page);
   await page.getByTestId("draft-editor").fill(longDraftText());
   await page.getByRole("button", { name: "고쳐쓰기 시작" }).click();
-  await expect(page.getByText("근거가 어디에서 온 것인지 초안에 짧게 표시했는지 확인해보세요.")).toBeVisible();
+  await expect(page.getByText("자료나 예시가 어디에서 온 것인지 초안에 짧게 표시했는지 확인해보세요.")).toBeVisible();
 
   const scrollInfo = await page.getByTestId("draft-editor").evaluate((node) => {
     const editor = node as HTMLTextAreaElement;

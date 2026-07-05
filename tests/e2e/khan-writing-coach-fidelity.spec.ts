@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("student workspace follows the video-like writing coach stage model", async ({ page }) => {
   await enterStudent(page);
@@ -77,27 +77,27 @@ test("revision stage exposes category-based suggestions with resolution controls
   await page.getByRole("button", { name: "고쳐쓰기 시작" }).click();
 
   await expect(page.getByRole("tab", { name: "피드백" })).toBeVisible();
-  await expect(page.getByText("1. 주장과 초점")).toBeVisible();
-  await expect(page.getByText("2. 근거와 설명")).toBeVisible();
+  await expect(page.getByText("1. 내용과 초점")).toBeVisible();
+  await expect(page.getByText("2. 자료와 설명")).toBeVisible();
   await expect(page.getByText("3. 구조와 흐름")).toBeVisible();
   await expect(page.getByText("4. 문장 표현")).toBeVisible();
   await expect(page.getByLabel("고쳐쓰기 진행 상황")).toContainText("남은 제안");
   await expect(page.getByLabel("해결한 제안 0개")).toBeVisible();
   await page.getByRole("button", { name: "제안 보기" }).first().click();
   await expect(page.getByTestId("draft-highlighted-span")).toContainText("분해가 오래 걸리기 때문이다.");
-  await expect(page.getByLabel("현재 볼 곳")).toContainText("근거가 들어가야 할 문장");
+  await expect(page.getByLabel("현재 볼 곳")).toContainText("자료나 예시가 들어가야 할 문장");
   await expect(page.getByRole("button", { name: "내 수정 확인" })).toBeVisible();
   await page.getByRole("button", { name: "내 수정 확인" }).click();
-  await expect(page.getByText("개요에 쓴 근거 두 가지가 초안에 아직 모두 들어가지 않았어요.")).toBeVisible();
+  await expect(page.getByText("개요에 쓴 자료나 예시 두 가지가 초안에 아직 모두 들어가지 않았어요.")).toBeVisible();
   await page.getByTestId("draft-editor").fill("일회용 플라스틱은 줄여야 한다. 지문에서는 플라스틱이 분해가 오래 걸린다고 했다. 또 강과 바다로 흘러가 생태계에 피해를 준다고 설명했다. 위생과 편리함이 중요하다는 의견도 있다. 하지만 한 번 쓰고 버리는 물건이 계속 늘어나면 피해가 오래 남는다. 그래서 학교와 집에서는 재사용 가능한 물건을 더 쓰고 불필요한 포장을 줄여야 한다.");
   await page.getByRole("button", { name: "내 수정 확인" }).click();
   await expect(page.getByText("수정이 확인됐어요. 이 제안을 해결로 표시했어요.")).toBeVisible();
   await expect(page.getByLabel("해결한 제안 1개")).toBeVisible();
   await expect(page.getByRole("button", { name: "확인됨" })).toBeVisible();
   await expect(page.getByRole("button", { name: "해결 표시" })).toBeVisible();
-  await expect(page.locator(".feedback-category.active")).toContainText("2. 근거와 설명");
+  await expect(page.locator(".feedback-category.active")).toContainText("2. 자료와 설명");
   await expect(page.getByText("지금 볼 곳")).toBeVisible();
-  await expect(page.getByTestId("work-pane").getByText("근거가 들어가야 할 문장")).toBeVisible();
+  await expect(page.getByTestId("work-pane").getByText("자료나 예시가 들어가야 할 문장")).toBeVisible();
   await expect(page.getByTestId("draft-highlighted-span")).toContainText("지문에서는 플라스틱이 분해가 오래 걸린다고 했다.");
   expect(reviewApiCalls).toBe(0);
 });

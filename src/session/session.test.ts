@@ -25,9 +25,9 @@ describe("pilot session logging", () => {
   it("records review feedback lifecycle events", () => {
     const suggestion: ReviewSuggestion = {
       id: "suggestion-evidence",
-      category: "근거와 설명",
+      category: "자료와 설명",
       text: "근거가 주장과 어떻게 연결되는지 확인하세요.",
-      focusLabel: "근거가 들어가야 할 문장",
+      focusLabel: "자료나 예시가 들어가야 할 문장",
       resolved: false
     };
     const session = enterStage(createSession(sampleAssignment), "review");
@@ -41,7 +41,7 @@ describe("pilot session logging", () => {
     const checkedEvent = withCheck.events.find((item) => item.type === "suggestion_checked");
 
     expect(generatedEvent?.payload).toEqual(expect.objectContaining({
-      suggestions: [expect.objectContaining({ id: "suggestion-evidence", focusLabel: "근거가 들어가야 할 문장" })]
+      suggestions: [expect.objectContaining({ id: "suggestion-evidence", focusLabel: "자료나 예시가 들어가야 할 문장" })]
     }));
     expect(checkedEvent?.payload).toEqual(expect.objectContaining({
       message: "아직 근거가 하나만 보여요.",

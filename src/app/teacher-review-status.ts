@@ -1,4 +1,4 @@
-import type { TeacherReviewStatus } from "../shared/types";
+import type { TeacherReviewStatus } from "../shared/types.js";
 
 export type ReviewFilter = "all_reviews" | TeacherReviewStatus;
 

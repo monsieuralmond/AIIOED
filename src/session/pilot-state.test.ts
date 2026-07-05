@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { exportDataset } from "../export/export.js";
 import { sampleAssignment } from "../shared/fixtures.js";
-import { ResearchConditions, ResearchModes } from "../shared/research.js";
-import { activeSession, createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session.js";
+import { GuidedWritingStages, ResearchConditions, ResearchModes } from "../shared/research.js";
+import { activeSession, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session.js";
 
 describe("local pilot state", () => {
   it("keeps student sessions distinct for the same assignment", () => {
@@ -85,6 +85,27 @@ describe("local pilot state", () => {
       transferChoices: [{ id: "A", label: "A", text: "새로운 기사에 적용하기" }],
       version: "1.0"
     });
+  });
+
+  it("starts a guided-writing session at the material planning step", () => {
+    const initial = createInitialPilotState();
+    const student = initial.students[0];
+    if (student === undefined) throw new Error("fixture student missing");
+    const assignment = {
+      ...sampleAssignment,
+      id: "assignment-guided-writing",
+      researchMode: ResearchModes.guidedWriting,
+      title: "단계형 글쓰기 연습"
+    };
+
+    const withAssignment = saveAssignmentInState(initial, assignment);
+    const started = startStudentSession(withAssignment, student.id, assignment.id);
+
+    expect(started.session.researchMode).toBe(ResearchModes.guidedWriting);
+    expect(started.session.currentStage).toBe(GuidedWritingStages.material);
+    expect(started.session.status).toBe("in_progress");
+    expect(started.session.artifacts).toEqual([]);
+    expect(started.session.chatTurns).toEqual([]);
   });
 
   it("keeps reserved research conditions inactive when saving assignments", () => {
@@ -199,6 +220,32 @@ describe("local pilot state", () => {
     expect(exported.classGroups).toHaveLength(0);
     expect(exported.students).toHaveLength(0);
     expect(exported.assignments[0]?.classGroupId).toBeUndefined();
+  });
+
+  it("deletes an assignment with its linked sessions and selects a remaining assignment", () => {
+    const initial = createInitialPilotState();
+    const student = initial.students[0];
+    if (student === undefined) throw new Error("fixture student missing");
+    const assignment = { ...sampleAssignment, id: "assignment-second", title: "두 번째 과제" };
+    const withAssignment = saveAssignmentInState(initial, assignment);
+    const started = startStudentSession(withAssignment, student.id, assignment.id);
+
+    const deleted = deleteAssignment(started.state, assignment.id);
+
+    expect(deleted.assignments.find((item) => item.id === assignment.id)).toBeUndefined();
+    expect(deleted.assignments.find((item) => item.id === sampleAssignment.id)).toBeDefined();
+    expect(deleted.activeAssignmentId).toBe(sampleAssignment.id);
+    expect(deleted.sessions).toHaveLength(0);
+  });
+
+  it("allows deleting the last assignment and leaves the roster empty", () => {
+    const initial = createInitialPilotState();
+
+    const deleted = deleteAssignment(initial, sampleAssignment.id);
+
+    expect(deleted.assignments).toEqual([]);
+    expect(deleted.activeAssignmentId).toBe("");
+    expect(deleted.sessions).toEqual([]);
   });
 
   it("deletes a teacher account while keeping at least one teacher available", () => {

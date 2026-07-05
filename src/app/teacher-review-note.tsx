@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import type { TeacherReviewNote, TeacherReviewStatus, TeacherReviewUpdate } from "../shared/types";
-import { Button, Field, TextArea } from "./ui";
+import type { TeacherReviewNote, TeacherReviewStatus, TeacherReviewUpdate } from "../shared/types.js";
+import { Button, Field, TextArea } from "./ui.js";
 
 const reviewStatuses: readonly TeacherReviewStatus[] = ["not_reviewed", "needs_follow_up", "reviewed"];
 

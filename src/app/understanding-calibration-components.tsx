@@ -1,9 +1,9 @@
 import type { FormEvent, ReactElement, ReactNode } from "react";
-import type { ChatTurn } from "../shared/types";
-import type { UnderstandingCalibrationStage } from "../shared/research";
-import { Button, Surface } from "./ui";
-import { calibrationStageLabels, calibrationStageOrder } from "./understanding-calibration-data";
-import type { LikertItem } from "./understanding-calibration-data";
+import type { ChatTurn } from "../shared/types.js";
+import type { UnderstandingCalibrationStage } from "../shared/research.js";
+import { Button, Surface } from "./ui.js";
+import { calibrationStageLabels, calibrationStageOrder, surveyResponseType } from "./understanding-calibration-data.js";
+import type { LikertItem } from "./understanding-calibration-data.js";
 
 const likertValues = [1, 2, 3, 4, 5] as const;
 const likertScaleLabels = {
@@ -14,6 +14,7 @@ const likertScaleLabels = {
 type StageFrameProps = {
   readonly children: ReactNode;
   readonly disabled?: boolean;
+  readonly layout?: "default" | "split";
   readonly primaryLabel: string;
   readonly sessionTitle: string;
   readonly stage: UnderstandingCalibrationStage;
@@ -24,6 +25,7 @@ type StageFrameProps = {
 
 export function StageFrame(props: StageFrameProps): ReactElement {
   const stageIndex = calibrationStageOrder.findIndex((stage) => stage === props.stage) + 1;
+  const isSplitLayout = props.layout === "split";
   return (
     <main className="student-page understanding-flow" data-testid="understanding-calibration-flow">
       <div className="student-session-bar">
@@ -35,8 +37,8 @@ export function StageFrame(props: StageFrameProps): ReactElement {
           <strong>{calibrationStageLabels[props.stage]}</strong>
         </div>
       </div>
-      <div className="understanding-shell">
-        <Surface className="understanding-card">
+      <div className={isSplitLayout ? "understanding-shell understanding-shell-split" : "understanding-shell"}>
+        <Surface className={isSplitLayout ? "understanding-card understanding-card-split" : "understanding-card"}>
           <p className="support-label">{calibrationStageLabels[props.stage]}</p>
           <h1>{props.title}</h1>
           {props.subtitle === undefined ? null : <p className="understanding-lead">{props.subtitle}</p>}
@@ -59,7 +61,7 @@ type LikertGroupProps = {
 export function LikertGroup(props: LikertGroupProps): ReactElement {
   return (
     <div className="likert-list">
-      {props.items.map((item) => (
+      {props.items.filter((item) => surveyResponseType(item) === "likert").map((item) => (
         <fieldset className="likert-row" key={item.id}>
           <legend>{item.label}</legend>
           {item.helper === undefined ? null : <p>{item.helper}</p>}
@@ -85,6 +87,58 @@ export function LikertGroup(props: LikertGroupProps): ReactElement {
           </div>
         </fieldset>
       ))}
+    </div>
+  );
+}
+
+type SurveyResponseGroupProps = {
+  readonly items: readonly LikertItem[];
+  readonly ratings: Readonly<Record<string, number>>;
+  readonly textResponses: Readonly<Record<string, string>>;
+  readonly onRatingChange: (id: string, value: number) => void;
+  readonly onTextChange: (id: string, value: string) => void;
+};
+
+export function SurveyResponseGroup(props: SurveyResponseGroupProps): ReactElement {
+  return (
+    <div className="likert-list">
+      {props.items.map((item) => {
+        if (surveyResponseType(item) === "text") {
+          return (
+            <label className="survey-text-response" key={item.id}>
+              <span>{item.label}</span>
+              {item.helper === undefined ? null : <p>{item.helper}</p>}
+              <textarea value={props.textResponses[item.id] ?? ""} onChange={(event) => props.onTextChange(item.id, event.currentTarget.value)} />
+            </label>
+          );
+        }
+        return (
+          <fieldset className="likert-row" key={item.id}>
+            <legend>{item.label}</legend>
+            {item.helper === undefined ? null : <p>{item.helper}</p>}
+            <div className="likert-scale">
+              <div className="likert-scale-labels" aria-hidden="true">
+                <span>{likertScaleLabels.low}</span>
+                <span>{likertScaleLabels.high}</span>
+              </div>
+              <div className="likert-options" role="radiogroup" aria-label={item.label}>
+                {likertValues.map((value) => (
+                  <button
+                    aria-label={`${item.label} ${value}점`}
+                    aria-pressed={props.ratings[item.id] === value}
+                    className={props.ratings[item.id] === value ? "selected" : ""}
+                    key={value}
+                    type="button"
+                    onClick={() => props.onRatingChange(item.id, value)}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </fieldset>
+        );
+      })}
     </div>
   );
 }

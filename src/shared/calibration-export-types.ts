@@ -26,13 +26,18 @@ export type CalibrationDerivedFeatures = {
   readonly assignmentVersion: string;
   readonly assistantChars: number;
   readonly calibrationGapOverall: number | null;
+  readonly completedProblemCount: number;
+  readonly confidenceDrop: number | null;
   readonly confidenceMean: number | null;
+  readonly confidenceTrajectory: readonly number[];
   readonly containsWhyQuestion: boolean;
   readonly exampleRequestCount: number;
   readonly hasAllFourAnswers: boolean;
   readonly hasAllFourConfidence: boolean;
   readonly hasChat: boolean;
+  readonly hasFinalReflection: boolean;
   readonly hasManualScores: boolean;
+  readonly hasReflectionSurvey: boolean;
   readonly isCompleteForAnalysis: boolean;
   readonly overconfidenceIndex: number | null;
   readonly offTopicCount: number;

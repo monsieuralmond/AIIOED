@@ -1,6 +1,7 @@
-import type { ReactElement } from "react";
-import type { ReviewSuggestion } from "../shared/types";
-import { Button } from "./ui";
+import { useEffect, useRef } from "react";
+import type { ReactElement, RefObject } from "react";
+import type { ReviewSuggestion } from "../shared/types.js";
+import { Button } from "./ui.js";
 
 export type SuggestionCheckResult = {
   readonly message: string;
@@ -42,8 +43,8 @@ type FeedbackCategoryModel = {
 };
 
 const feedbackCategories: readonly FeedbackCategoryDefinition[] = [
-  { key: "주장과 초점", title: "1. 주장과 초점" },
-  { key: "근거와 설명", title: "2. 근거와 설명" },
+  { key: "내용과 초점", title: "1. 내용과 초점" },
+  { key: "자료와 설명", title: "2. 자료와 설명" },
   { key: "구조와 흐름", title: "3. 구조와 흐름" },
   { key: "문장 표현", title: "4. 문장 표현" }
 ];
@@ -60,6 +61,8 @@ const focusStatus = (model: SuggestionDetailModel): string => {
 };
 
 export function FeedbackPanel(props: { readonly actions: FeedbackPanelActions; readonly model: FeedbackPanelModel }): ReactElement {
+  const panelRef = useRef<HTMLElement>(null);
+  const detailRef = useRef<HTMLElement>(null);
   const resolvedCount = resolvedSuggestionCount(props.model.suggestions, props.model.resolvedSuggestionIds);
   const remainingCount = Math.max(props.model.suggestions.length - resolvedCount, 0);
   const detailModel = props.model.selectedSuggestion === null ? null : {
@@ -69,8 +72,20 @@ export function FeedbackPanel(props: { readonly actions: FeedbackPanelActions; r
     suggestion: props.model.selectedSuggestion
   } satisfies SuggestionDetailModel;
 
+  useEffect(() => {
+    const panel = panelRef.current;
+    const detail = detailRef.current;
+    if (panel === null || detail === null) return;
+    window.requestAnimationFrame(() => {
+      const panelRect = panel.getBoundingClientRect();
+      const detailRect = detail.getBoundingClientRect();
+      const hiddenBottom = detailRect.bottom - panelRect.bottom;
+      if (hiddenBottom > 0) panel.scrollBy({ top: hiddenBottom, behavior: "smooth" });
+    });
+  }, [detailModel?.suggestion.id]);
+
   return (
-    <section aria-label="검토 제안" className="feedback-panel">
+    <section aria-label="검토 제안" className="feedback-panel" ref={panelRef}>
       <header className="feedback-header">
         <span className="coach-avatar small">RC</span>
         <div><h2>고쳐쓰기를 위한 피드백</h2><p>{props.model.suggestions.length}개의 제안을 확인하세요.</p></div>
@@ -80,7 +95,7 @@ export function FeedbackPanel(props: { readonly actions: FeedbackPanelActions; r
       <div className="feedback-categories">
         {feedbackCategories.map((category) => <FeedbackCategory actions={{ onSelectSuggestion: props.actions.onSelectSuggestion }} key={category.key} model={{ category, resolvedSuggestionIds: props.model.resolvedSuggestionIds, selectedSuggestionId: props.model.selectedSuggestion?.id ?? null, suggestions: props.model.suggestions }} />)}
       </div>
-      {detailModel === null ? null : <SuggestionDetail actions={props.actions} model={detailModel} />}
+      {detailModel === null ? null : <SuggestionDetail actions={props.actions} detailRef={detailRef} model={detailModel} />}
     </section>
   );
 }
@@ -114,9 +129,9 @@ function CurrentFocus(props: { readonly model: SuggestionDetailModel }): ReactEl
   );
 }
 
-function SuggestionDetail(props: { readonly actions: FeedbackPanelActions; readonly model: SuggestionDetailModel }): ReactElement {
+function SuggestionDetail(props: { readonly actions: FeedbackPanelActions; readonly detailRef?: RefObject<HTMLElement | null>; readonly model: SuggestionDetailModel }): ReactElement {
   return (
-    <section className="suggestion-detail" role="note">
+    <section className="suggestion-detail" ref={props.detailRef} role="note">
       <p className="support-label">제안 보기</p>
       <strong className="suggestion-focus-label">{props.model.suggestion.focusLabel}</strong>
       <p>{props.model.suggestion.text}</p>

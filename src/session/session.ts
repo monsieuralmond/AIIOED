@@ -1,8 +1,9 @@
 import type { Assignment, ChatRole, CoachResponseType, FinalSubmission, LlmMode, Outline, PasteEvent, PilotEvent, PilotEventType, PilotSession, ReviewSuggestion, Stage, StudentAccount, TeacherReviewNote, TeacherReviewUpdate } from "../shared/types.js";
-import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
+import { GuidedWritingStages, ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
+import type { ResearchArtifact } from "../shared/research.js";
 import { initialResearchSessionFields, normalizeAssignmentResearchMode } from "./research-session.js";
 
-export { deleteClassGroup, deleteStudentAccount, deleteTeacherAccount } from "./pilot-delete.js";
+export { deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount } from "./pilot-delete.js";
 export { activeSession, assignmentsForStudent, createClassGroup, createInitialPilotState, createStudentAccount, createTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, sessionForStudent, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession } from "./pilot-state.js";
 export type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "./pilot-state.js";
 export { researchModeForAssignment } from "./research-session.js";
@@ -25,6 +26,15 @@ const touchSession = (): Pick<PilotSession, "updatedAt"> => ({
   updatedAt: nowIso()
 });
 
+const artifact = (kind: string, stage: Stage, payload: Record<string, unknown>, timestamp: string = nowIso()): ResearchArtifact => ({
+  createdAt: timestamp,
+  id: makeId("artifact"),
+  kind,
+  payload,
+  stage,
+  updatedAt: timestamp
+});
+
 export const createSession = (assignment: Assignment, student?: StudentAccount): PilotSession => {
   const createdAt = nowIso();
   const normalizedAssignment = normalizeAssignmentResearchMode(assignment);
@@ -36,7 +46,7 @@ export const createSession = (assignment: Assignment, student?: StudentAccount):
     assignment: normalizedAssignment,
     ...researchFields,
     student: sessionStudent,
-    currentStage: researchFields.researchMode === ResearchModes.understandingCalibration ? UnderstandingCalibrationStages.preSurvey : "reading",
+    currentStage: researchFields.researchMode === ResearchModes.understandingCalibration ? UnderstandingCalibrationStages.preSurvey : researchFields.researchMode === ResearchModes.guidedWriting ? GuidedWritingStages.material : "reading",
     events: [],
     chatTurns: [],
     outlineSnapshots: [],
@@ -68,19 +78,23 @@ export const enterStage = (session: PilotSession, stage: Stage): PilotSession =>
   };
 };
 
-export const updateOutline = (session: PilotSession, outline: Outline): PilotSession => ({
-  ...session,
-  ...touchSession(),
-  outlineSnapshots: [...session.outlineSnapshots, outline],
-  events: [
-    ...session.events,
-    event("outline_edited", "thinking", { outline }),
-    ...(outline.claim.trim().length > 0 ? [event("claim_revised", "thinking", { claim: outline.claim })] : []),
-    ...(outline.evidence.filter((item) => item.trim().length > 0).length > 0 ? [event("evidence_added", "thinking", { evidence: outline.evidence })] : []),
-    ...(outline.question.trim().length > 0 ? [event("source_added", "thinking", { source: outline.question })] : []),
-    ...(outline.counterargument.trim().length > 0 ? [event("counterargument_added", "thinking", { counterargument: outline.counterargument })] : [])
-  ]
-});
+export const updateOutline = (session: PilotSession, outline: Outline): PilotSession => {
+  const timestamp = nowIso();
+  return {
+    ...session,
+    artifacts: [...session.artifacts, artifact("outline_snapshot", "thinking", { outline }, timestamp)],
+    outlineSnapshots: [...session.outlineSnapshots, outline],
+    updatedAt: timestamp,
+    events: [
+      ...session.events,
+      event("outline_edited", "thinking", { outline }),
+      ...(outline.claim.trim().length > 0 ? [event("claim_revised", "thinking", { claim: outline.claim })] : []),
+      ...(outline.evidence.filter((item) => item.trim().length > 0).length > 0 ? [event("evidence_added", "thinking", { evidence: outline.evidence })] : []),
+      ...(outline.question.trim().length > 0 ? [event("source_added", "thinking", { source: outline.question })] : []),
+      ...(outline.counterargument.trim().length > 0 ? [event("counterargument_added", "thinking", { counterargument: outline.counterargument })] : [])
+    ]
+  };
+};
 
 export const outlineMissingFields = (outline: Outline): readonly string[] => {
   const missing: string[] = [];
@@ -122,12 +136,17 @@ export const updateSessionLlmMetadata = (session: PilotSession, llmMode: LlmMode
   }
 });
 
-export const updateDraft = (session: PilotSession, text: string): PilotSession => ({
-  ...session,
-  ...touchSession(),
-  draftSnapshots: [...session.draftSnapshots, { id: makeId("draft"), timestamp: nowIso(), text }],
-  events: [...session.events, event("draft_edited", "writing", { length: text.length })]
-});
+export const updateDraft = (session: PilotSession, text: string): PilotSession => {
+  const timestamp = nowIso();
+  const draftId = makeId("draft");
+  return {
+    ...session,
+    artifacts: [...session.artifacts, artifact("draft_snapshot", "writing", { draftId, length: text.length, text }, timestamp)],
+    draftSnapshots: [...session.draftSnapshots, { id: draftId, timestamp, text }],
+    events: [...session.events, event("draft_edited", "writing", { length: text.length })],
+    updatedAt: timestamp
+  };
+};
 
 export const recordPaste = (session: PilotSession, text: string): PilotSession => {
   const paste: PasteEvent = {
@@ -200,6 +219,7 @@ export const submitFinal = (session: PilotSession, text: string): PilotSession =
   const finalSubmission: FinalSubmission = { text, submittedAt: nowIso() };
   return {
     ...session,
+    artifacts: [...session.artifacts, artifact("final_submission", "review", { length: text.length, text }, finalSubmission.submittedAt)],
     completedAt: finalSubmission.submittedAt,
     finalSubmission,
     status: "submitted",

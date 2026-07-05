@@ -1,34 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { unavailableFileSync } from "../session/file-sync";
-import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session";
-import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session";
-import { clearBrowserSessionIdentity, loadBrowserSessionIdentity, saveBrowserSessionIdentity } from "../session/browser-session";
-import { resumeResearchSession, startResearchSessionWithParticipantCode, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client";
-import { ResearchModes } from "../shared/research";
-import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types";
-import { AccountManagement } from "./account-management";
-import { currentPath, firstStudent, initialPilotState, initialRoute, routePath, stateWithServerSession } from "./app-bootstrap";
-import type { Route } from "./app-bootstrap";
-import { CreateAssignment } from "./create-assignment";
-import { ExportView } from "./export-view";
-import { TopBar } from "./layout";
-import { ResearcherList } from "./researcher";
-import { RoleEntry } from "./role-entry";
-import { StudentAssignments } from "./student-assignments";
-import { StudentWorkspace } from "./student-workspace";
-import { TeacherReview } from "./teacher-review";
-import { UnderstandingCalibrationFlow } from "./understanding-calibration-flow";
+import { unavailableFileSync } from "../session/file-sync.js";
+import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
+import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
+import { clearBrowserActorIdentity, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
+import { authenticateStudentWithDatabase, authenticateTeacherWithDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import { ResearchConditions, ResearchModes } from "../shared/research.js";
+import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
+import { AccountManagement } from "./account-management.js";
+import { currentPath, firstStudent, initialPilotState, initialRoute, routePath, stateWithBrowserActor, stateWithDatabaseRoster, stateWithServerSession } from "./app-bootstrap.js";
+import type { Route } from "./app-bootstrap.js";
+import { CreateAssignment } from "./create-assignment.js";
+import { ExportView } from "./export-view.js";
+import { GuidedWritingFlow } from "./guided-writing-flow.js";
+import { TopBar } from "./layout.js";
+import { ResearcherList } from "./researcher.js";
+import { RoleEntry } from "./role-entry.js";
+import { StudentAssignments } from "./student-assignments.js";
+import { StudentWorkspace } from "./student-workspace.js";
+import { TeacherReview } from "./teacher-review.js";
+import { UnderstandingCalibrationFlow } from "./understanding-calibration-flow.js";
+import { useLocalResearchStorage } from "./storage-mode.js";
+
+const initialAppState = (): PilotState => {
+  const base = initialPilotState();
+  if (useLocalResearchStorage) return stateWithBrowserActor(base);
+  return stateWithBrowserActor({
+    ...base,
+    activeAssignmentId: "",
+    assignments: [],
+    classGroups: [],
+    selectedActor: null,
+    sessions: [],
+    students: [],
+    teachers: []
+  });
+};
 
 export function App(): ReactElement {
-  const [pilotState, setPilotState] = useState<PilotState>(initialPilotState);
+  const [pilotState, setPilotState] = useState<PilotState>(initialAppState);
   const [route, setRoute] = useState(initialRoute);
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [rosterReady, setRosterReady] = useState(false);
+  const [, setRosterRevision] = useState<string | null>(null);
+  const rosterRevisionRef = useRef<string | null>(null);
+  const rosterSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pilotStateRef = useRef<PilotState>(pilotState);
   const fileSync: FileSyncStatus = unavailableFileSync();
-  const assignment = requireAssignment(pilotState, pilotState.activeAssignmentId);
+  const activeAssignment = pilotState.assignments.find((assignment) => assignment.id === pilotState.activeAssignmentId) ?? pilotState.assignments[0] ?? null;
   const session = activeSession(pilotState);
   const actor = pilotState.selectedActor;
   const teacherRoute = route === "create" || route === "review" || route === "export" || route === "accounts";
+
+  useEffect(() => {
+    pilotStateRef.current = pilotState;
+  }, [pilotState]);
 
   const openRoute = (next: Route): void => {
     if (next !== "create") setEditingAssignmentId(null);
@@ -36,9 +62,80 @@ export function App(): ReactElement {
     setRoute(next);
   };
 
+  const reportRosterSyncError = (error: unknown): void => {
+    if (error instanceof Error) {
+      console.error(`Roster persistence failed: ${error.message}`);
+      return;
+    }
+    console.error("Roster persistence failed.");
+  };
+
+  const reportSessionSyncError = (error: unknown): void => {
+    if (error instanceof Error) {
+      console.error(`Session persistence failed: ${error.message}`);
+      return;
+    }
+    console.error("Session persistence failed.");
+  };
+
+  const updateRosterRevision = (nextRevision: string | null): void => {
+    rosterRevisionRef.current = nextRevision;
+    setRosterRevision(nextRevision);
+  };
+
+  const persistTeacherRoster = (nextState: PilotState, deletedIds: {
+    readonly deletedAssignmentIds?: readonly string[];
+    readonly deletedClassIds?: readonly string[];
+    readonly deletedStudentIds?: readonly string[];
+    readonly deletedTeacherIds?: readonly string[];
+  } = {}): Promise<void> => {
+    if (useLocalResearchStorage) return Promise.resolve();
+    if (actor?.role !== "teacher" || !rosterReady) return Promise.resolve();
+    const syncRoster = async (): Promise<void> => {
+      const result = await syncRosterToDatabase(nextState, deletedIds, rosterRevisionRef.current);
+      if (result.rosterRevision !== undefined) updateRosterRevision(result.rosterRevision);
+    };
+    const queuedSync = rosterSyncQueueRef.current.then(syncRoster, syncRoster);
+    rosterSyncQueueRef.current = queuedSync.catch(reportRosterSyncError);
+    return queuedSync;
+  };
+
   useEffect(() => {
+    const syncRouteFromHistory = (): void => setRoute(initialRoute());
+    window.addEventListener("popstate", syncRouteFromHistory);
+    return () => window.removeEventListener("popstate", syncRouteFromHistory);
+  }, []);
+
+  const stateWithTeacherPreviewSession = (state: PilotState, previewSession: PilotSession): PilotState => {
+    const assignments = state.assignments.some((assignment) => assignment.id === previewSession.assignment.id)
+      ? state.assignments.map((assignment) => (assignment.id === previewSession.assignment.id ? previewSession.assignment : assignment))
+      : [...state.assignments, previewSession.assignment];
+    return {
+      ...state,
+      activeAssignmentId: previewSession.assignment.id,
+      assignments,
+      sessions: [...state.sessions.filter((item) => item.sessionId !== previewSession.sessionId), previewSession]
+    };
+  };
+
+  useEffect(() => {
+    if (useLocalResearchStorage) {
+      const actorIdentity = loadBrowserActorIdentity();
+      if (actorIdentity?.role !== "student" || !currentPath().startsWith("/student")) return;
+      setPilotState((state) => {
+        const student = state.students.find((item) => item.id === actorIdentity.accountId);
+        if (student === undefined) return selectActor(state, null);
+        const assignment = assignmentsForStudent(state, student)[0];
+        if (assignment === undefined) return selectActor(state, actorIdentity);
+        return selectActor(startStudentSession(state, student.id, assignment.id).state, actorIdentity);
+      });
+      openRoute("student");
+      return;
+    }
     const identity = loadBrowserSessionIdentity();
-    if (identity === null || !currentPath().startsWith("/student")) return;
+    const actorIdentity = loadBrowserActorIdentity();
+    const shouldResumeStudentSession = identity !== null && actorIdentity?.role === "student";
+    if (!shouldResumeStudentSession || identity === null) return;
     let cancelled = false;
     resumeResearchSession(identity.sessionId)
       .then((result) => {
@@ -49,22 +146,79 @@ export function App(): ReactElement {
           sessionId: result.sessionId,
           studentAnonymousId: result.studentAnonymousId
         });
-        setPilotState((state) => stateWithServerSession(state, result.session));
+        if (result.sessionToken !== undefined) saveBrowserSessionToken(result.sessionToken);
+        const sessionWithAccount: PilotSession = actorIdentity?.role === "student"
+          ? { ...result.session, student: { ...result.session.student, accountId: actorIdentity.accountId } }
+          : result.session;
+        setPilotState((state) => stateWithServerSession(state, sessionWithAccount));
         openRoute("student");
       })
-      .catch(() => clearBrowserSessionIdentity());
+      .catch(() => {
+        clearBrowserSessionIdentity();
+        clearBrowserSessionToken();
+        clearBrowserActorIdentity();
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
   useEffect(() => {
-    if (actor?.role !== "teacher") return;
-    void syncRosterToDatabase(pilotState);
-  }, [actor?.role, pilotState.assignments, pilotState.classGroups, pilotState.students]);
+    if (useLocalResearchStorage) {
+      setRosterReady(true);
+      return;
+    }
+    if (actor?.role !== "teacher") {
+      setRosterReady(true);
+      return;
+    }
+    let cancelled = false;
+    setRosterReady(false);
+    loadRosterFromDatabase(actor.accountId)
+      .then((roster) => {
+        if (cancelled) return;
+        updateRosterRevision(roster.rosterRevision ?? null);
+        setPilotState((state) => stateWithBrowserActor(stateWithDatabaseRoster(state, roster)));
+      })
+      .catch(reportRosterSyncError)
+      .finally(() => {
+        if (!cancelled) setRosterReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [actor?.accountId, actor?.role]);
+
+  useEffect(() => {
+    if (useLocalResearchStorage || actor?.role !== "teacher" || !rosterReady) return;
+    let cancelled = false;
+    const refreshSessions = (): void => {
+      loadTeacherSessionsFromDatabase({ teacherId: actor.accountId })
+        .then((result) => {
+          if (cancelled) return;
+          setPilotState((state) => {
+            const incomingIds = new Set(result.sessions.map((item) => item.sessionId));
+            return {
+              ...state,
+              sessions: [...state.sessions.filter((item) => !incomingIds.has(item.sessionId)), ...result.sessions]
+            };
+          });
+        })
+        .catch(reportSessionSyncError);
+    };
+    refreshSessions();
+    const intervalId = window.setInterval(refreshSessions, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [actor?.accountId, actor?.role, rosterReady]);
 
   const saveAssignment = (nextAssignment: Assignment): void => {
-    setPilotState((state) => saveAssignmentInState(state, nextAssignment));
+    const nextState = saveAssignmentInState(pilotStateRef.current, nextAssignment);
+    pilotStateRef.current = nextState;
+    setPilotState(nextState);
+    void persistTeacherRoster(nextState);
     setEditingAssignmentId(null);
     openRoute("list");
   };
@@ -79,52 +233,171 @@ export function App(): ReactElement {
     openRoute("create");
   };
 
-  const openStudent = (): void => {
-    setPilotState((state) => startStudentSession(state, firstStudent(state).id, state.activeAssignmentId).state);
-    openRoute("student");
+  const firstStudentForAssignment = (assignment: Assignment): StudentAccount | null =>
+    pilotState.students.find((student) => assignmentsForStudent(pilotState, student).some((item) => item.id === assignment.id)) ?? null;
+
+  const anonymousIdForStudent = (student: StudentAccount): string => `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
+
+  const latestSessionForStudent = (assignment: Assignment, student: StudentAccount): PilotSession | null => {
+    const studentIds = new Set([student.id, anonymousIdForStudent(student)]);
+    return [...pilotState.sessions].reverse().find((item) =>
+      item.assignment.id === assignment.id &&
+      (item.student.accountId === student.id || studentIds.has(item.student.anonymousId))
+    ) ?? null;
   };
 
-  const chooseTeacher = (loginId: string, password: string): boolean => {
+  const sessionWithPreviewStudent = (previewSession: PilotSession, student: StudentAccount): PilotSession => ({
+    ...previewSession,
+    student: { ...previewSession.student, accountId: student.id, displayName: student.displayName }
+  });
+
+  const openStudent = async (): Promise<void> => {
+    if (activeAssignment === null) return;
+    if (useLocalResearchStorage) {
+      setPilotState((state) => startStudentSession(state, firstStudent(state).id, activeAssignment.id).state);
+      openRoute("student");
+      return;
+    }
+    const student = firstStudentForAssignment(activeAssignment);
+    if (student === null) {
+      console.error("Student preview failed: no assigned student for this assignment.");
+      return;
+    }
+    const existingSession = latestSessionForStudent(activeAssignment, student);
+    if (existingSession !== null) {
+      setPilotState((state) => stateWithTeacherPreviewSession(state, sessionWithPreviewStudent(existingSession, student)));
+      openRoute("student");
+      return;
+    }
+    try {
+      const result = await startTeacherPreviewSession({
+        assignmentId: activeAssignment.id,
+        ...(student.loginId === undefined ? {} : { loginId: student.loginId }),
+        participantCode: student.participantCode
+      });
+      setPilotState((state) => stateWithTeacherPreviewSession(state, sessionWithPreviewStudent(result.session, student)));
+      openRoute("student");
+    } catch (error) {
+      reportSessionSyncError(error);
+    }
+  };
+
+  const chooseTeacher = async (loginId: string, password: string): Promise<boolean> => {
+    if (!useLocalResearchStorage) {
+      try {
+        const auth = await authenticateTeacherWithDatabase({ loginId, password });
+        const nextActor: SelectedActor = { role: "teacher", accountId: auth.teacherId };
+        clearBrowserSessionIdentity();
+        clearBrowserSessionToken();
+        saveBrowserTeacherAuth({ teacherId: auth.teacherId, teacherToken: auth.teacherToken });
+        saveBrowserActorIdentity(nextActor);
+        setPilotState((state) => {
+          const teacherExists = state.teachers.some((teacher) => teacher.id === auth.teacherId);
+          const teachers = teacherExists
+            ? state.teachers.map((teacher) => (teacher.id === auth.teacherId ? { ...teacher, displayName: auth.displayName, loginId, password: "" } : teacher))
+            : [...state.teachers, { displayName: auth.displayName, id: auth.teacherId, loginId, password: "" }];
+          return selectActor({ ...state, teachers }, nextActor);
+        });
+        openRoute(teacherRoute ? route : "list");
+        return true;
+      } catch (error) {
+        if (error instanceof Error) console.error(`Teacher login failed: ${error.message}`);
+        return false;
+      }
+    }
     const teacher = teacherByCredentials(pilotState, loginId, password);
     if (teacher === null) return false;
     const nextActor: SelectedActor = { role: "teacher", accountId: teacher.id };
+    clearBrowserSessionIdentity();
+    clearBrowserSessionToken();
+    saveBrowserActorIdentity(nextActor);
     setPilotState((state) => selectActor(state, nextActor));
     openRoute(teacherRoute ? route : "list");
     return true;
   };
 
-  const chooseStudent = (student: StudentAccount): boolean => {
-    const nextActor: SelectedActor = { role: "student", accountId: student.id };
-    setPilotState((state) => selectActor(state, nextActor));
-    openRoute("list");
-    return true;
-  };
-
-  const chooseStudentCode = async (code: string): Promise<boolean> => {
+  const startServerSessionForStudent = async (student: StudentAccount): Promise<boolean> => {
+    if (useLocalResearchStorage) {
+      const assignment = assignmentsForStudent(pilotState, student)[0];
+      if (assignment === undefined) return false;
+      const nextActor: SelectedActor = { accountId: student.id, role: "student" };
+      clearBrowserTeacherAuth();
+      clearBrowserSessionIdentity();
+      clearBrowserSessionToken();
+      saveBrowserActorIdentity(nextActor);
+      setPilotState((state) => selectActor(startStudentSession(state, student.id, assignment.id).state, nextActor));
+      openRoute("student");
+      return true;
+    }
     try {
-      const result = await startResearchSessionWithParticipantCode(code);
+      const assignment = assignmentsForStudent(pilotState, student)[0];
+      const result = await startResearchSessionWithParticipantCode({
+        ...(assignment === undefined ? {} : { assignmentId: assignment.id }),
+        loginId: student.loginId,
+        participantCode: student.participantCode,
+        password: student.password
+      });
+      clearBrowserTeacherAuth();
       saveBrowserSessionIdentity({
         assignmentId: result.assignmentId,
         classGroupId: result.classGroupId,
         sessionId: result.sessionId,
         studentAnonymousId: result.studentAnonymousId
       });
-      setPilotState((state) => stateWithServerSession(state, result.session));
+      if (result.sessionToken !== undefined) saveBrowserSessionToken(result.sessionToken);
+      const sessionWithAccount: PilotSession = {
+        ...result.session,
+        student: { ...result.session.student, accountId: student.id, displayName: student.displayName }
+      };
+      const nextActor: SelectedActor = { accountId: student.id, role: "student" };
+      saveBrowserActorIdentity(nextActor);
+      setPilotState((state) => selectActor(stateWithServerSession(state, sessionWithAccount), nextActor));
       openRoute("student");
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(`Student session start failed: ${error.message}`);
+      } else {
+        console.error("Student session start failed.");
+      }
       return false;
     }
   };
 
-  const chooseStudentCredentials = (loginId: string, password: string): boolean => {
-    const student = studentByCredentials(pilotState, loginId, password);
-    if (student === null) return false;
-    return chooseStudent(student);
+  const chooseStudentCredentials = async (input: { readonly loginId: string; readonly participantCode: string; readonly password: string }): Promise<boolean> => {
+    if (!useLocalResearchStorage) {
+      try {
+        const result = await authenticateStudentWithDatabase(input);
+        const nextActor: SelectedActor = { accountId: result.student.id, role: "student" };
+        clearBrowserTeacherAuth();
+        clearBrowserSessionIdentity();
+        clearBrowserSessionToken();
+        saveBrowserActorIdentity(nextActor);
+        setPilotState((state) => selectActor({
+          ...state,
+          activeAssignmentId: result.assignments[0]?.id ?? "",
+          assignments: result.assignments,
+          sessions: [],
+          students: [result.student]
+        }, nextActor));
+        openRoute("list");
+        return true;
+      } catch (error) {
+        if (error instanceof Error) console.error(`Student login failed: ${error.message}`);
+        return false;
+      }
+    }
+    const studentByLogin = studentByCredentials(pilotState, input.loginId, input.password);
+    const studentByCode = studentByParticipantCode(pilotState, input.participantCode);
+    if (studentByLogin === null || studentByCode === null || studentByLogin.id !== studentByCode.id) return false;
+    return startServerSessionForStudent(studentByLogin);
   };
 
   const switchRole = (): void => {
     clearBrowserSessionIdentity();
+    clearBrowserSessionToken();
+    clearBrowserActorIdentity();
+    clearBrowserTeacherAuth();
     setPilotState((state) => selectActor(state, null));
     openRoute("list");
   };
@@ -134,7 +407,9 @@ export function App(): ReactElement {
       const currentSession = activeSession(state);
       if (currentSession === null) throw new Error("Student workspace requires an active persisted session.");
       const nextSession = updater(currentSession);
-      void syncSessionDelta(currentSession, nextSession).catch(() => undefined);
+      if (loadBrowserSessionIdentity()?.sessionId === currentSession.sessionId) {
+        void syncSessionDelta(currentSession, nextSession).catch(reportSessionSyncError);
+      }
       return updatePilotSession(state, nextSession);
     });
   };
@@ -152,6 +427,7 @@ export function App(): ReactElement {
   const renderStudentWorkspace = (): ReactElement => {
     if (session === null) throw new Error("Student workspace requires an active persisted session.");
     if (session.researchMode === ResearchModes.understandingCalibration) return <UnderstandingCalibrationFlow session={session} setSession={setSession} />;
+    if (session.researchMode === ResearchModes.guidedWriting) return <GuidedWritingFlow session={session} setSession={setSession} />;
     return <StudentWorkspace session={session} setSession={setSession} />;
   };
 
@@ -170,13 +446,41 @@ export function App(): ReactElement {
 
   const startSelectedStudentAssignment = (assignmentId: string): void => {
     const student = selectedStudent();
+    if (!useLocalResearchStorage) {
+      void startResearchSessionWithParticipantCode({
+        assignmentId,
+        loginId: student.loginId,
+        participantCode: student.participantCode,
+        password: student.password
+      }).then((result) => {
+        clearBrowserTeacherAuth();
+        saveBrowserSessionIdentity({
+          assignmentId: result.assignmentId,
+          classGroupId: result.classGroupId,
+          sessionId: result.sessionId,
+          studentAnonymousId: result.studentAnonymousId
+        });
+        if (result.sessionToken !== undefined) saveBrowserSessionToken(result.sessionToken);
+        setPilotState((state) => stateWithServerSession(state, { ...result.session, student: { ...result.session.student, accountId: student.id, displayName: student.displayName } }));
+        openRoute("student");
+      }).catch(reportSessionSyncError);
+      return;
+    }
     setPilotState((state) => startStudentSession(state, student.id, assignmentId).state);
     openRoute("student");
   };
 
-  const mutateAccountState = (mutator: (state: PilotState) => PilotState): string | null => {
+  const mutateAccountState = (mutator: (state: PilotState) => PilotState, deletedIds: {
+    readonly deletedAssignmentIds?: readonly string[];
+    readonly deletedClassIds?: readonly string[];
+    readonly deletedStudentIds?: readonly string[];
+    readonly deletedTeacherIds?: readonly string[];
+  } = {}): string | null => {
     try {
-      setPilotState(mutator(pilotState));
+      const nextState = mutator(pilotStateRef.current);
+      pilotStateRef.current = nextState;
+      setPilotState(nextState);
+      void persistTeacherRoster(nextState, deletedIds);
       return null;
     } catch (error) {
       if (error instanceof PilotStateError) return error.message;
@@ -184,11 +488,56 @@ export function App(): ReactElement {
     }
   };
 
+  const mutateAccountStateAndWait = async (mutator: (state: PilotState) => PilotState, deletedIds: {
+    readonly deletedAssignmentIds?: readonly string[];
+    readonly deletedClassIds?: readonly string[];
+    readonly deletedStudentIds?: readonly string[];
+    readonly deletedTeacherIds?: readonly string[];
+  } = {}): Promise<string | null> => {
+    try {
+      const nextState = mutator(pilotStateRef.current);
+      pilotStateRef.current = nextState;
+      setPilotState(nextState);
+      await persistTeacherRoster(nextState, deletedIds);
+      return null;
+    } catch (error) {
+      if (error instanceof PilotStateError) return error.message;
+      if (error instanceof Error) return `저장에 실패했습니다. ${error.message}`;
+      return "저장에 실패했습니다. 다시 시도하세요.";
+    }
+  };
+
+  const removeAssignment = (assignmentId: string): string | null => {
+    const error = mutateAccountState((state) => deleteAssignment(state, assignmentId), { deletedAssignmentIds: [assignmentId] });
+    if (error !== null) return error;
+    setEditingAssignmentId(null);
+    openRoute("list");
+    return null;
+  };
+
   const renderTeacherRoute = (): ReactElement | null => {
-    if (route === "list") return <ResearcherList assignment={assignment} state={pilotState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} onExport={() => openRoute("export")} />;
+    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={pilotState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} onExport={() => openRoute("export")} />;
+    const newAssignmentTemplate = (): Assignment => ({
+      assignmentMode: "full_process",
+      essayType: "주장 글쓰기",
+      gradeLevel: "초등 고학년",
+      id: "assignment-template",
+      minimumWordCount: "400",
+      passage: "",
+      question: "",
+      researchCondition: ResearchConditions.singleGroupBaseline,
+      researchMode: ResearchModes.writingCoach,
+      requirements: [],
+      sourceGuidance: "",
+      targetLength: "400자",
+      title: "",
+      ...(actor?.role === "teacher" ? { createdByTeacherId: actor.accountId } : {}),
+      ...(pilotState.classGroups[0]?.id === undefined ? {} : { classGroupId: pilotState.classGroups[0].id })
+    });
+    if (route === "list") return renderTeacherList();
     if (route === "create") {
-      const assignmentForForm = editingAssignmentId === null ? assignment : requireAssignment(pilotState, editingAssignmentId);
-      return <CreateAssignment assignment={assignmentForForm} key={`${editingAssignmentId ?? "new"}-${assignmentForForm.id}`} mode={editingAssignmentId === null ? "create" : "edit"} state={pilotState} onBack={() => openRoute("list")} onSave={saveAssignment} />;
+      const assignmentForForm = editingAssignmentId === null ? newAssignmentTemplate() : requireAssignment(pilotState, editingAssignmentId);
+      return <CreateAssignment assignment={assignmentForForm} key={`${editingAssignmentId ?? "new"}-${assignmentForForm.id}`} mode={editingAssignmentId === null ? "create" : "edit"} state={pilotState} onBack={() => openRoute("list")} onDelete={removeAssignment} onSave={saveAssignment} />;
     }
     if (route === "review") return <TeacherReview state={pilotState} onBack={() => openRoute("list")} onUpdateReview={updateTeacherReviewForSession} />;
     if (route === "export") return <ExportView fileSync={fileSync} state={pilotState} onStudent={openStudent} />;
@@ -196,25 +545,34 @@ export function App(): ReactElement {
       <AccountManagement
         state={pilotState}
         onBack={() => openRoute("list")}
-        onCreateClass={(input: CreateClassGroupInput) => mutateAccountState((state) => createClassGroup(state, input))}
-        onCreateStudent={(input: CreateStudentInput) => mutateAccountState((state) => createStudentAccount(state, input))}
-        onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountState((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
-        onCreateTeacher={(input: CreateTeacherInput) => mutateAccountState((state) => createTeacherAccount(state, input))}
-        onDeleteClass={(classGroupId: string) => mutateAccountState((state) => deleteClassGroup(state, classGroupId))}
-        onDeleteStudent={(studentId: string) => mutateAccountState((state) => deleteStudentAccount(state, studentId))}
-        onDeleteTeacher={(teacherId: string) => mutateAccountState((state) => deleteTeacherAccount(state, teacherId))}
+        onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input))}
+        onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input))}
+        onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
+        onCreateTeacher={(input: CreateTeacherInput) => mutateAccountStateAndWait((state) => createTeacherAccount(state, input))}
+        onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
+        onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
+        onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), { deletedTeacherIds: [teacherId] })}
       />
     );
-    if (route === "student") return renderStudentWorkspace();
+    if (route === "student") return session === null ? renderTeacherList() : renderStudentWorkspace();
     return null;
   };
-  const currentStudent = actor?.role === "student" ? selectedStudent() : null;
+  const renderTeacherRosterLoading = (): ReactElement => (
+    <main className="form-page" aria-label="과제 불러오기">
+      <section className="assignment-form">
+        <p className="eyebrow">Reading Coach Lab</p>
+        <h1>과제를 불러오는 중입니다.</h1>
+      </section>
+    </main>
+  );
+  const currentStudent = actor?.role === "student" ? pilotState.students.find((student) => student.id === actor.accountId) ?? null : null;
 
   return (
       <div className="app-shell" data-testid="app-shell">
       <TopBar actorName={actorName(actor)} onHome={() => openRoute("list")} onLogout={actor?.role === "student" ? switchRole : undefined} onSwitchRole={actor?.role === "teacher" && route !== "student" ? switchRole : undefined} />
-      {actor === null || (actor.role !== "teacher" && teacherRoute) ? <RoleEntry mode={teacherRoute ? "teacher" : "entry"} onTeacher={chooseTeacher} onStudentCode={chooseStudentCode} onStudentCredentials={chooseStudentCredentials} /> : null}
-      {actor?.role === "teacher" ? renderTeacherRoute() : null}
+      {actor === null || (actor.role !== "teacher" && teacherRoute) ? <RoleEntry mode={teacherRoute ? "teacher" : "entry"} onTeacher={chooseTeacher} onStudentCredentials={chooseStudentCredentials} /> : null}
+      {actor?.role === "teacher" && !rosterReady ? renderTeacherRosterLoading() : null}
+      {actor?.role === "teacher" && rosterReady ? renderTeacherRoute() : null}
       {currentStudent !== null && route !== "student" && !teacherRoute ? <StudentAssignments assignments={assignmentsForStudent(pilotState, currentStudent)} state={pilotState} student={currentStudent} onStart={startSelectedStudentAssignment} /> : null}
       {actor?.role === "student" && route === "student" ? renderStudentWorkspace() : null}
     </div>

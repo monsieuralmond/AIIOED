@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterTeacher } from "./helpers";
+import { enterStudentCredentials, enterTeacher, enterTeacherCredentials, expectStudentWorkspace } from "./helpers.js";
 
 test("teacher account manages classes, numbered students, and teacher accounts", async ({ page }) => {
   await enterTeacher(page);
@@ -43,17 +43,24 @@ test("teacher account manages classes, numbered students, and teacher accounts",
   await expect(page.getByRole("table", { name: "교사 계정 목록" })).toContainText("park");
   await expect(page.getByRole("table", { name: "교사 계정 목록" })).toContainText("park-pass");
 
+  await page.getByRole("button", { name: "과제로 돌아가기" }).click();
+  await page.getByRole("button", { name: "내 과제 만들기" }).click();
+  await page.getByLabel("과제 제목").fill("3반 배정 과제");
+  await page.getByLabel("배정할 반").selectOption({ label: "3반" });
+  await page.getByLabel("비문학 지문").fill("3반 학생이 읽고 자신의 생각을 정리할 지문입니다.");
+  await page.getByLabel("해결할 문제").fill("이 지문을 바탕으로 자신의 생각을 쓰세요.");
+  await page.getByLabel("학생에게 보일 요구사항").fill("읽은 내용을 바탕으로 자신의 생각을 한 문단 이상 쓰세요.");
+  await page.getByRole("button", { name: "과제 저장" }).click();
+  await expect(page.getByRole("article", { name: "3반 배정 과제 과제" })).toBeVisible();
+
   await page.getByRole("button", { name: "역할 바꾸기" }).click();
-  await page.getByLabel("교사 아이디").fill("park");
-  await page.getByLabel("교사 비밀번호").fill("park-pass");
-  await page.getByRole("button", { name: "교사로 시작" }).click();
+  await enterTeacherCredentials(page, { loginId: "park", password: "park-pass" });
   await expect(page.getByText("박교사")).toBeVisible();
 
   await page.getByRole("button", { name: "역할 바꾸기" }).click();
-  await page.getByLabel("학생 아이디").fill("class3-08");
-  await page.getByLabel("학생 비밀번호").fill("pw-08");
-  await page.getByRole("button", { name: "아이디로 시작" }).click();
-  await expect(page.getByRole("main")).toContainText("연구학생 8");
+  await enterStudentCredentials(page, { loginId: "class3-08", participantCode: "CLASS3-08", password: "pw-08" });
+  await expectStudentWorkspace(page);
+  await expect(page.getByRole("navigation")).toContainText("연구학생 8");
 });
 
 test("teacher deletes individual class, student, and teacher rows", async ({ page }) => {

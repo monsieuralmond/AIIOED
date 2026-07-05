@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createCoachResponse } from "./coach";
-import { sampleAssignment, sampleOutline } from "../shared/fixtures";
+import { createCoachResponse } from "./coach.js";
+import { sampleAssignment, sampleOutline } from "../shared/fixtures.js";
+import { ResearchModes } from "../shared/research.js";
 
 describe("task-bound mock coach", () => {
   it("redirects unrelated questions to the assigned task", () => {
@@ -11,7 +12,7 @@ describe("task-bound mock coach", () => {
       message: "오늘 날씨 알려줘"
     });
 
-    expect(response.text).toContain("이 지문과 문제");
+    expect(response.text).toContain("글쓰기와 관련된 질문");
     expect(response.type).toBe("redirect");
   });
 
@@ -39,6 +40,18 @@ describe("task-bound mock coach", () => {
     expect(response.text).toContain("네가");
     expect(response.text).not.toContain("일회용 플라스틱은 현대 사회에서");
     expect(response.type).toBe("refusal");
+  });
+
+  it("allows sentence-level writing help without treating it as full authorship", () => {
+    const response = createCoachResponse({
+      assignment: { ...sampleAssignment, researchMode: ResearchModes.guidedWriting },
+      outline: { ...sampleOutline, claim: "양자컴퓨터", question: "양자컴퓨터", reasoning: "서론-본론-결론 개요" },
+      draft: "양자컴퓨터는 보통 컴퓨터와 다르게 정보를 다룬다.",
+      message: "이 문장이 어색한데 더 자연스럽게 다듬는 방법을 알려줘"
+    });
+
+    expect(response.text).toContain("부분 표현");
+    expect(response.type).toBe("revision_guidance");
   });
 
   it("labels clarification and revision guidance for later judging", () => {

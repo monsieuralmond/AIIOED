@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { ClassGroup, PilotState, StudentAccount, TeacherAccount } from "../shared/types";
+import type { ClassGroup, PilotState, StudentAccount, TeacherAccount } from "../shared/types.js";
 
 type RosterTableProps = {
   readonly classNameById: ReadonlyMap<string, string>;

@@ -84,6 +84,10 @@ All spacing derives from 4px.
 
 - Desktop app top bar: 52px, allowed range 48-56px.
 - Desktop workspace: left work pane 60%, right coach/support pane 40%.
+- Understanding calibration split workspace max width: `--calibration-split-max-width` 1280px.
+- Understanding calibration AI chat minimum desktop pane: `--calibration-chat-min-width` 340px.
+- Guided writing workspace max width: `--guided-workspace-max-width` 1180px for student-only planning and writing steps.
+- Guided writing with coach max width: `--guided-workspace-with-coach-max-width` 1320px so the document pane and support pane read as one contained workspace.
 - Workspace gap: 20px, allowed range 16-20px.
 - Mobile: single primary work column; coach is an explicit secondary surface.
 
@@ -131,8 +135,19 @@ All spacing derives from 4px.
 - **Outline bridge rule**: the bridge may show the student's own claim, evidence, source, and counterargument as memory support. It must not generate a paragraph, insert text, or offer copy actions.
 - **Readiness rule**: the readiness check may compare the student's draft with the student's own outline for claim, evidence, source cue, and counterargument presence. It is non-blocking, local, and not a grade or rewrite engine.
 
+### Guided Writing
+- **Structure**: one step per screen: material, topic, sources, outline, writing.
+- **AI rule**: material, topic, sources, and outline are student-only input stages. The coach panel appears only during the final writing stage.
+- **Progress rule**: the step rail may wrap across rows on narrow screens, but it must never introduce horizontal scrolling or hide a step.
+- **Prompting rule**: each planning step may show a quiet "생각해볼 질문" block above the input. These prompts should guide students toward book-style IT explanatory writing: an everyday entry scene, a simple principle explanation, practical uses, limits or risks, and a closing thinking question. Avoid school-AI debate prompts or broad smartphone-habit opinion topics.
+- **Material rule**: 소재 is a broad IT/science-technology object such as 양자컴퓨터, 반도체, 해저케이블, 데이터센터, or 위성 인터넷. Topic narrows that object into an explanatory focus, while the final title is entered in the writing step.
+- **Source rule**: 자료 찾기 uses repeatable rows with separate 내용 and 출처 fields. Students can add rows and remove rows with a compact trash-icon button.
+- **Outline rule**: 개요 짜기 uses 서론, 본론, 결론 sections. 본론 is repeatable so students can add or remove explanation blocks without turning the screen into a board.
+- **Revision rule**: after 글쓰기, students enter a 고쳐쓰기 step that shows AI feedback suggestions in the right support pane and keeps the draft editable on the left. Final submission happens only after this step.
+- **Completion rule**: after final submission, present the essay as a framed finished text with a paper-like sheet and double accent border. The frame shows only the student-entered title when present and the body text; it does not show a generated fallback title, date, or signature. The primary export action is labeled `내 작품 내보내기 (Word)`; the secondary action is `텍스트 파일`.
+
 ### Revision Feedback
-- **Structure**: four category rows — Thesis & Focus, Evidence & Reasoning, Structure & Organization, Language — localized as 주장과 초점, 근거와 설명, 구조와 흐름, 문장 표현.
+- **Structure**: four category rows — Content & Focus, Sources & Explanation, Structure & Flow, Language — localized as 내용과 초점, 자료와 설명, 구조와 흐름, 문장 표현.
 - **States**: collapsed category, active suggestion, checking edits, resolved.
 - **Rule**: feedback tells the student what to inspect; it does not rewrite the sentence for them.
 - **Visual rule**: category items read as one continuous inspection list, not four separate cards. The active suggestion appears as a single yellow note below the list.

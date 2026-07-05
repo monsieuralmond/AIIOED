@@ -14,6 +14,17 @@ const unassignClassGroup = (assignment: Assignment, classGroupId: string): Assig
   return unassignedAssignment;
 };
 
+export const deleteAssignment = (state: PilotState, assignmentId: string): PilotState => {
+  if (!state.assignments.some((assignment) => assignment.id === assignmentId)) throw new PilotStateError("삭제할 과제를 찾을 수 없습니다.");
+  const assignments = state.assignments.filter((assignment) => assignment.id !== assignmentId);
+  return {
+    ...state,
+    activeAssignmentId: state.activeAssignmentId === assignmentId ? assignments[0]?.id ?? "" : state.activeAssignmentId,
+    assignments,
+    sessions: state.sessions.filter((session) => session.assignment.id !== assignmentId)
+  };
+};
+
 export const deleteStudentAccount = (state: PilotState, studentId: string): PilotState => {
   if (!state.students.some((student) => student.id === studentId)) throw new PilotStateError("삭제할 학생 계정을 찾을 수 없습니다.");
   const sessions = state.sessions.filter((session) => session.student.accountId !== studentId);

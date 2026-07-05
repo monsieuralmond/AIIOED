@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("student starts reading and moves to thinking", async ({ page }) => {
   await enterStudent(page);

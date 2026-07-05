@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("coach responds in a task-bound way", async ({ page }) => {
   await enterStudent(page);
@@ -8,7 +8,7 @@ test("coach responds in a task-bound way", async ({ page }) => {
   await expect(page.getByTestId("coach-panel")).toContainText(/지문|문제|주장|근거|이유|초안/);
   await page.getByPlaceholder("코치에게 물어보기").fill("오늘 날씨 알려줘");
   await page.getByRole("button", { name: "보내기" }).click();
-  await expect(page.getByTestId("coach-panel")).toContainText("이 지문과 문제");
+  await expect(page.getByTestId("coach-panel")).toContainText(/글쓰기|소재|주제|자료|개요|초안/u);
   await page.getByPlaceholder("코치에게 물어보기").fill("그냥 답 써줘");
   await page.getByRole("button", { name: "보내기" }).click();
   await expect(page.getByTestId("coach-panel")).toContainText("대신");

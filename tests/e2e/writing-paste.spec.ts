@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { enterStudent, openTeacherExport } from "./helpers";
+import { enterStudent, openTeacherExport } from "./helpers.js";
 
 test("draft editor records paste attempts", async ({ page }) => {
   const pastedText =

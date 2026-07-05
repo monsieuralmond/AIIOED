@@ -1,5 +1,5 @@
-import type { FileSyncStatus, LabelingRow, LabelingSpeaker, PilotDataset, PilotEventType, PilotSession, PilotState, PublicStudentAccount, PublicTeacherAccount, StudentAccount, TeacherAccount } from "../shared/types";
-import { exportSessionWithResearchFields } from "./calibration-derived";
+import type { FileSyncStatus, LabelingRow, LabelingSpeaker, PilotDataset, PilotEventType, PilotSession, PilotState, PublicStudentAccount, PublicTeacherAccount, StudentAccount, TeacherAccount } from "../shared/types.js";
+import { exportSessionWithResearchFields } from "./calibration-derived.js";
 
 export {
   exportCalibrationAttritionRows,
@@ -14,8 +14,20 @@ export {
   stringifyCalibrationManualEvaluationCsv,
   stringifyCalibrationRubricCodesCsv,
   stringifyCalibrationSessionsCsv
-} from "./calibration-csv";
-export { exportResearchArtifactMeasureRows, exportResearchEventRows, stringifyResearchArtifactMeasuresCsv, stringifyResearchEventsCsv } from "./research-csv";
+} from "./calibration-csv.js";
+export { exportResearchArtifactMeasureRows, exportResearchEventRows, stringifyResearchArtifactMeasuresCsv, stringifyResearchEventsCsv } from "./research-csv.js";
+export {
+  buildResearchModelBundles,
+  buildResearchModelBundlesFromSessions,
+  exportResearchItemLongRowsFromBundles,
+  exportResearchRawEventRowsFromBundles,
+  exportResearchSessionWideRowsFromBundles,
+  researchPlatformFilesFromSessions,
+  stringifyResearchBenchmarkJsonl,
+  stringifyResearchItemLongCsv,
+  stringifyResearchRawEventsCsv,
+  stringifyResearchSessionWideCsv
+} from "./research-platform-export.js";
 
 export const DATASET_SCHEMA_ID = "reading-coach-pilot-dataset.v1";
 export const LABELING_CODEBOOK_ID = "critical-thinking-cognitive-offloading-sycophancy.v1";
@@ -66,6 +78,8 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   evidence_added: "system_event",
   feedback_generated: "system_event",
   feedback_viewed: "system_event",
+  guided_step_saved: "system_event",
+  guided_writing_submitted: "system_event",
   outline_edited: "system_event",
   outline_warning_shown: "system_event",
   paste_detected: "system_event",
@@ -78,6 +92,7 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   suggestion_resolved: "system_event",
   teacher_review_updated: "system_event",
   calibration_chat_completed: "system_event",
+  calibration_chat_failed: "system_event",
   calibration_chat_review_submitted: "system_event",
   calibration_chat_started: "system_event",
   calibration_chat_turn_created: "system_event",
@@ -86,9 +101,14 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   calibration_reading_completed: "system_event",
   calibration_reading_started: "system_event",
   calibration_study_completed: "system_event",
+  chat_review_started: "system_event",
+  chat_review_submitted: "system_event",
+  confidence_started: "system_event",
   confidence_submitted: "system_event",
+  final_reflection_submitted: "system_event",
   question_started: "system_event",
   question_submitted: "system_event",
+  reflection_started: "system_event",
   reflection_submitted: "system_event"
 };
 

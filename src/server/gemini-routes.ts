@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CoachRequest, CoachResponse, CoachResponseType, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types.js";
+import type { ChatTurn, CoachRequest, CoachResponse, CoachResponseType, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types.js";
 import type { CalibrationChatHistoryTurn, CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai.js";
 import { assistantReplyForCalibration, requestTagsForMessage, understandingCalibrationSystemPromptForCondition } from "../shared/calibration-ai.js";
 import { ResearchConditions } from "../shared/research.js";
@@ -12,7 +12,7 @@ import type { RequestHandler } from "./ai-route-utils.js";
 import { checkPrompt, coachPrompt, reviewPrompt } from "./writing-coach-prompts.js";
 
 const coachTypes = ["clarify", "question", "evidence_check", "redirect", "revision_guidance", "refusal"] as const satisfies readonly CoachResponseType[];
-const suggestionCategories = ["주장과 초점", "근거와 설명", "구조와 흐름", "문장 표현", "좋은 점검"] as const satisfies readonly ReviewSuggestion["category"][];
+const suggestionCategories = ["내용과 초점", "자료와 설명", "구조와 흐름", "문장 표현", "좋은 점검"] as const satisfies readonly ReviewSuggestion["category"][];
 const builtInSuggestionIds = ["claim", "evidence", "source", "counterargument", "length", "positive"] as const;
 type BuiltInSuggestionId = (typeof builtInSuggestionIds)[number];
 
@@ -28,6 +28,8 @@ const assignmentSchema = z.object({
   minimumWordCount: z.string().optional(),
   passage: z.string(),
   question: z.string(),
+  researchCondition: z.string().optional(),
+  researchMode: z.string().optional(),
   requirements: z.array(z.string()).optional(),
   sourceGuidance: z.string().optional(),
   startDate: z.string().optional(),
@@ -44,9 +46,18 @@ const outlineSchema = z.object({
   reasoning: z.string()
 });
 
+const chatTurnSchema = z.object({
+  id: z.string(),
+  responseType: z.enum(coachTypes).optional(),
+  role: z.enum(["student", "assistant"]),
+  text: z.string(),
+  timestamp: z.string()
+});
+
 const coachRequestSchema = z.object({
   assignment: assignmentSchema,
   draft: z.string(),
+  history: z.array(chatTurnSchema).optional(),
   message: z.string(),
   outline: outlineSchema
 });
@@ -121,15 +132,31 @@ const toAssignment = (assignment: z.infer<typeof assignmentSchema>): CoachReques
   ...(assignment.minimumWordCount === undefined ? {} : { minimumWordCount: assignment.minimumWordCount }),
   passage: assignment.passage,
   question: assignment.question,
+  ...(assignment.researchCondition === undefined ? {} : { researchCondition: assignment.researchCondition }),
+  ...(assignment.researchMode === undefined ? {} : { researchMode: assignment.researchMode }),
   ...(assignment.requirements === undefined ? {} : { requirements: assignment.requirements }),
   ...(assignment.sourceGuidance === undefined ? {} : { sourceGuidance: assignment.sourceGuidance }),
   targetLength: assignment.targetLength,
   title: assignment.title
 });
 
+const toChatTurn = (turn: z.infer<typeof chatTurnSchema>): ChatTurn => ({
+  id: turn.id,
+  role: turn.role,
+  text: turn.text,
+  timestamp: turn.timestamp,
+  ...(turn.responseType === undefined ? {} : { responseType: turn.responseType })
+});
+
 const assertCoachRequest = (payload: unknown): CoachRequest => {
   const request = coachRequestSchema.parse(payload);
-  return { assignment: toAssignment(request.assignment), draft: request.draft, message: request.message, outline: request.outline };
+  return {
+    assignment: toAssignment(request.assignment),
+    draft: request.draft,
+    ...(request.history === undefined ? {} : { history: request.history.map(toChatTurn) }),
+    message: request.message,
+    outline: request.outline
+  };
 };
 
 const assertReviewRequest = (payload: unknown): { readonly draft: string; readonly outline: CoachRequest["outline"] } => reviewRequestSchema.parse(payload);
@@ -222,21 +249,23 @@ const calibrationChatResponse = async (request: CalibrationChatRequest, config: 
   return { llmMode: config.mode, model: config.model, requestTags, text: text.trim(), type: "clarify" };
 };
 
-export const createAiHandlers = (config: AiServerConfig): {
-  readonly calibrationChat: RequestHandler;
-  readonly coach: RequestHandler;
-  readonly reviewCheck: RequestHandler;
-  readonly reviewSuggestions: RequestHandler;
+type AiPayloadHandler = (payload: unknown) => Promise<unknown>;
+
+export const createAiPayloadHandlers = (config: AiServerConfig): {
+  readonly calibrationChat: AiPayloadHandler;
+  readonly coach: AiPayloadHandler;
+  readonly reviewCheck: AiPayloadHandler;
+  readonly reviewSuggestions: AiPayloadHandler;
 } => ({
-  calibrationChat: handle(async (payload) => calibrationChatResponse(assertCalibrationChatRequest(payload), config)),
-  coach: handle(async (payload) => {
+  calibrationChat: async (payload) => calibrationChatResponse(assertCalibrationChatRequest(payload), config),
+  coach: async (payload) => {
     const request = assertCoachRequest(payload);
     const policyResponse = createCoachResponse(request);
     if (config.mode === "mock") return { ...policyResponse, llmMode: "mock", model: "mock-writing-coach-v0" };
     if (policyResponse.type === "redirect" || policyResponse.type === "refusal") return { ...policyResponse, llmMode: config.mode, model: config.model };
     return parseCoachResponse(await callGeminiJson(config, coachPrompt(request)), config);
-  }),
-  reviewCheck: handle(async (payload) => {
+  },
+  reviewCheck: async (payload) => {
     const request = assertCheckRequest(payload);
     if (config.mode === "mock" || isBuiltInSuggestionId(request.suggestion.id)) {
       const result = createReviewSuggestionCheckResult(request);
@@ -249,10 +278,25 @@ export const createAiHandlers = (config: AiServerConfig): {
       };
     }
     return parseCheckResponse(await callGeminiJson(config, checkPrompt(request)), request.suggestion.id, config);
-  }),
-  reviewSuggestions: handle(async (payload) => {
+  },
+  reviewSuggestions: async (payload) => {
     const request = assertReviewRequest(payload);
     if (config.mode === "mock") return { llmMode: "mock", model: "mock-writing-coach-v0", suggestions: createReviewSuggestions(request) };
     return parseSuggestionsResponse(await callGeminiJson(config, reviewPrompt(request)), config);
-  })
+  }
 });
+
+export const createAiHandlers = (config: AiServerConfig): {
+  readonly calibrationChat: RequestHandler;
+  readonly coach: RequestHandler;
+  readonly reviewCheck: RequestHandler;
+  readonly reviewSuggestions: RequestHandler;
+} => {
+  const payloadHandlers = createAiPayloadHandlers(config);
+  return {
+    calibrationChat: handle(payloadHandlers.calibrationChat),
+    coach: handle(payloadHandlers.coach),
+    reviewCheck: handle(payloadHandlers.reviewCheck),
+    reviewSuggestions: handle(payloadHandlers.reviewSuggestions)
+  };
+};

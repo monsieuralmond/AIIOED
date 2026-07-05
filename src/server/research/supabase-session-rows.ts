@@ -8,12 +8,16 @@ export type StudentRow = {
   readonly class_group_id: string;
   readonly display_label: string | null;
   readonly id: string;
+  readonly login_id: string | null;
+  readonly password_hash: string | null;
   readonly student_anonymous_id: string;
+  readonly student_number: number | null;
 };
 
 export type AssignmentRow = {
   readonly assignment: Assignment;
   readonly class_group_id: string;
+  readonly created_by_teacher_id: string;
   readonly id: string;
   readonly research_condition: ResearchCondition;
   readonly research_mode: ResearchMode;

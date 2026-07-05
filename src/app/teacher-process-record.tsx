@@ -1,9 +1,9 @@
 import type { ReactElement } from "react";
-import { latestOutline } from "../session/session";
-import { ResearchModes } from "../shared/research";
-import type { ChatRole, PilotEvent, PilotSession, TeacherReviewUpdate } from "../shared/types";
-import { TeacherReviewNoteEditor } from "./teacher-review-note";
-import { hasUnderstandingReflection, TeacherUnderstandingRecord, understandingAnswerCount, understandingConfidenceCount } from "./teacher-understanding-record";
+import { latestOutline } from "../session/session.js";
+import { ResearchModes } from "../shared/research.js";
+import type { ChatRole, PilotEvent, PilotSession, TeacherReviewUpdate } from "../shared/types.js";
+import { TeacherReviewNoteEditor } from "./teacher-review-note.js";
+import { hasUnderstandingReflection, TeacherUnderstandingRecord, understandingAnswerCount, understandingConfidenceCount } from "./teacher-understanding-record.js";
 
 type SummaryTone = "good" | "neutral" | "warning";
 
@@ -34,6 +34,13 @@ const stageLabels: Readonly<Record<PilotSession["currentStage"], string>> = {
   chat_review: "대화 다시 보기",
   completed: "완료",
   final_reflection: "마무리 생각",
+  guided_completed: "글쓰기 완료",
+  guided_feedback: "고쳐쓰기",
+  guided_material: "소재 정하기",
+  guided_outline: "개요 짜기",
+  guided_sources: "자료 찾기",
+  guided_topic: "주제 정하기",
+  guided_writing: "글쓰기",
   pre_survey: "시작 전 확인",
   prediction_survey: "다음 활동 전 확인",
   problem_1: "문제 1",

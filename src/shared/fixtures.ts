@@ -12,22 +12,22 @@ export const sampleTeachers: readonly TeacherAccount[] = [sampleTeacher];
 
 export const sampleStudents: readonly StudentAccount[] = [
   {
-    id: "student-minseo",
+    id: "student-s001",
     displayName: "김민서",
     classGroupId: "class-pilot",
     studentNumber: 1,
-    loginId: "minseo",
-    password: "MINSEO-2026",
-    participantCode: "S-MINSEO"
+    loginId: "s001",
+    password: "test",
+    participantCode: "S001"
   },
   {
-    id: "student-joon",
+    id: "student-s002",
     displayName: "이준",
     classGroupId: "class-pilot",
     studentNumber: 2,
-    loginId: "joon",
-    password: "JOON-2026",
-    participantCode: "S-JOON"
+    loginId: "s002",
+    password: "test",
+    participantCode: "S002"
   }
 ];
 

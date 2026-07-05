@@ -1,7 +1,9 @@
-import { assignmentsForStudent, createInitialPilotState, createSession, enterStage, requireAssignment, updateDraft, updateOutline } from "../session/session";
-import { sampleDraft, sampleOutline } from "../shared/fixtures";
-import type { Assignment, PilotSession, PilotState, Stage, StudentAccount } from "../shared/types";
-import { loadPersistedState } from "../session/storage";
+import { activeSession, assignmentsForStudent, createInitialPilotState, createSession, enterStage, requireAssignment, selectActor, updateDraft, updateOutline } from "../session/session.js";
+import { sampleDraft, sampleOutline } from "../shared/fixtures.js";
+import type { Assignment, PilotSession, PilotState, SelectedActor, Stage, StudentAccount } from "../shared/types.js";
+import { loadPersistedState } from "../session/storage.js";
+import { loadBrowserActorIdentity, loadBrowserTeacherAuth } from "../session/browser-session.js";
+import type { DatabaseRoster } from "../session/database-roster.js";
 
 export type Route = "list" | "create" | "student" | "review" | "export" | "accounts";
 
@@ -78,7 +80,43 @@ export const stateWithServerSession = (state: PilotState, session: PilotSession)
     ...state,
     activeAssignmentId: session.assignment.id,
     assignments,
-    selectedActor: { accountId: session.student.anonymousId, role: "student" },
+    selectedActor: { accountId: session.student.accountId ?? session.student.anonymousId, role: "student" },
     sessions: [...state.sessions.filter((item) => item.sessionId !== session.sessionId), session]
+  };
+};
+
+const actorAccountExists = (state: PilotState, actor: SelectedActor): boolean => {
+  if (actor.role === "teacher") {
+    const teacherAuth = loadBrowserTeacherAuth();
+    if (teacherAuth?.teacherId === actor.accountId) return true;
+  }
+  if (actor.role === "teacher") return state.teachers.some((teacher) => teacher.id === actor.accountId);
+  return state.students.some((student) => student.id === actor.accountId);
+};
+
+export const stateWithBrowserActor = (state: PilotState): PilotState => {
+  const actorIdentity = loadBrowserActorIdentity();
+  if (actorIdentity === null || !actorAccountExists(state, actorIdentity)) return state;
+  if (actorIdentity.role === "student" && currentPath().startsWith("/student") && activeSession(state) === null) return state;
+  return selectActor(state, actorIdentity);
+};
+
+export const stateWithDatabaseRoster = (state: PilotState, roster: DatabaseRoster): PilotState => {
+  const students = roster.students;
+  const classGroups = roster.classGroups.map((classGroup) => ({
+    ...classGroup,
+    studentIds: students.filter((student) => student.classGroupId === classGroup.id).map((student) => student.id)
+  }));
+  const assignments = roster.assignments;
+  const activeAssignmentId = assignments.some((assignment) => assignment.id === state.activeAssignmentId)
+    ? state.activeAssignmentId
+    : assignments[0]?.id ?? "";
+  return {
+    ...state,
+    activeAssignmentId,
+    assignments,
+    classGroups,
+    students,
+    teachers: roster.teachers.length === 0 ? state.teachers : roster.teachers
   };
 };

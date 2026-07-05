@@ -1,25 +1,38 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { ResearchModes } from "../shared/research";
-import type { ResearchMode } from "../shared/research";
-import type { Assignment, PilotState } from "../shared/types";
-import { parseRequirements, requirementText } from "./assignment-requirements";
-import { CalibrationAssignmentConfig, calibrationDraftFromAssignment, resolveCalibrationDraft } from "./calibration-assignment-config";
-import { Button, Field, Surface, TextArea, TextInput } from "./ui";
+import { ResearchModes } from "../shared/research.js";
+import type { ResearchMode } from "../shared/research.js";
+import type { Assignment, PilotState } from "../shared/types.js";
+import { parseRequirements, requirementText } from "./assignment-requirements.js";
+import { CalibrationAssignmentConfig, calibrationDraftFromAssignment, resolveCalibrationDraft } from "./calibration-assignment-config.js";
+import { Button, Field, Surface, TextArea, TextInput } from "./ui.js";
 
 type CreateAssignmentProps = {
   readonly assignment: Assignment;
   readonly mode: "create" | "edit";
   readonly state: PilotState;
   readonly onBack: () => void;
+  readonly onDelete: (assignmentId: string) => string | null;
   readonly onSave: (assignment: Assignment) => void;
 };
 
 const newAssignmentId = (): string => `assignment-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
 const essayTypeOptions = ["주장 글쓰기", "근거 비교", "반론 탐색", "설명 글쓰기", "비교 글쓰기", "문학 분석"] as const;
+const examplePlaceholder = (text: string): string => `예: ${text}`;
+const assignmentExamples = {
+  title: "QR코드는 어떻게 작은 네모 안에 정보를 담을까요?",
+  passage: "식당 메뉴판, 택배 상자, 공연 티켓에서 QR코드를 자주 볼 수 있습니다. QR코드는 검은색과 흰색 네모의 배열로 정보를 표현하고, 카메라가 그 무늬를 읽어 웹사이트 주소나 결제 정보 같은 데이터로 바꾸는 기술입니다. 편리하지만 낯선 QR코드를 무심코 찍으면 악성 사이트로 연결될 수도 있어 주의가 필요합니다.",
+  guidedQuestion: "책에 없는 IT 기술 하나를 고르고, 십대 독자가 이해할 수 있도록 질문형 제목, 일상 장면, 작동 원리, 쓰임, 주의할 점을 갖춘 설명문을 완성하세요.",
+  question: "위 글과 비슷한 형식으로 책에 없는 IT 기술 하나를 골라 설명하는 글을 쓰세요. 기술이 쓰이는 장면, 작동 원리, 장점과 한계, 생각해 볼 질문을 포함하세요.",
+  requirements: "질문형 제목과 설명형 부제 만들기\n일상에서 기술을 마주치는 장면으로 시작하기\n핵심 개념과 작동 원리를 쉬운 말로 설명하기\n기술의 쓰임과 주의할 점 함께 다루기\n마지막에 생각해 볼 질문 남기기",
+  sourceGuidance: "공공기관 안내, 기술 해설 기사, 기업 개발자 문서처럼 기술의 원리와 사용 사례를 확인할 수 있는 자료를 찾고, 사용한 자료의 제목과 출처를 적으세요."
+} as const;
 
-const researchModeFromValue = (value: string): ResearchMode =>
-  value === ResearchModes.understandingCalibration ? ResearchModes.understandingCalibration : ResearchModes.writingCoach;
+const researchModeFromValue = (value: string): ResearchMode => {
+  if (value === ResearchModes.understandingCalibration) return ResearchModes.understandingCalibration;
+  if (value === ResearchModes.guidedWriting) return ResearchModes.guidedWriting;
+  return ResearchModes.writingCoach;
+};
 
 const defaultCalibrationQuestion = (topic: string): string => `${topic}에 대해 읽고 AI와 질문한 뒤, 내 말로 설명하고 적용해 봅니다.`;
 
@@ -32,12 +45,11 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
   const [passage, setPassage] = useState(props.mode === "edit" ? props.assignment.passage : "");
   const [question, setQuestion] = useState(props.mode === "edit" ? props.assignment.question : "");
   const [gradeLevel, setGradeLevel] = useState(props.assignment.gradeLevel);
-  const [assignmentMode, setAssignmentMode] = useState(props.assignment.assignmentMode ?? "full_process");
   const [essayType, setEssayType] = useState(props.assignment.essayType ?? "주장 글쓰기");
   const [targetLength, setTargetLength] = useState(props.assignment.targetLength);
   const [minimumWordCount, setMinimumWordCount] = useState(props.assignment.minimumWordCount ?? props.assignment.targetLength.replace(/[^0-9]/g, ""));
-  const [requirements, setRequirements] = useState(requirementText(props.assignment));
-  const [sourceGuidance, setSourceGuidance] = useState(props.assignment.sourceGuidance ?? "지문 근거를 먼저 사용하고, 외부 자료가 필요하면 제목과 출처를 적게 합니다.");
+  const [requirements, setRequirements] = useState(props.mode === "edit" ? requirementText(props.assignment) : "");
+  const [sourceGuidance, setSourceGuidance] = useState(props.mode === "edit" ? props.assignment.sourceGuidance ?? "" : "");
   const [classGroupId, setClassGroupId] = useState(props.assignment.classGroupId ?? props.state.classGroups[0]?.id ?? "");
   const [startDate, setStartDate] = useState(props.assignment.startDate ?? "");
   const [startTime, setStartTime] = useState(props.assignment.startTime ?? "");
@@ -46,11 +58,14 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
   const [calibrationTopic, setCalibrationTopic] = useState(props.mode === "edit" ? initialCalibrationConfig?.topic ?? props.assignment.title : "");
   const [calibrationDraft, setCalibrationDraft] = useState(() => calibrationDraftFromAssignment(props.assignment));
   const [error, setError] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const isCalibrationMode = researchMode === ResearchModes.understandingCalibration;
+  const isGuidedWritingMode = researchMode === ResearchModes.guidedWriting;
+  const isWritingCoachMode = researchMode === ResearchModes.writingCoach;
 
   const save = (): void => {
     if (title.trim().length === 0) { setError("과제 제목을 입력하세요"); return; }
-    if (passage.trim().length === 0) { setError("비문학 지문을 입력하세요"); return; }
+    if (passage.trim().length === 0) { setError(isGuidedWritingMode ? "활동 안내 또는 참고 자료를 입력하세요" : "비문학 지문을 입력하세요"); return; }
     const parsedRequirements = parseRequirements(requirements);
     const trimmedTopic = calibrationTopic.trim();
     const resolvedCalibrationDraft = resolveCalibrationDraft(calibrationDraft);
@@ -58,30 +73,33 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
     if (isCalibrationMode && trimmedTopic.length === 0) { setError("연구 주제명을 입력하세요"); return; }
     if (isCalibrationMode && parsedMaxChatMinutes !== undefined && (!Number.isFinite(parsedMaxChatMinutes) || parsedMaxChatMinutes <= 0)) { setError("최대 채팅 권장 시간은 1 이상의 숫자로 입력하세요"); return; }
     if (isCalibrationMode && resolvedCalibrationDraft.errorStatement.length === 0) { setError("오류 판단 문장을 입력하세요"); return; }
-    if (isCalibrationMode && [...resolvedCalibrationDraft.preSurveyItems, ...resolvedCalibrationDraft.predictionSurveyItems, ...resolvedCalibrationDraft.reflectionSurveyItems].some((item) => item.label.length === 0)) { setError("설문 문항을 모두 입력하세요"); return; }
+    const problemPostSurveyItems = resolvedCalibrationDraft.independentProblems.flatMap((problem) => problem.postSurveyItems);
+    if (isCalibrationMode && [...resolvedCalibrationDraft.preSurveyItems, ...resolvedCalibrationDraft.predictionSurveyItems, ...problemPostSurveyItems, ...resolvedCalibrationDraft.reflectionSurveyItems, ...resolvedCalibrationDraft.finalReflectionSurveyItems].some((item) => item.label.length === 0)) { setError("설문 문항을 모두 입력하세요"); return; }
     if (isCalibrationMode && resolvedCalibrationDraft.independentProblems.length === 0) { setError("실제 수행 문항을 하나 이상 남겨 두세요"); return; }
     if (isCalibrationMode && resolvedCalibrationDraft.independentProblems.some((problem) => problem.title.length === 0 || problem.prompt.length === 0)) { setError("실제 수행 문항의 제목과 지시문을 모두 입력하세요"); return; }
-    if (!isCalibrationMode && question.trim().length === 0) { setError("해결할 문제를 입력하세요"); return; }
-    if (!isCalibrationMode && parsedRequirements.length === 0) { setError("학생에게 보일 요구사항을 하나 이상 입력하세요"); return; }
+    if (isWritingCoachMode && question.trim().length === 0) { setError("해결할 문제를 입력하세요"); return; }
+    if (isWritingCoachMode && parsedRequirements.length === 0) { setError("학생에게 보일 요구사항을 하나 이상 입력하세요"); return; }
     const createdByTeacherId = props.state.selectedActor?.role === "teacher" ? props.state.selectedActor.accountId : props.assignment.createdByTeacherId;
+    const guidedQuestion = question.trim().length > 0 ? question.trim() : assignmentExamples.guidedQuestion;
     props.onSave({
-      assignmentMode,
-      classGroupId,
+      assignmentMode: "full_process",
       id: assignmentId,
-      essayType: isCalibrationMode ? "이해 보정 연구" : essayType,
+      essayType: isCalibrationMode ? "이해 보정 연구" : isGuidedWritingMode ? "단계형 글쓰기" : essayType,
       gradeLevel,
       minimumWordCount,
       passage,
-      question: isCalibrationMode ? (question.trim().length > 0 ? question.trim() : defaultCalibrationQuestion(trimmedTopic)) : question,
+      question: isCalibrationMode ? (question.trim().length > 0 ? question.trim() : defaultCalibrationQuestion(trimmedTopic)) : isGuidedWritingMode ? guidedQuestion : question,
       researchMode,
-      requirements: isCalibrationMode ? [] : parsedRequirements,
+      requirements: isCalibrationMode ? [] : isGuidedWritingMode ? ["소재 정하기", "주제 정하기", "자료 찾기", "개요 짜기", "AI 도움을 받아 글쓰기"] : parsedRequirements,
       sourceGuidance: isCalibrationMode ? "" : sourceGuidance,
       targetLength,
+      ...(classGroupId.trim().length > 0 ? { classGroupId } : {}),
       ...(isCalibrationMode
         ? {
             calibrationConfig: {
               ...(resolvedCalibrationDraft.aiContext.length > 0 ? { aiContext: resolvedCalibrationDraft.aiContext } : {}),
               errorStatement: resolvedCalibrationDraft.errorStatement,
+              finalReflectionSurveyItems: resolvedCalibrationDraft.finalReflectionSurveyItems,
               independentProblems: resolvedCalibrationDraft.independentProblems,
               ...(parsedMaxChatMinutes === undefined ? {} : { maxChatMinutes: parsedMaxChatMinutes }),
               predictionSurveyItems: resolvedCalibrationDraft.predictionSurveyItems,
@@ -101,6 +119,13 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
     });
   };
 
+  const confirmDeleteAssignment = (): void => {
+    const deleteError = props.onDelete(assignmentId);
+    if (deleteError === null) return;
+    setDeleteConfirmOpen(false);
+    setError(deleteError);
+  };
+
   return (
     <main className="form-page">
       <Surface className="assignment-form">
@@ -115,11 +140,16 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
         <div className="assignment-form-body">
           <section className="research-mode-section" aria-label="과제 모드">
             <h2>과제 모드</h2>
-            <div className="assignment-type-grid">
-              <label className={researchMode === ResearchModes.writingCoach ? "assignment-type-card selected" : "assignment-type-card"}>
-                <input checked={researchMode === ResearchModes.writingCoach} name="research-mode" type="radio" value={ResearchModes.writingCoach} onChange={(event) => setResearchMode(researchModeFromValue(event.currentTarget.value))} />
-                <strong>기존 글쓰기 코치</strong>
+              <div className="assignment-type-grid">
+              <label className={isWritingCoachMode ? "assignment-type-card selected" : "assignment-type-card"}>
+                <input checked={isWritingCoachMode} name="research-mode" type="radio" value={ResearchModes.writingCoach} onChange={(event) => setResearchMode(researchModeFromValue(event.currentTarget.value))} />
+                <strong>글쓰기 코치</strong>
                 <span>지문을 읽고 개요, 초안, 고쳐쓰기, 제출 과정을 기록합니다.</span>
+              </label>
+              <label className={isGuidedWritingMode ? "assignment-type-card selected" : "assignment-type-card"}>
+                <input checked={isGuidedWritingMode} name="research-mode" type="radio" value={ResearchModes.guidedWriting} onChange={(event) => setResearchMode(researchModeFromValue(event.currentTarget.value))} />
+                <strong>단계형 글쓰기</strong>
+                <span>소재, 주제, 자료, 개요는 학생이 직접 적고 글쓰기 단계에서만 AI 도움을 받습니다.</span>
               </label>
               <label className={isCalibrationMode ? "assignment-type-card selected" : "assignment-type-card"}>
                 <input checked={isCalibrationMode} name="research-mode" type="radio" value={ResearchModes.understandingCalibration} onChange={(event) => setResearchMode(researchModeFromValue(event.currentTarget.value))} />
@@ -128,25 +158,17 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
               </label>
             </div>
           </section>
-          {!isCalibrationMode ? (
-            <section className="assignment-type-grid" aria-label="글쓰기 과정 유형">
-              <label className={assignmentMode === "full_process" ? "assignment-type-card selected" : "assignment-type-card"}>
-                <input checked={assignmentMode === "full_process"} name="assignment-mode" type="radio" value="full_process" onChange={() => setAssignmentMode("full_process")} />
-                <strong>전체 글쓰기 과정</strong>
-                <span>이해, 개요, 초안, 고쳐쓰기를 모두 기록합니다.</span>
-              </label>
-              <label className={assignmentMode === "revision_feedback" ? "assignment-type-card selected" : "assignment-type-card"}>
-                <input checked={assignmentMode === "revision_feedback"} name="assignment-mode" type="radio" value="revision_feedback" onChange={() => setAssignmentMode("revision_feedback")} />
-                <strong>초안 피드백과 수정</strong>
-                <span>이미 쓴 글을 가져와 피드백과 수정 기록을 봅니다.</span>
-              </label>
-            </section>
-          ) : (
+          {isCalibrationMode ? (
             <section className="calibration-mode-note" aria-label="이해 보정 연구 안내">
               이 모드는 학생이 지문을 읽고 AI와 자유롭게 대화한 뒤, 자신의 이해 수준을 예측하고 독립 과제를 수행하는 연구용 플로우입니다.
             </section>
-          )}
-          <Field label="과제 제목"><TextInput placeholder={props.assignment.title} value={title} onChange={(event) => setTitle(event.currentTarget.value)} /></Field>
+          ) : null}
+          {isGuidedWritingMode ? (
+            <section className="calibration-mode-note" aria-label="단계형 글쓰기 안내">
+              이 임시 모드는 학생이 한 화면에 한 단계씩 소재, 주제, 자료, 개요를 직접 적고 마지막 글쓰기 화면에서만 AI와 대화합니다.
+            </section>
+          ) : null}
+          <Field label="과제 제목"><TextInput placeholder={examplePlaceholder(assignmentExamples.title)} value={title} onChange={(event) => setTitle(event.currentTarget.value)} /></Field>
           {isCalibrationMode ? <Field label="주제명"><TextInput placeholder="예: 양자컴퓨터, 플라스틱 사용, 소셜미디어와 민주주의" value={calibrationTopic} onChange={(event) => setCalibrationTopic(event.currentTarget.value)} /></Field> : null}
             <div className="assignment-form-grid two">
               <label className="ui-field"><span>학년 또는 난이도</span><select className="ui-control" value={gradeLevel} onChange={(event) => setGradeLevel(event.currentTarget.value)}><option>초등 고학년</option><option>중학생</option><option>고등학생</option></select></label>
@@ -158,12 +180,12 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
               <Field label="최소 글자 수"><TextInput inputMode="numeric" value={minimumWordCount} onChange={(event) => setMinimumWordCount(event.currentTarget.value)} /></Field>
             </div>
           ) : null}
-          <Field label="비문학 지문"><TextArea placeholder={props.assignment.passage} rows={8} value={passage} onChange={(event) => setPassage(event.currentTarget.value)} /></Field>
-          {!isCalibrationMode ? (
+          <Field label={isGuidedWritingMode ? "활동 안내 또는 참고 자료" : "비문학 지문"}><TextArea placeholder={examplePlaceholder(assignmentExamples.passage)} rows={8} value={passage} onChange={(event) => setPassage(event.currentTarget.value)} /></Field>
+          {isWritingCoachMode || isGuidedWritingMode ? (
             <>
-              <Field label="해결할 문제"><TextArea placeholder={props.assignment.question} rows={4} value={question} onChange={(event) => setQuestion(event.currentTarget.value)} /></Field>
-              <Field label="학생에게 보일 요구사항"><TextArea rows={5} value={requirements} onChange={(event) => setRequirements(event.currentTarget.value)} /></Field>
-              <Field label="근거와 출처 안내"><TextArea rows={3} value={sourceGuidance} onChange={(event) => setSourceGuidance(event.currentTarget.value)} /></Field>
+              <Field label={isGuidedWritingMode ? "글쓰기 목표" : "해결할 문제"}><TextArea placeholder={examplePlaceholder(isGuidedWritingMode ? assignmentExamples.guidedQuestion : assignmentExamples.question)} rows={4} value={question} onChange={(event) => setQuestion(event.currentTarget.value)} /></Field>
+              {isWritingCoachMode ? <Field label="학생에게 보일 요구사항"><TextArea placeholder={examplePlaceholder(assignmentExamples.requirements)} rows={5} value={requirements} onChange={(event) => setRequirements(event.currentTarget.value)} /></Field> : null}
+              {isWritingCoachMode ? <Field label="근거와 출처 안내"><TextArea placeholder={examplePlaceholder(assignmentExamples.sourceGuidance)} rows={3} value={sourceGuidance} onChange={(event) => setSourceGuidance(event.currentTarget.value)} /></Field> : null}
             </>
           ) : (
             <CalibrationAssignmentConfig value={calibrationDraft} onChange={setCalibrationDraft} />
@@ -179,9 +201,22 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
           <div className="assignment-form-footer">
             <Button variant="ghost" onClick={props.onBack}>취소</Button>
             <Button className="form-submit" variant="primary" onClick={save}>{props.mode === "edit" ? "수정 저장" : "과제 저장"}</Button>
+            {props.mode === "edit" ? <Button className="assignment-delete-button" variant="ghost" onClick={() => setDeleteConfirmOpen(true)}>과제 삭제</Button> : null}
           </div>
         </div>
       </Surface>
+      {deleteConfirmOpen ? (
+        <div className="confirm-backdrop">
+          <section aria-label="과제 삭제 확인" aria-modal="true" className="confirm-dialog" role="dialog">
+            <h2>과제 삭제</h2>
+            <p>정말 삭제하시겠습니까?</p>
+            <div className="confirm-actions">
+              <Button onClick={() => setDeleteConfirmOpen(false)}>아니오</Button>
+              <Button className="assignment-delete-button" variant="ghost" onClick={confirmDeleteAssignment}>예</Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

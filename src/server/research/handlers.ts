@@ -1,29 +1,24 @@
 import type { JsonHandler } from "./http.js";
 import { ApiError } from "./http.js";
-import { completeResearchChat } from "./research-chat.js";
 import { researchServerEnv } from "./env.js";
 import {
   artifactWriteSchema,
-  chatSchema,
+  chatTurnWriteSchema,
   deleteTestDataSchema,
   eventWriteSchema,
   exportSchema,
   measureWriteSchema,
+  rosterLoadSchema,
   rosterUpsertSchema,
   sessionStartSchema,
   stageUpdateSchema
 } from "./schemas.js";
-import { participantCodeHash, serverId } from "./store.js";
 import type { ResearchStore } from "./store.js";
 import { createSupabaseResearchStore } from "./supabase-store.js";
-import { SupabaseRestClient } from "./supabase-rest.js";
-
-const maxChatTurns = (): number => {
-  const raw = process.env["MAX_CHAT_TURNS"];
-  if (raw === undefined) return 20;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
-};
+import { loadRoster, upsertRoster } from "./roster-handlers.js";
+import { issueSessionToken, requireSessionAuth, requireTeacherAuth, teacherAuthFromRequest } from "./auth.js";
+import { researchDeploymentHealth } from "./health.js";
+import { createChatHandler } from "./chat-handler.js";
 
 const storeFromEnv = (): ResearchStore => {
   const env = researchServerEnv();
@@ -33,26 +28,27 @@ const storeFromEnv = (): ResearchStore => {
   });
 };
 
-const chatWithinLimits = (sessionCreatedAt: string, maxChatMinutes: number | undefined): boolean => {
-  if (maxChatMinutes === undefined) return true;
-  const elapsedMs = Date.now() - new Date(sessionCreatedAt).getTime();
-  return elapsedMs <= maxChatMinutes * 60_000;
-};
-
 export const createResearchApiHandlers = (storeFactory: () => ResearchStore = storeFromEnv): {
   readonly artifact: JsonHandler;
   readonly chat: JsonHandler;
+  readonly chatTurn: JsonHandler;
   readonly deleteTestData: JsonHandler;
   readonly event: JsonHandler;
   readonly exportData: JsonHandler;
+  readonly health: JsonHandler;
   readonly measure: JsonHandler;
+  readonly rosterLoad: JsonHandler;
   readonly rosterUpsert: JsonHandler;
+  readonly sessionList: JsonHandler;
   readonly sessionStart: JsonHandler;
   readonly updateStage: JsonHandler;
 } => ({
-  artifact: async (payload) => {
+  artifact: async (payload, request) => {
     const input = artifactWriteSchema.parse(payload);
-    await storeFactory().insertArtifact({
+    const store = storeFactory();
+    const { context } = await store.resumeSession(input.sessionId);
+    requireSessionAuth(request, context);
+    await store.insertArtifact({
       id: input.id,
       kind: input.kind,
       payload: input.payload,
@@ -64,59 +60,32 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     return { ok: true };
   },
 
-  chat: async (payload) => {
-    const input = chatSchema.parse(payload);
-    const env = researchServerEnv();
+  chat: createChatHandler(storeFactory),
+
+  chatTurn: async (payload, request) => {
+    const input = chatTurnWriteSchema.parse(payload);
     const store = storeFactory();
-    const existing = await store.findAssistantTurnByRequestId(input.sessionId, input.requestId);
-    if (existing !== null) {
-      return {
-        llmMode: env.aiMode,
-        model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.geminiModel,
-        requestTags: [],
-        text: existing.text,
-        type: "clarify"
-      };
-    }
-    const { session } = await store.resumeSession(input.sessionId);
-    const studentTurns = session.chatTurns.filter((turn) => turn.role === "student").length;
-    if (studentTurns >= maxChatTurns()) throw new ApiError(429, "Chat turn limit reached.");
-    if (!chatWithinLimits(session.createdAt, session.assignment.calibrationConfig?.maxChatMinutes)) throw new ApiError(429, "Chat time limit reached.");
-    const timestamp = new Date().toISOString();
+    const { context } = await store.resumeSession(input.sessionId);
+    requireSessionAuth(request, context);
     await store.insertChatTurn({
-      id: serverId("chat"),
-      requestId: input.requestId,
-      role: "student",
+      id: input.id,
+      role: input.role,
       sessionId: input.sessionId,
-      stage: session.currentStage,
-      text: input.message,
-      timestamp
+      stage: input.stage,
+      text: input.text,
+      timestamp: input.timestamp ?? new Date().toISOString(),
+      ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
+      ...(input.responseType === undefined ? {} : { responseType: input.responseType })
     });
-    const response = await completeResearchChat({
-      ...(session.assignment.calibrationConfig?.aiContext === undefined ? {} : { aiContext: session.assignment.calibrationConfig.aiContext }),
-      apiKey: env.geminiApiKey,
-      assignment: session.assignment,
-      history: session.chatTurns,
-      message: input.message,
-      mode: env.aiMode,
-      model: env.geminiModel,
-      researchCondition: session.researchCondition
-    });
-    await store.insertChatTurn({
-      id: serverId("chat"),
-      requestId: input.requestId,
-      responseType: response.type,
-      role: "assistant",
-      sessionId: input.sessionId,
-      stage: session.currentStage,
-      text: response.text,
-      timestamp: new Date().toISOString()
-    });
-    return response;
+    return { ok: true };
   },
 
-  deleteTestData: async (payload) => {
+  deleteTestData: async (payload, request) => {
     const input = deleteTestDataSchema.parse(payload);
+    const auth = teacherAuthFromRequest(request);
+    const teacherId = input.teacherId ?? auth?.teacherId;
+    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
     return storeFactory().deleteTestData({
       confirmExported: input.confirmExported,
       scope: input.scope,
@@ -125,13 +94,16 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
       ...(input.reason === undefined ? {} : { reason: input.reason }),
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(input.studentAnonymousId === undefined ? {} : { studentAnonymousId: input.studentAnonymousId }),
-      ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
+      teacherId
     });
   },
 
-  event: async (payload) => {
+  event: async (payload, request) => {
     const input = eventWriteSchema.parse(payload);
-    await storeFactory().insertEvent({
+    const store = storeFactory();
+    const { context } = await store.resumeSession(input.sessionId);
+    requireSessionAuth(request, context);
+    await store.insertEvent({
       id: input.id,
       payload: input.payload,
       sessionId: input.sessionId,
@@ -142,20 +114,34 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     return { ok: true };
   },
 
-  exportData: async (payload) => {
+  exportData: async (payload, request) => {
     const input = exportSchema.parse(payload);
+    const auth = teacherAuthFromRequest(request);
+    const teacherId = input.teacherId ?? auth?.teacherId;
+    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
     return storeFactory().exportData({
       anonymized: input.anonymized,
       completedOnly: input.completedOnly,
       ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
       ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
-      ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
+      teacherId
     });
   },
 
-  measure: async (payload) => {
+  health: async (_payload, request) => {
+    const auth = teacherAuthFromRequest(request);
+    if (auth === null) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, auth.teacherId);
+    return researchDeploymentHealth();
+  },
+
+  measure: async (payload, request) => {
     const input = measureWriteSchema.parse(payload);
-    await storeFactory().insertMeasure({
+    const store = storeFactory();
+    const { context } = await store.resumeSession(input.sessionId);
+    requireSessionAuth(request, context);
+    await store.insertMeasure({
       id: input.id,
       kind: input.kind,
       payload: input.payload,
@@ -166,56 +152,69 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     return { ok: true };
   },
 
-  rosterUpsert: async (payload) => {
-    const input = rosterUpsertSchema.parse(payload);
-    const env = researchServerEnv();
-    const db = new SupabaseRestClient({ serviceRoleKey: env.supabaseServiceRoleKey, url: env.supabaseUrl });
-    await Promise.all([
-      input.classes.length === 0 ? Promise.resolve([]) : db.upsert("classes", input.classes.map((item) => ({
-        id: item.id,
-        name: item.name,
-        teacher_id: item.teacherId
-      })), "id"),
-      input.assignments.length === 0 ? Promise.resolve([]) : db.upsert("assignments", input.assignments.map((item) => ({
-        assignment: item.payload,
-        class_group_id: item.classGroupId,
-        created_by_teacher_id: item.createdByTeacherId,
-        id: item.id,
-        research_condition: item.researchCondition,
-        research_mode: item.researchMode,
-        title: item.title
-      })), "id"),
-      input.students.length === 0 ? Promise.resolve([]) : db.upsert("students", input.students.map((item) => ({
-        class_group_id: item.classGroupId,
-        display_label: item.displayLabel ?? null,
-        id: item.id,
-        participant_code_hash: participantCodeHash(item.participantCode),
-        student_anonymous_id: item.studentAnonymousId
-      })), "id")
-    ]);
-    return { counts: { assignments: input.assignments.length, classes: input.classes.length, students: input.students.length }, ok: true };
+  rosterLoad: async (payload, request) => {
+    const input = rosterLoadSchema.parse(payload);
+    const auth = teacherAuthFromRequest(request);
+    const teacherId = input.teacherId ?? auth?.teacherId;
+    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
+    return loadRoster({ teacherId }, request);
   },
 
-  sessionStart: async (payload) => {
+  rosterUpsert: async (payload, request) => {
+    const input = rosterUpsertSchema.parse(payload);
+    const auth = teacherAuthFromRequest(request);
+    const teacherId = input.teacherId ?? auth?.teacherId;
+    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
+    return upsertRoster({ ...input, teacherId }, request);
+  },
+
+  sessionList: async (payload, request) => {
+    const input = exportSchema.parse(payload);
+    if (input.teacherId !== undefined) requireTeacherAuth(request, input.teacherId);
+    const auth = teacherAuthFromRequest(request);
+    const teacherId = input.teacherId ?? auth?.teacherId;
+    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
+    return storeFactory().listSessions({
+      ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
+      ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
+      teacherId
+    });
+  },
+
+  sessionStart: async (payload, request) => {
     const input = sessionStartSchema.parse(payload);
+    const store = storeFactory();
+    const teacherAuth = "sessionId" in input ? null : teacherAuthFromRequest(request);
+    if (teacherAuth !== null) requireTeacherAuth(request, teacherAuth.teacherId);
     const result = "sessionId" in input
-      ? await storeFactory().resumeSession(input.sessionId)
-      : await storeFactory().startSession({
+      ? await store.resumeSession(input.sessionId)
+      : await store.startSession({
+        ...(input.loginId === undefined ? {} : { loginId: input.loginId }),
         participantCode: input.participantCode,
-        ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId })
+        ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
+        ...(input.password === undefined ? {} : { password: input.password }),
+        ...(teacherAuth === null ? {} : { teacherId: teacherAuth.teacherId })
       });
+    if ("sessionId" in input) requireSessionAuth(request, result.context);
     return {
       assignment: result.assignment,
       classGroupId: result.context.classGroupId,
       session: result.session,
       sessionId: result.context.sessionId,
+      sessionToken: issueSessionToken(result.context),
       studentAnonymousId: result.context.studentAnonymousId
     };
   },
 
-  updateStage: async (payload) => {
+  updateStage: async (payload, request) => {
     const input = stageUpdateSchema.parse(payload);
-    return storeFactory().updateStage({
+    const store = storeFactory();
+    const { context } = await store.resumeSession(input.sessionId);
+    requireSessionAuth(request, context);
+    return store.updateStage({
       currentStage: input.currentStage,
       sessionId: input.sessionId,
       ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),

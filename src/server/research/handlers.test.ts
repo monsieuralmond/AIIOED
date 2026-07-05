@@ -1,112 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createSession } from "../../session/session.js";
-import { sampleAssignment } from "../../shared/fixtures.js";
-import { ResearchConditions } from "../../shared/research.js";
-import type { PilotSession } from "../../shared/types.js";
 import { createResearchApiHandlers } from "./handlers.js";
-import { serverId } from "./store.js";
-import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
-
-const emptyExport = (): ExportBundle => ({
-  "artifacts.csv": "",
-  "chat-turns.csv": "",
-  "events.csv": "",
-  "item-long.csv": "",
-  "measures.csv": "",
-  "raw-json.json": {},
-  "session-wide.csv": ""
-});
-
-class MemoryResearchStore implements ResearchStore {
-  readonly assistantTurnsByRequest = new Map<string, StoredChatTurn>();
-  readonly sessions = new Map<string, PilotSession>();
-  chatInsertCount = 0;
-
-  async deleteTestData(): Promise<DeleteResult> {
-    return { deleted: {}, logId: "log-memory" };
-  }
-
-  async exportData(): Promise<ExportBundle> {
-    return emptyExport();
-  }
-
-  async findAssistantTurnByRequestId(sessionId: string, requestId: string): Promise<StoredChatTurn | null> {
-    return this.assistantTurnsByRequest.get(`${sessionId}:${requestId}`) ?? null;
-  }
-
-  async insertArtifact(): Promise<void> {}
-
-  async insertChatTurn(input: {
-    readonly id: string;
-    readonly requestId?: string;
-    readonly responseType?: StoredChatTurn["responseType"];
-    readonly role: StoredChatTurn["role"];
-    readonly sessionId: string;
-    readonly stage: string;
-    readonly text: string;
-    readonly timestamp: string;
-  }): Promise<StoredChatTurn> {
-    this.chatInsertCount += 1;
-    const turn: StoredChatTurn = {
-      ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
-      ...(input.responseType === undefined ? {} : { responseType: input.responseType }),
-      id: input.id,
-      role: input.role,
-      sessionId: input.sessionId,
-      stage: input.stage,
-      text: input.text,
-      timestamp: input.timestamp
-    };
-    if (input.role === "assistant" && input.requestId !== undefined) this.assistantTurnsByRequest.set(`${input.sessionId}:${input.requestId}`, turn);
-    return turn;
-  }
-
-  async insertEvent(): Promise<void> {}
-
-  async insertMeasure(): Promise<void> {}
-
-  async listChatTurns(): Promise<readonly StoredChatTurn[]> {
-    return [];
-  }
-
-  async resumeSession(sessionId: string): Promise<SessionStartResult> {
-    const session = this.sessions.get(sessionId);
-    if (session === undefined) throw new Error("missing test session");
-    return { assignment: session.assignment, context: this.context(session), session };
-  }
-
-  async startSession(input: { readonly participantCode: string }): Promise<SessionStartResult> {
-    const session = {
-      ...createSession(sampleAssignment),
-      researchCondition: ResearchConditions.singleGroupBaseline,
-      sessionId: serverId("session"),
-      student: { anonymousId: `anon-${input.participantCode}` }
-    };
-    this.sessions.set(session.sessionId, session);
-    return { assignment: session.assignment, context: this.context(session), session };
-  }
-
-  async updateStage(input: { readonly currentStage: string; readonly sessionId: string; readonly status?: string }): Promise<SessionContext> {
-    const session = this.sessions.get(input.sessionId);
-    if (session === undefined) throw new Error("missing test session");
-    const next = { ...session, status: input.status ?? session.status };
-    this.sessions.set(input.sessionId, next);
-    return this.context(next);
-  }
-
-  private context(session: PilotSession): SessionContext {
-    return {
-      assignmentId: session.assignment.id,
-      classGroupId: session.assignment.classGroupId ?? "class-memory",
-      currentStage: session.currentStage,
-      researchCondition: session.researchCondition,
-      researchMode: session.researchMode,
-      sessionId: session.sessionId,
-      status: session.status,
-      studentAnonymousId: session.student.anonymousId
-    };
-  }
-}
+import {
+  emptyRequest,
+  isRecord,
+  MemoryResearchStore,
+  requestWithSessionToken,
+  requestWithTeacherToken,
+  sessionIdFrom,
+  sessionTokenFrom
+} from "./handlers-test-utils.js";
 
 describe("research API handlers", () => {
   beforeEach(() => {
@@ -119,45 +21,144 @@ describe("research API handlers", () => {
   it("creates isolated sessions for 30 participant codes", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
-    const results = await Promise.all(Array.from({ length: 30 }, (_, index) => handlers.sessionStart({ participantCode: `S${String(index + 1).padStart(3, "0")}` }, {} as never)));
-    const sessionIds = results.map((result) => (result as { readonly sessionId: string }).sessionId);
-    const studentIds = results.map((result) => (result as { readonly studentAnonymousId: string }).studentAnonymousId);
+    const results = await Promise.all(Array.from({ length: 30 }, (_, index) => handlers.sessionStart({ participantCode: `S${String(index + 1).padStart(3, "0")}` }, emptyRequest())));
+    const sessionIds = results.map(sessionIdFrom);
+    const studentIds = results.map((result) => {
+      if (!isRecord(result) || typeof result["studentAnonymousId"] !== "string") throw new Error("student id missing.");
+      return result["studentAnonymousId"];
+    });
 
     expect(new Set(sessionIds).size).toBe(30);
     expect(new Set(studentIds).size).toBe(30);
   });
 
-  it("returns the stored assistant turn for duplicate chat requestIds", async () => {
+  it("starts the explicitly selected assignment for a participant code", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
-    const started = await handlers.sessionStart({ participantCode: "S001" }, {} as never) as { readonly sessionId: string };
 
-    const first = await handlers.chat({ message: "양자컴퓨터가 뭐야?", requestId: "request-1", sessionId: started.sessionId }, {} as never);
-    const second = await handlers.chat({ message: "양자컴퓨터가 뭐야?", requestId: "request-1", sessionId: started.sessionId }, {} as never);
+    const response = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
 
-    expect((first as { readonly text: string }).text).toBe((second as { readonly text: string }).text);
-    expect(store.chatInsertCount).toBe(2);
+    if (!isRecord(response) || !isRecord(response["assignment"])) throw new Error("session start response did not include an assignment.");
+    expect(response["assignment"]["id"]).toBe("assignment-selected");
+    expect(sessionIdFrom(response)).toMatch(/^session-/);
   });
 
-  it("reports the Gemini model for duplicate real chat requestIds", async () => {
-    process.env["READING_COACH_AI_MODE"] = "real";
-    process.env["GEMINI_MODEL"] = "gemini-test-model";
+  it("passes teacher identity when a teacher starts a student preview session", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
-    const started = await handlers.sessionStart({ participantCode: "S001" }, {} as never) as { readonly sessionId: string };
-    store.assistantTurnsByRequest.set(`${started.sessionId}:request-2`, {
-      id: "chat-assistant-existing",
-      requestId: "request-2",
-      responseType: "clarify",
-      role: "assistant",
-      sessionId: started.sessionId,
-      stage: "ai_chat",
-      text: "이미 저장된 답변입니다.",
-      timestamp: "2026-07-03T00:00:00.000Z"
+
+    await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, requestWithTeacherToken("teacher-research"));
+
+    expect(store.startedSessions.at(-1)).toMatchObject({
+      assignmentId: "assignment-selected",
+      participantCode: "S001",
+      teacherId: "teacher-research"
     });
-
-    const response = await handlers.chat({ message: "아까 말한 내용 이어서 설명해줘", requestId: "request-2", sessionId: started.sessionId }, {} as never);
-
-    expect((response as { readonly model: string }).model).toBe("gemini-test-model");
   });
+
+  it("keeps chat, events, artifacts, and measures separated across 30 concurrent sessions", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await Promise.all(Array.from({ length: 30 }, (_, index) => handlers.sessionStart({ participantCode: `S${String(index + 1).padStart(3, "0")}` }, emptyRequest())));
+    const sessionIds = started.map(sessionIdFrom);
+
+    await Promise.all(sessionIds.map((sessionId, index) => Promise.all([
+      handlers.chatTurn({
+        id: `chat-${index + 1}`,
+        role: "student",
+        sessionId,
+        stage: "guided_writing",
+        text: `학생 ${index + 1} 질문`,
+        timestamp: "2026-07-05T00:00:00.000Z"
+      }, requestWithSessionToken(sessionTokenFrom(started[index]))),
+      handlers.event({
+        id: `event-${index + 1}`,
+        payload: { studentIndex: index + 1 },
+        sessionId,
+        stage: "guided_writing",
+        timestamp: "2026-07-05T00:00:00.000Z",
+        type: "student_message"
+      }, requestWithSessionToken(sessionTokenFrom(started[index]))),
+      handlers.artifact({
+        id: `artifact-${index + 1}`,
+        kind: "draft_snapshot",
+        payload: { studentIndex: index + 1 },
+        sessionId,
+        stage: "guided_writing",
+        timestamp: "2026-07-05T00:00:00.000Z"
+      }, requestWithSessionToken(sessionTokenFrom(started[index]))),
+      handlers.measure({
+        id: `measure-${index + 1}`,
+        kind: "confidence",
+        payload: { studentIndex: index + 1 },
+        sessionId,
+        stage: "guided_writing",
+        timestamp: "2026-07-05T00:00:00.000Z"
+      }, requestWithSessionToken(sessionTokenFrom(started[index])))
+    ])));
+
+    expect(store.storedChatTurns).toHaveLength(30);
+    expect(store.storedEvents).toHaveLength(30);
+    expect(store.storedArtifacts).toHaveLength(30);
+    expect(store.storedMeasures).toHaveLength(30);
+    sessionIds.forEach((sessionId, index) => {
+      expect(store.storedChatTurns.find((turn) => turn.id === `chat-${index + 1}`)?.sessionId).toBe(sessionId);
+      expect(store.storedEvents.find((event) => event.id === `event-${index + 1}`)?.sessionId).toBe(sessionId);
+      expect(store.storedArtifacts.find((artifact) => artifact.id === `artifact-${index + 1}`)?.sessionId).toBe(sessionId);
+      expect(store.storedMeasures.find((measure) => measure.id === `measure-${index + 1}`)?.sessionId).toBe(sessionId);
+    });
+  });
+
+  it("rejects session writes when the session token is missing", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+
+    await expect(handlers.chatTurn({
+      id: "chat-without-token",
+      role: "student",
+      sessionId,
+      stage: "writing",
+      text: "토큰 없이 저장하면 안 됩니다.",
+      timestamp: "2026-07-05T00:00:00.000Z"
+    }, emptyRequest())).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it("requires a teacher token before listing sessions", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+
+    await expect(handlers.sessionList({ teacherId: "teacher-research" }, emptyRequest())).rejects.toMatchObject({ statusCode: 401 });
+
+    const response = await handlers.sessionList({ teacherId: "teacher-research" }, requestWithTeacherToken("teacher-research"));
+    if (!isRecord(response) || !Array.isArray(response["sessions"])) throw new Error("session list response is invalid.");
+    expect(response["sessions"]).toHaveLength(1);
+  });
+
+  it("persists client-created chat turns through the chat-turn handler", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+
+    await handlers.chatTurn({
+      id: "chat-local-1",
+      role: "student",
+      sessionId,
+      stage: "writing",
+      text: "서론을 어떻게 시작할지 질문했습니다.",
+      timestamp: "2026-07-05T00:00:00.000Z"
+    }, requestWithSessionToken(sessionTokenFrom(started)));
+
+    expect(store.storedChatTurns.at(-1)).toMatchObject({
+      id: "chat-local-1",
+      role: "student",
+      sessionId,
+      stage: "writing",
+      text: "서론을 어떻게 시작할지 질문했습니다."
+    });
+  });
+
 });

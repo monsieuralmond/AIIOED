@@ -1,11 +1,11 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { sessionForStudent, sessionStatus } from "../session/session";
-import type { Assignment, PilotSession, PilotState, StudentAccount, StudentWorkStatus, TeacherReviewStatus, TeacherReviewUpdate } from "../shared/types";
-import { TeacherProcessRecord } from "./teacher-process-record";
-import { reviewFilterLabels, reviewFilters, teacherReviewLabels } from "./teacher-review-status";
-import type { ReviewFilter } from "./teacher-review-status";
-import { Button, Field, Surface, TextInput } from "./ui";
+import { sessionForStudent, sessionStatus } from "../session/session.js";
+import type { Assignment, PilotSession, PilotState, StudentAccount, StudentWorkStatus, TeacherReviewStatus, TeacherReviewUpdate } from "../shared/types.js";
+import { TeacherProcessRecord } from "./teacher-process-record.js";
+import { reviewFilterLabels, reviewFilters, teacherReviewLabels } from "./teacher-review-status.js";
+import type { ReviewFilter } from "./teacher-review-status.js";
+import { Button, Field, Surface, TextInput } from "./ui.js";
 
 type StatusFilter = "all" | StudentWorkStatus;
 

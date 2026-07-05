@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createReviewSuggestions } from "../review/review";
-import { sampleOutline } from "../shared/fixtures";
-import { reviewFocus } from "./review-draft-editor";
+import { createReviewSuggestions } from "../review/review.js";
+import { sampleOutline } from "../shared/fixtures.js";
+import { reviewFocus } from "./review-draft-editor.js";
 
 const suggestionById = (id: string, draft: string) => {
   const suggestion = createReviewSuggestions({ draft, outline: sampleOutline }).find((item) => item.id === id);
@@ -22,7 +22,7 @@ describe("reviewFocus", () => {
     const draft = "일회용 플라스틱은 줄여야 한다. 생태계에 피해를 준다는 점도 중요하다.";
     const focus = reviewFocus(suggestionById("source", draft), draft, sampleOutline);
 
-    expect(focus?.label).toBe("근거 출처 표시");
+    expect(focus?.label).toBe("자료 출처 표시");
     expect(focus?.highlightText).toBe("생태계에 피해를 준다는 점도 중요하다.");
   });
 });

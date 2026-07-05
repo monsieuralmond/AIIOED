@@ -25,7 +25,7 @@ const readJson = async (request: IncomingMessage): Promise<unknown> => {
   const body = await readBody(request);
   if (body.trim().length === 0) return {};
   try {
-    return JSON.parse(body) as unknown;
+    return JSON.parse(body);
   } catch {
     throw new ApiError(400, "Invalid JSON body.");
   }

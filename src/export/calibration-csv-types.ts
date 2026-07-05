@@ -19,7 +19,11 @@ export type CalibrationSessionCsvRow = CsvRow & {
   readonly assignmentVersion: string;
   readonly calibrationGapOverall: string;
   readonly chatTurnCount: string;
+  readonly classGroupId: string;
+  readonly completedProblemCount: string;
+  readonly confidenceDrop: string;
   readonly confidenceMean: string;
+  readonly confidenceTrajectory: string;
   readonly containsWhyQuestion: string;
   readonly completedAt: string;
   readonly createdAt: string;
@@ -28,7 +32,9 @@ export type CalibrationSessionCsvRow = CsvRow & {
   readonly hasAllFourAnswers: string;
   readonly hasAllFourConfidence: string;
   readonly hasChat: string;
+  readonly hasFinalReflection: string;
   readonly hasManualScores: string;
+  readonly hasReflectionSurvey: string;
   readonly isCompleteForAnalysis: string;
   readonly offTopicCount: string;
   readonly participantId: string;
@@ -36,9 +42,25 @@ export type CalibrationSessionCsvRow = CsvRow & {
   readonly predictionMean: string;
   readonly preSelfMean: string;
   readonly problem1DurationMs: string;
+  readonly problem1_answer: string;
+  readonly problem1_answerLength: string;
+  readonly problem1_confidence: string;
+  readonly problem1_durationMs: string;
   readonly problem2DurationMs: string;
+  readonly problem2_answer: string;
+  readonly problem2_answerLength: string;
+  readonly problem2_confidence: string;
+  readonly problem2_durationMs: string;
   readonly problem3DurationMs: string;
+  readonly problem3_answer: string;
+  readonly problem3_answerLength: string;
+  readonly problem3_confidence: string;
+  readonly problem3_durationMs: string;
   readonly problem4DurationMs: string;
+  readonly problem4_answer: string;
+  readonly problem4_answerLength: string;
+  readonly problem4_confidence: string;
+  readonly problem4_durationMs: string;
   readonly promptSetVersion: string;
   readonly promptVersion: string;
   readonly questionCount: string;
@@ -50,6 +72,7 @@ export type CalibrationSessionCsvRow = CsvRow & {
   readonly sessionId: string;
   readonly status: string;
   readonly studentAnonymousId: string;
+  readonly topicId: string;
   readonly totalChatAssistantChars: string;
   readonly totalChatDurationMs: string;
   readonly totalChatTurns: string;
@@ -65,14 +88,17 @@ export type CalibrationItemCsvRow = CsvRow & {
   readonly answer: string;
   readonly answerLength: string;
   readonly assignmentId: string;
+  readonly classGroupId: string;
   readonly confidence: string;
   readonly criterionScoresJson: string;
   readonly itemGap: string;
   readonly itemScore: string;
   readonly masteryFlag: string;
   readonly participantId: string;
+  readonly problemKey: string;
   readonly problemDurationMs: string;
   readonly problemNumber: string;
+  readonly questionNumber: string;
   readonly prompt: string;
   readonly promptVersion: string;
   readonly raterId: string;
@@ -85,6 +111,7 @@ export type CalibrationItemCsvRow = CsvRow & {
   readonly studentAnonymousId: string;
   readonly submittedAt: string;
   readonly title: string;
+  readonly topicId: string;
 };
 
 export type CalibrationChatTurnCsvRow = CsvRow & {
@@ -149,11 +176,11 @@ export type CalibrationAttritionCsvRow = CsvRow & {
 };
 
 export const sessionColumns: readonly (keyof CalibrationSessionCsvRow)[] = [
-  "sessionId", "studentAnonymousId", "participantId", "assignmentId", "researchMode", "researchCondition", "status", "currentStage", "createdAt", "updatedAt", "completedAt", "assignmentVersion", "promptSetVersion", "promptVersion", "rubricVersion", "isCompleteForAnalysis", "hasAllFourAnswers", "hasAllFourConfidence", "hasChat", "hasManualScores", "preSelfMean", "predictionMean", "confidenceMean", "performanceTotal", "calibrationGapOverall", "absGapOverall", "chatTurnCount", "totalChatTurns", "userQuestionChars", "assistantChars", "totalChatUserChars", "totalChatAssistantChars", "totalChatDurationMs", "questionCount", "containsWhyQuestion", "exampleRequestCount", "analogyRequestCount", "verificationRequestCount", "offTopicCount", "requestTagCountsJson", "readingDurationMs", "totalDurationMs", "problem1DurationMs", "problem2DurationMs", "problem3DurationMs", "problem4DurationMs"
+  "sessionId", "studentAnonymousId", "participantId", "assignmentId", "classGroupId", "topicId", "researchMode", "researchCondition", "status", "currentStage", "createdAt", "updatedAt", "completedAt", "assignmentVersion", "promptSetVersion", "promptVersion", "rubricVersion", "isCompleteForAnalysis", "hasAllFourAnswers", "hasAllFourConfidence", "hasChat", "hasReflectionSurvey", "hasFinalReflection", "hasManualScores", "completedProblemCount", "preSelfMean", "predictionMean", "confidenceMean", "confidenceTrajectory", "confidenceDrop", "performanceTotal", "calibrationGapOverall", "absGapOverall", "problem1_answer", "problem1_answerLength", "problem1_durationMs", "problem1_confidence", "problem2_answer", "problem2_answerLength", "problem2_durationMs", "problem2_confidence", "problem3_answer", "problem3_answerLength", "problem3_durationMs", "problem3_confidence", "problem4_answer", "problem4_answerLength", "problem4_durationMs", "problem4_confidence", "chatTurnCount", "totalChatTurns", "userQuestionChars", "assistantChars", "totalChatUserChars", "totalChatAssistantChars", "totalChatDurationMs", "questionCount", "containsWhyQuestion", "exampleRequestCount", "analogyRequestCount", "verificationRequestCount", "offTopicCount", "requestTagCountsJson", "readingDurationMs", "totalDurationMs", "problem1DurationMs", "problem2DurationMs", "problem3DurationMs", "problem4DurationMs"
 ];
 
 export const itemColumns: readonly (keyof CalibrationItemCsvRow)[] = [
-  "sessionId", "studentAnonymousId", "participantId", "assignmentId", "researchMode", "researchCondition", "problemNumber", "title", "prompt", "promptVersion", "rubricVersion", "answer", "answerLength", "submittedAt", "problemDurationMs", "confidence", "itemScore", "masteryFlag", "criterionScoresJson", "raterId", "secondRaterId", "adjudicatedScore", "scoredAt", "itemGap"
+  "sessionId", "studentAnonymousId", "participantId", "assignmentId", "classGroupId", "topicId", "researchMode", "researchCondition", "problemKey", "problemNumber", "questionNumber", "title", "prompt", "promptVersion", "rubricVersion", "answer", "answerLength", "submittedAt", "problemDurationMs", "confidence", "itemScore", "masteryFlag", "criterionScoresJson", "raterId", "secondRaterId", "adjudicatedScore", "scoredAt", "itemGap"
 ];
 
 export const chatTurnColumns: readonly (keyof CalibrationChatTurnCsvRow)[] = ["sessionId", "participantId", "assignmentId", "researchMode", "researchCondition", "turnIndex", "turnId", "timestamp", "role", "responseType", "requestTags", "text"];

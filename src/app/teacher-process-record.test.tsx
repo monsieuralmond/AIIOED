@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createReviewSuggestions } from "../review/review";
-import { createSession, recordFeedbackGenerated, recordSuggestionCheck, updateOutline, warnWeakOutline } from "../session/session";
-import { sampleAssignment, sampleOutline, sampleStudents } from "../shared/fixtures";
-import { processSignalsForSession } from "./teacher-process-record";
+import { createReviewSuggestions } from "../review/review.js";
+import { createSession, recordFeedbackGenerated, recordSuggestionCheck, updateOutline, warnWeakOutline } from "../session/session.js";
+import { sampleAssignment, sampleOutline, sampleStudents } from "../shared/fixtures.js";
+import { processSignalsForSession } from "./teacher-process-record.js";
 
 describe("processSignalsForSession", () => {
   it("surfaces source, feedback, and revision-check events for teacher labeling", () => {

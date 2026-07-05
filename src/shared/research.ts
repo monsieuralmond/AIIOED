@@ -1,4 +1,5 @@
 export const ResearchModes = {
+  guidedWriting: "guided_writing",
   understandingCalibration: "understanding_calibration",
   writingCoach: "writing_coach"
 } as const;
@@ -34,6 +35,18 @@ export const activeResearchCondition = (condition: ResearchCondition | undefined
 
 export type ResearchSessionStatus = "not_started" | "in_progress" | "submitted" | "completed" | (string & {});
 
+export const GuidedWritingStages = {
+  completed: "guided_completed",
+  feedback: "guided_feedback",
+  material: "guided_material",
+  outline: "guided_outline",
+  sources: "guided_sources",
+  topic: "guided_topic",
+  writing: "guided_writing"
+} as const;
+
+export type GuidedWritingStage = (typeof GuidedWritingStages)[keyof typeof GuidedWritingStages];
+
 export const UnderstandingCalibrationStages = {
   preSurvey: "pre_survey",
   reading: "calibration_reading",
@@ -61,14 +74,20 @@ export type UnderstandingCalibrationEventType =
   | "calibration_reading_completed"
   | "calibration_chat_started"
   | "calibration_chat_turn_created"
+  | "calibration_chat_failed"
   | "calibration_chat_completed"
   | "calibration_prediction_survey_submitted"
   | "calibration_chat_review_submitted"
   | "calibration_study_completed"
   | "question_started"
   | "question_submitted"
+  | "confidence_started"
   | "confidence_submitted"
-  | "reflection_submitted";
+  | "reflection_started"
+  | "reflection_submitted"
+  | "chat_review_started"
+  | "chat_review_submitted"
+  | "final_reflection_submitted";
 
 export type UnderstandingTransferChoice = {
   readonly id: string;
@@ -80,17 +99,21 @@ export type UnderstandingSurveyItem = {
   readonly helper?: string;
   readonly id: string;
   readonly label: string;
+  readonly responseType?: "likert" | "text";
 };
 
 export type UnderstandingProblemPrompt = {
   readonly number: 1 | 2 | 3 | 4;
+  readonly postSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly prompt: string;
   readonly title: string;
 };
 
 export type UnderstandingCalibrationConfig = {
   readonly aiContext?: string;
+  readonly confidencePromptLabel?: string;
   readonly errorStatement?: string;
+  readonly finalReflectionSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly independentProblems?: readonly UnderstandingProblemPrompt[];
   readonly independentTasks?: readonly string[];
   readonly maxChatMinutes?: number;
@@ -104,7 +127,9 @@ export type UnderstandingCalibrationConfig = {
 
 export type UnderstandingCalibrationModule = {
   readonly aiContext?: string;
+  readonly confidencePromptLabel?: string;
   readonly errorStatement?: string;
+  readonly finalReflectionSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly independentProblems?: readonly UnderstandingProblemPrompt[];
   readonly independentTasks?: readonly string[];
   readonly maxChatMinutes?: number;

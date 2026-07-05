@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { Stage } from "../shared/types";
+import type { Stage } from "../shared/types.js";
 
 const stageLabels: readonly { readonly stage: Stage; readonly label: string; readonly shortLabel: string }[] = [
   { stage: "reading", label: "과제 이해하기", shortLabel: "이해" },

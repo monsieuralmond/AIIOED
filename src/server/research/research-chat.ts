@@ -22,12 +22,20 @@ const recentHistory = (history: readonly ChatTurn[]): readonly GeminiContent[] =
     role: turn.role === "assistant" ? "model" : "user"
   }));
 
+const historyTranscript = (history: readonly ChatTurn[]): string =>
+  history
+    .slice(-12)
+    .map((turn) => `${turn.role === "assistant" ? "AI" : "학생"}: ${turn.text}`)
+    .join("\n");
+
 const userContext = (input: ResearchChatInput): string =>
   [
     `주제: ${input.assignment.title}`,
     `지문: ${input.assignment.passage}`,
     input.aiContext === undefined || input.aiContext.trim().length === 0 ? "" : `보조자료: ${input.aiContext.trim()}`,
-    `학생 질문: ${input.message}`
+    input.history.length === 0 ? "" : `이전 대화:\n${historyTranscript(input.history)}`,
+    input.history.length === 0 ? "" : "학생이 '방금', '아까', '그거', '그 부분'처럼 이전 대화를 가리키면 위 이전 대화의 맥락을 이어서 답한다.",
+    `현재 학생 질문: ${input.message}`
   ]
     .filter((line) => line.length > 0)
     .join("\n\n");

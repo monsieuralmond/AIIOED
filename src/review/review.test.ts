@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createReviewSuggestions, reviewSuggestionIsResolved } from "./review";
-import { sampleOutline } from "../shared/fixtures";
+import { createReviewSuggestions, reviewSuggestionIsResolved } from "./review.js";
+import { sampleOutline } from "../shared/fixtures.js";
 
 describe("deterministic review suggestions", () => {
   it("returns evidence and counterargument suggestions for incomplete drafts", () => {
@@ -9,7 +9,7 @@ describe("deterministic review suggestions", () => {
       draft: "일회용 플라스틱은 줄여야 한다. 환경에 좋지 않기 때문이다."
     });
 
-    expect(suggestions.map((suggestion) => suggestion.category)).toContain("근거와 설명");
+    expect(suggestions.map((suggestion) => suggestion.category)).toContain("자료와 설명");
     expect(suggestions.map((suggestion) => suggestion.category)).toContain("구조와 흐름");
   });
 

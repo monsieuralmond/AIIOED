@@ -1,8 +1,8 @@
-import { independentProblemsForModule } from "../app/understanding-calibration-data";
-import type { PilotState } from "../shared/types";
-import { exportableSessions, manualProblemForKey, nullableBoolean, nullableNumber, optionalNumber, optionalString, optionsIncludeDerivedFeatures, optionsIncludeManualEvaluation, payloadNumber, problemDurationForKey, stringifyCsv } from "./calibration-csv-shared";
-import type { CalibrationAttritionCsvRow, CalibrationExportOptions, CalibrationItemCsvRow, CalibrationManualEvaluationCsvRow } from "./calibration-csv-types";
-import { attritionColumns, itemColumns, manualEvaluationColumns } from "./calibration-csv-types";
+import { independentProblemsForModule } from "../app/understanding-calibration-data.js";
+import type { PilotState } from "../shared/types.js";
+import { exportableSessions, manualProblemForKey, nullableBoolean, nullableNumber, optionalNumber, optionalString, optionsIncludeDerivedFeatures, optionsIncludeManualEvaluation, payloadNumber, problemDurationForKey, stringifyCsv } from "./calibration-csv-shared.js";
+import type { CalibrationAttritionCsvRow, CalibrationExportOptions, CalibrationItemCsvRow, CalibrationManualEvaluationCsvRow } from "./calibration-csv-types.js";
+import { attritionColumns, itemColumns, manualEvaluationColumns } from "./calibration-csv-types.js";
 
 export const exportCalibrationItemRows = (state: PilotState, options?: CalibrationExportOptions): readonly CalibrationItemCsvRow[] =>
   exportableSessions(state, options).flatMap((session) =>
@@ -17,16 +17,19 @@ export const exportCalibrationItemRows = (state: PilotState, options?: Calibrati
         answer: artifact.answer,
         answerLength: artifact.answer.length === 0 ? "" : String(artifact.answer.length),
         assignmentId: session.assignment.id,
+        classGroupId: session.assignment.classGroupId ?? "",
         confidence: payloadNumber(measure?.payload, "confidence"),
         criterionScoresJson: optionalString(includeManual, JSON.stringify(manualProblem.criterionScores)),
         itemGap: optionalNumber(includeDerived, session.derivedFeatures.itemGaps[problem.answerArtifactKind]),
         itemScore: optionalNumber(includeManual, manualProblem.totalScore),
         masteryFlag: includeManual ? nullableBoolean(manualProblem.masteryFlag) : "",
         participantId: session.student.anonymousId,
+        problemKey: problem.answerArtifactKind,
         problemDurationMs: optionalNumber(includeDerived, problemDurationForKey(session, problem.answerArtifactKind)),
         problemNumber: String(problem.number),
         prompt: problem.prompt,
         promptVersion: artifact.promptVersion,
+        questionNumber: String(problem.number),
         raterId: optionalString(includeManual, manualProblem.raterId),
         researchCondition: session.researchCondition,
         researchMode: session.researchMode,
@@ -36,7 +39,8 @@ export const exportCalibrationItemRows = (state: PilotState, options?: Calibrati
         sessionId: session.sessionId,
         studentAnonymousId: session.student.anonymousId,
         submittedAt: artifact.submittedAt,
-        title: problem.title
+        title: problem.title,
+        topicId: session.modules.understandingCalibration?.topic ?? session.assignment.title
       };
     })
   );

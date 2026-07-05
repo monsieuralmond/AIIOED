@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
-import type { PilotSession } from "../shared/types";
-import { Button } from "./ui";
+import type { PilotSession } from "../shared/types.js";
+import { Button } from "./ui.js";
 
 export function ReadingStage(props: { readonly session: PilotSession; readonly onNext: () => void }): ReactElement {
   return (

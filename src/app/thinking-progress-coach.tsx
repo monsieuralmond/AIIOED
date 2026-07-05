@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
-import type { Outline } from "../shared/types";
-import { Button } from "./ui";
+import type { Outline } from "../shared/types.js";
+import { Button } from "./ui.js";
 
 type OutlineTargetId = "outline-claim" | "outline-evidence-1" | "outline-source-1" | "outline-reasoning" | "outline-counterargument";
 

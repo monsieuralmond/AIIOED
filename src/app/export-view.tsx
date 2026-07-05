@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { requestDatabaseExport } from "../session/research-api-client";
-import type { DatabaseExportBundle } from "../session/research-api-client";
+import { requestDatabaseExport } from "../session/research-api-client.js";
+import type { DatabaseExportBundle } from "../session/research-api-client.js";
 import {
   exportCalibrationAttritionRows,
   exportCalibrationChatTurnRows,
@@ -21,10 +21,14 @@ import {
   stringifyDataset,
   stringifyLabelingCsv,
   stringifyResearchArtifactMeasuresCsv,
-  stringifyResearchEventsCsv
-} from "../export/export";
-import type { FileSyncStatus, PilotState } from "../shared/types";
-import { Button } from "./ui";
+  stringifyResearchBenchmarkJsonl,
+  stringifyResearchEventsCsv,
+  stringifyResearchItemLongCsv,
+  stringifyResearchRawEventsCsv,
+  stringifyResearchSessionWideCsv
+} from "../export/export.js";
+import type { FileSyncStatus, PilotState } from "../shared/types.js";
+import { Button } from "./ui.js";
 
 type DatabaseExportStatus =
   | { readonly type: "idle" }
@@ -32,7 +36,7 @@ type DatabaseExportStatus =
   | { readonly type: "done"; readonly fileCount: number }
   | { readonly type: "failed"; readonly message: string };
 
-const databaseExportFiles: readonly (keyof DatabaseExportBundle)[] = ["session-wide.csv", "item-long.csv", "events.csv", "chat-turns.csv", "artifacts.csv", "measures.csv", "raw-json.json"];
+const databaseExportFiles: readonly (keyof DatabaseExportBundle)[] = ["session-wide.csv", "item-long.csv", "raw-events.csv", "benchmark.jsonl", "events.csv", "chat-turns.csv", "artifacts.csv", "measures.csv", "data-quality.csv", "raw-json.json"];
 
 const downloadFile = (fileName: keyof DatabaseExportBundle, value: DatabaseExportBundle[keyof DatabaseExportBundle]): void => {
   const text = fileName === "raw-json.json" ? JSON.stringify(value, null, 2) : String(value);
@@ -57,6 +61,10 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
   const calibrationAttritionCsv = stringifyCalibrationAttritionCsv(props.state);
   const calibrationChatTurnsCsv = stringifyCalibrationChatTurnsCsv(props.state);
   const calibrationRubricCodesCsv = stringifyCalibrationRubricCodesCsv();
+  const platformRawEventsCsv = stringifyResearchRawEventsCsv(props.state);
+  const platformItemLongCsv = stringifyResearchItemLongCsv(props.state);
+  const platformSessionWideCsv = stringifyResearchSessionWideCsv(props.state);
+  const platformBenchmarkJsonl = stringifyResearchBenchmarkJsonl(props.state);
   const labelingRows = exportLabelingRows(props.state);
   const researchEventRows = exportResearchEventRows(props.state);
   const researchArtifactMeasureRows = exportResearchArtifactMeasureRows(props.state);
@@ -76,6 +84,10 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
   const calibrationAttritionHref = `data:text/csv;charset=utf-8,${encodeURIComponent(calibrationAttritionCsv)}`;
   const calibrationChatTurnsHref = `data:text/csv;charset=utf-8,${encodeURIComponent(calibrationChatTurnsCsv)}`;
   const calibrationRubricCodesHref = `data:text/csv;charset=utf-8,${encodeURIComponent(calibrationRubricCodesCsv)}`;
+  const platformRawEventsHref = `data:text/csv;charset=utf-8,${encodeURIComponent(platformRawEventsCsv)}`;
+  const platformItemLongHref = `data:text/csv;charset=utf-8,${encodeURIComponent(platformItemLongCsv)}`;
+  const platformSessionWideHref = `data:text/csv;charset=utf-8,${encodeURIComponent(platformSessionWideCsv)}`;
+  const platformBenchmarkHref = `data:application/x-ndjson;charset=utf-8,${encodeURIComponent(platformBenchmarkJsonl)}`;
   const previewRows = labelingRows.slice(0, 5);
   const teacherId = props.state.selectedActor?.role === "teacher" ? props.state.selectedActor.accountId : props.state.teacher.id;
   const downloadDatabaseExport = async (): Promise<void> => {
@@ -114,26 +126,36 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
           <p>기본 분석 CSV는 완료 세션만 포함하고, 미완료 세션은 attrition 파일로 따로 내려받습니다.</p>
         </div>
       </section>
-      <div className="export-actions">
-        <Button variant="primary" onClick={props.onStudent}>학생 화면 보기</Button>
-        <Button disabled={databaseExportStatus.type === "exporting"} variant="primary" onClick={() => void downloadDatabaseExport()}>
-          {databaseExportStatus.type === "exporting" ? "DB export 준비 중" : "DB export 다운로드"}
-        </Button>
-        <a className="ui-button ui-button-secondary" download="reading-coach-pilot-dataset.json" href={downloadHref}>JSON 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="reading-coach-labeling-rows.csv" href={csvDownloadHref}>라벨링 CSV 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="research-events.csv" href={researchEventsHref}>이벤트 CSV 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="research-artifacts-measures.csv" href={researchArtifactMeasuresHref}>산출물·측정값 CSV 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="calibration-session-wide.csv" href={calibrationSessionsHref}>완료 세션 wide CSV</a>
-        <a className="ui-button ui-button-secondary" download="calibration-item-long.csv" href={calibrationItemsHref}>완료 문항 long CSV</a>
-        <a className="ui-button ui-button-secondary" download="calibration-manual-evaluation.csv" href={calibrationManualEvaluationHref}>수동 채점 CSV</a>
-        <a className="ui-button ui-button-secondary" download="attrition-diagnostic.csv" href={calibrationAttritionHref}>미완료 진단 CSV</a>
-        <a className="ui-button ui-button-secondary" download="chat-turns.csv" href={calibrationChatTurnsHref}>대화 CSV 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="rubric-codes.csv" href={calibrationRubricCodesHref}>루브릭 CSV 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="pilot-dataset.schema.json" href="/artifacts/pilot-dataset.schema.json">JSON 스키마 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="labeling-codebook.md" href="/artifacts/labeling-codebook.md">라벨링 코드북 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="data-dictionary.md" href="/artifacts/data-dictionary.md">데이터 딕셔너리 다운로드</a>
-        <a className="ui-button ui-button-secondary" download="understanding-calibration-rubric.md" href="/artifacts/understanding-calibration-rubric.md">이해 연구 루브릭 다운로드</a>
-      </div>
+      <section aria-label="로그 다운로드" className="export-actions-panel">
+        <header>
+          <h2>다운로드</h2>
+          <p>필요한 원자료와 코드북만 골라 내려받습니다.</p>
+        </header>
+        <div className="export-actions">
+          <Button variant="primary" onClick={props.onStudent}>학생 화면 보기</Button>
+          <Button disabled={databaseExportStatus.type === "exporting"} variant="primary" onClick={() => void downloadDatabaseExport()}>
+            {databaseExportStatus.type === "exporting" ? "DB export 준비 중" : "DB export 다운로드"}
+          </Button>
+          <a className="ui-button ui-button-secondary" download="reading-coach-pilot-dataset.json" href={downloadHref}>JSON 다운로드</a>
+          <a className="ui-button ui-button-secondary" download="reading-coach-labeling-rows.csv" href={csvDownloadHref}>라벨링 CSV 다운로드</a>
+          <a className="ui-button ui-button-secondary" download="research-events.csv" href={researchEventsHref}>이벤트 CSV 다운로드</a>
+          <a className="ui-button ui-button-secondary" download="research-artifacts-measures.csv" href={researchArtifactMeasuresHref}>산출물·측정값 CSV</a>
+          <a className="ui-button ui-button-secondary" download="raw-events.csv" href={platformRawEventsHref}>범용 이벤트 CSV</a>
+          <a className="ui-button ui-button-secondary" download="item-long.csv" href={platformItemLongHref}>범용 item-long CSV</a>
+          <a className="ui-button ui-button-secondary" download="session-wide.csv" href={platformSessionWideHref}>범용 session-wide CSV</a>
+          <a className="ui-button ui-button-secondary" download="benchmark.jsonl" href={platformBenchmarkHref}>Benchmark JSONL</a>
+          <a className="ui-button ui-button-secondary" download="calibration-session-wide.csv" href={calibrationSessionsHref}>완료 세션 wide CSV</a>
+          <a className="ui-button ui-button-secondary" download="calibration-item-long.csv" href={calibrationItemsHref}>완료 문항 long CSV</a>
+          <a className="ui-button ui-button-secondary" download="calibration-manual-evaluation.csv" href={calibrationManualEvaluationHref}>수동 채점 CSV</a>
+          <a className="ui-button ui-button-secondary" download="attrition-diagnostic.csv" href={calibrationAttritionHref}>미완료 진단 CSV</a>
+          <a className="ui-button ui-button-secondary" download="chat-turns.csv" href={calibrationChatTurnsHref}>대화 CSV 다운로드</a>
+          <a className="ui-button ui-button-secondary" download="rubric-codes.csv" href={calibrationRubricCodesHref}>루브릭 CSV 다운로드</a>
+          <a className="ui-button ui-button-secondary" download="pilot-dataset.schema.json" href="/artifacts/pilot-dataset.schema.json">JSON 스키마</a>
+          <a className="ui-button ui-button-secondary" download="labeling-codebook.md" href="/artifacts/labeling-codebook.md">라벨링 코드북</a>
+          <a className="ui-button ui-button-secondary" download="data-dictionary.md" href="/artifacts/data-dictionary.md">데이터 딕셔너리</a>
+          <a className="ui-button ui-button-secondary" download="understanding-calibration-rubric.md" href="/artifacts/understanding-calibration-rubric.md">이해 연구 루브릭</a>
+        </div>
+      </section>
       {databaseExportStatus.type === "done" ? <p className="sync-status">DB export 파일 {databaseExportStatus.fileCount}개를 내려받았습니다.</p> : null}
       {databaseExportStatus.type === "failed" ? <p className="sync-status">DB export 실패 - {databaseExportStatus.message}</p> : null}
       <section aria-label="라벨링 행 미리보기" className="labeling-preview">
@@ -157,7 +179,13 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
           </table>
         )}
       </section>
-      <pre data-testid="export-json">{dataset}</pre>
+      <section aria-label="전체 로그 JSON" className="export-json-panel">
+        <header>
+          <h2>전체 로그 JSON</h2>
+          <p>화면에서는 일부 높이만 보여주고, 내부에서 스크롤해 확인합니다.</p>
+        </header>
+        <pre data-testid="export-json">{dataset}</pre>
+      </section>
     </main>
   );
 }

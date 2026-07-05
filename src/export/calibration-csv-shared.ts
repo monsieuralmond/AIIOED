@@ -1,6 +1,6 @@
-import type { CalibrationManualEvaluationProblem, CalibrationProblemKey, ExportPilotSession, PilotEvent, PilotSession, PilotState } from "../shared/types";
-import { exportSessionWithResearchFields } from "./calibration-derived";
-import type { CalibrationExportOptions, CsvRow } from "./calibration-csv-types";
+import type { CalibrationManualEvaluationProblem, CalibrationProblemKey, ExportPilotSession, PilotEvent, PilotSession, PilotState } from "../shared/types.js";
+import { exportSessionWithResearchFields } from "./calibration-derived.js";
+import type { CalibrationExportOptions, CsvRow } from "./calibration-csv-types.js";
 
 export const csvValue = (value: string): string => `"${value.replaceAll("\"", "\"\"")}"`;
 

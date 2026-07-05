@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("writing stage keeps the student's outline visible without drafting for them", async ({ page }) => {
   await enterStudent(page);

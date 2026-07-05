@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { ClipboardEvent, ReactElement, UIEvent } from "react";
-import type { Outline, ReviewSuggestion } from "../shared/types";
-import { TextArea } from "./ui";
+import type { Outline, ReviewSuggestion } from "../shared/types.js";
+import { TextArea } from "./ui.js";
 
 export type ReviewFocus = {
   readonly label: string;

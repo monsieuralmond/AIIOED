@@ -5,8 +5,8 @@ import {
   preSurveyItemsForModule,
   predictionSurveyItemsForModule,
   problemRubrics
-} from "../app/understanding-calibration-data";
-import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
+} from "../app/understanding-calibration-data.js";
+import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
 import type {
   CalibrationAnalysisProblemArtifact,
   CalibrationCriterionScoreKey,
@@ -17,8 +17,8 @@ import type {
   ExportPilotSession,
   PilotEvent,
   PilotSession
-} from "../shared/types";
-import { analysisArtifactsForSession, chatDurationMs, confidenceForProblem } from "./calibration-analysis-artifacts";
+} from "../shared/types.js";
+import { analysisArtifactsForSession, chatDurationMs, confidenceForProblem } from "./calibration-analysis-artifacts.js";
 
 const nullItemGaps: Readonly<Record<CalibrationProblemKey, number | null>> = {
   problem1: null,
@@ -85,6 +85,24 @@ const confidenceMean = (session: PilotSession): number | null => {
   });
   return mean(values);
 };
+
+const confidenceTrajectory = (session: PilotSession): readonly number[] =>
+  independentProblemsForModule(session.modules.understandingCalibration).flatMap((problem) => {
+    const confidence = confidenceForProblem(session, problem);
+    return confidence === null ? [] : [confidence];
+  });
+
+const confidenceDrop = (trajectory: readonly number[]): number | null => {
+  const first = trajectory[0];
+  const last = trajectory.at(-1);
+  return first === undefined || last === undefined ? null : first - last;
+};
+
+const hasArtifactText = (session: PilotSession, kind: string, key: string): boolean =>
+  session.artifacts.some((artifact) => artifact.kind === kind && typeof artifact.payload[key] === "string" && artifact.payload[key].trim().length > 0);
+
+const hasMeasure = (session: PilotSession, kind: string): boolean =>
+  session.measures.some((measure) => measure.kind === kind);
 
 const totalDurationMs = (session: PilotSession): number | null => {
   const start = Date.parse(session.createdAt);
@@ -186,14 +204,23 @@ export const deriveCalibrationFeatures = (session: PilotSession, manualEvaluatio
   const hasAllFourAnswers = problemArtifacts.every((artifact) => artifact.answer.trim().length > 0);
   const hasAllFourConfidence = independentProblemsForModule(session.modules.understandingCalibration).every((problem) => confidenceForProblem(session, problem) !== null);
   const hasChat = session.chatTurns.some((turn) => turn.role === "assistant");
+  const hasReflectionSurvey = hasMeasure(session, "reflection_self_report");
+  const hasFinalReflection = hasMeasure(session, "final_reflection_self_report") || hasArtifactText(session, "final_reflection", "text");
   const manualScoresPresent = hasManualScores(manualEvaluation);
+  const trajectory = confidenceTrajectory(session);
+  const completedProblemCount = problemArtifacts.filter((artifact, index) => {
+    const problem = independentProblemsForModule(session.modules.understandingCalibration)[index];
+    return problem !== undefined && artifact.answer.trim().length > 0 && confidenceForProblem(session, problem) !== null;
+  }).length;
   const isCompleteForAnalysis =
     session.researchMode === ResearchModes.understandingCalibration &&
     session.status === "submitted" &&
     session.currentStage === UnderstandingCalibrationStages.completed &&
     hasAllFourAnswers &&
     hasAllFourConfidence &&
-    hasChat;
+    hasChat &&
+    hasReflectionSurvey &&
+    hasFinalReflection;
 
   return {
     absGapOverall: calibrationGapOverall === null ? null : Math.abs(calibrationGapOverall),
@@ -202,13 +229,18 @@ export const deriveCalibrationFeatures = (session: PilotSession, manualEvaluatio
     assignmentVersion: session.assignment.id,
     calibrationGapOverall,
     chatTurnCount: session.chatTurns.length,
+    completedProblemCount,
+    confidenceDrop: confidenceDrop(trajectory),
     confidenceMean: confidenceMean(session),
+    confidenceTrajectory: trajectory,
     containsWhyQuestion: countTag(requestCounts, "why_how_request") > 0 || session.chatTurns.some((turn) => turn.role === "student" && /왜|어떻게|why|how/u.test(turn.text)),
     exampleRequestCount: countTag(requestCounts, "example_request"),
     hasAllFourAnswers,
     hasAllFourConfidence,
     hasChat,
+    hasFinalReflection,
     hasManualScores: manualScoresPresent,
+    hasReflectionSurvey,
     itemGaps: nullItemGaps,
     isCompleteForAnalysis,
     offTopicCount: countTag(requestCounts, "off_topic"),

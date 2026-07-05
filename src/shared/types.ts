@@ -1,13 +1,13 @@
 import type { PilotEventType } from "./events.js";
 import type { ExportPilotSession } from "./calibration-export-types.js";
-import type { ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research.js";
+import type { GuidedWritingStage, ResearchArtifact, ResearchCondition, ResearchMeasure, ResearchMode, ResearchModules, ResearchSessionStatus, UnderstandingCalibrationConfig, UnderstandingCalibrationStage } from "./research.js";
 
 export type { PilotEventType } from "./events.js";
 export type { CalibrationAnalysisArtifacts, CalibrationAnalysisProblemArtifact, CalibrationCriterionScoreKey, CalibrationDerivedFeatures, CalibrationManualEvaluation, CalibrationManualEvaluationProblem, CalibrationProblemKey, CalibrationQuestionNumber, CalibrationRubricScore, ExportPilotSession } from "./calibration-export-types.js";
 
 export type WritingStage = "reading" | "thinking" | "writing" | "review";
 
-export type Stage = WritingStage | UnderstandingCalibrationStage;
+export type Stage = WritingStage | UnderstandingCalibrationStage | GuidedWritingStage;
 
 export type LlmMode = "mock" | "real";
 
@@ -244,6 +244,7 @@ export type CoachRequest = {
   readonly assignment: Assignment;
   readonly outline: Outline;
   readonly draft: string;
+  readonly history?: readonly ChatTurn[];
   readonly message: string;
 };
 
@@ -256,7 +257,7 @@ export type CoachResponse = {
 
 export type ReviewSuggestion = {
   readonly id: string;
-  readonly category: "주장과 초점" | "근거와 설명" | "구조와 흐름" | "문장 표현" | "좋은 점검";
+  readonly category: "내용과 초점" | "자료와 설명" | "구조와 흐름" | "문장 표현" | "좋은 점검";
   readonly text: string;
   readonly focusLabel: string;
   readonly resolved: boolean;

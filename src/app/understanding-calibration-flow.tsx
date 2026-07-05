@@ -1,28 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { requestSessionCalibrationChat } from "../session/research-api-client";
-import { UnderstandingCalibrationStages } from "../shared/research";
-import type { PilotSession } from "../shared/types";
-import { updateSessionLlmMetadata } from "../session/session";
-import { WarningBanner } from "./ui";
-import { ChatInput, ChatLog, LikertGroup, StageFrame } from "./understanding-calibration-components";
-import { chatCompletedPayload, durationSince, lastEventTimestamp } from "./understanding-calibration-events";
+import { requestSessionCalibrationChat } from "../session/research-api-client.js";
+import { loadBrowserSessionIdentity } from "../session/browser-session.js";
+import { UnderstandingCalibrationStages } from "../shared/research.js";
+import type { CalibrationChatRequest } from "../shared/calibration-ai.js";
+import type { PilotSession } from "../shared/types.js";
+import { updateSessionLlmMetadata } from "../session/session.js";
+import { WarningBanner } from "./ui.js";
+import { ChatInput, ChatLog, StageFrame, SurveyResponseGroup } from "./understanding-calibration-components.js";
+import { chatCompletedPayload, durationSince, lastEventTimestamp } from "./understanding-calibration-events.js";
 import {
   emptyRatings,
+  emptyTextResponses,
   independentProblemsForModule,
   isCalibrationStage,
   predictionSurveyItemsForModule,
   preSurveyItemsForModule,
-  ratingsComplete,
+  surveyResponsesComplete,
   surveyItemsForTopic,
   UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
   UNDERSTANDING_CALIBRATION_RUBRIC_VERSION,
-  updateRating
-} from "./understanding-calibration-data";
-import { startedEventForProblem } from "./understanding-calibration-problem-events";
-import { UnderstandingCalibrationProblemFlow } from "./understanding-calibration-problem-flow";
-import { appendCalibrationRecords, makeCalibrationChatTurn } from "./understanding-calibration-session";
-import { UnderstandingCalibrationCompletedStage } from "./understanding-calibration-completed-stage";
+  updateRating,
+  updateTextResponse
+} from "./understanding-calibration-data.js";
+import { startedEventForProblem } from "./understanding-calibration-problem-events.js";
+import { UnderstandingCalibrationProblemFlow } from "./understanding-calibration-problem-flow.js";
+import { appendCalibrationRecords, makeCalibrationChatTurn } from "./understanding-calibration-session.js";
+import { UnderstandingCalibrationCompletedStage } from "./understanding-calibration-completed-stage.js";
 
 export function UnderstandingCalibrationFlow(props: { readonly session: PilotSession; readonly setSession: (updater: (session: PilotSession) => PilotSession) => void }): ReactElement {
   const module = props.session.modules.understandingCalibration;
@@ -36,9 +40,10 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   const predictionSurveyItemsForTopic = surveyItemsForTopic(predictionSurveyItems, topic);
 
   const [preRatings, setPreRatings] = useState(() => emptyRatings(preSurveyItems));
-  const [preFreeResponse, setPreFreeResponse] = useState("");
+  const [preTextResponses, setPreTextResponses] = useState(() => emptyTextResponses(preSurveyItems));
   const [chatInput, setChatInput] = useState("");
   const [predictionRatings, setPredictionRatings] = useState(() => emptyRatings(predictionSurveyItems));
+  const [predictionTextResponses, setPredictionTextResponses] = useState(() => emptyTextResponses(predictionSurveyItems));
   const [chatPending, setChatPending] = useState(false);
   const [chatError, setChatError] = useState("");
   const chatTurnsRef = useRef(props.session.chatTurns);
@@ -47,15 +52,28 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
     chatTurnsRef.current = props.session.chatTurns;
   }, [props.session.chatTurns]);
 
+  const previewChatRequest = (message: string): CalibrationChatRequest | undefined => {
+    const identity = loadBrowserSessionIdentity();
+    if (identity?.sessionId === props.session.sessionId) return undefined;
+    return {
+      ...(module?.aiContext === undefined ? {} : { aiContext: module.aiContext }),
+      history: chatTurnsRef.current.map((turn) => ({ role: turn.role, text: turn.text })),
+      message,
+      passage,
+      researchCondition: props.session.researchCondition,
+      topic
+    };
+  };
+
   const savePreSurvey = (): void => {
     props.setSession((session) =>
       appendCalibrationRecords(session, {
-        artifacts: [{ kind: "pre_free_response", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, text: preFreeResponse.trim(), topic } }],
+        artifacts: [{ kind: "pre_survey_text_responses", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, textResponses: preTextResponses, topic } }],
         events: [
-          { type: "calibration_pre_survey_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: preRatings, textLength: preFreeResponse.trim().length, topic } },
+          { type: "calibration_pre_survey_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: preRatings, textResponses: preTextResponses, topic } },
           { type: "calibration_reading_started", payload: { topic } }
         ],
-        measures: [{ kind: "pre_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: preRatings, topic } }],
+        measures: [{ kind: "pre_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: preRatings, textResponses: preTextResponses, topic } }],
         nextStage: UnderstandingCalibrationStages.reading,
         stage: UnderstandingCalibrationStages.preSurvey
       })
@@ -83,8 +101,10 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
     const studentTurn = makeCalibrationChatTurn("student", message);
     setChatInput("");
     try {
+      const previewRequest = previewChatRequest(message);
       const response = await requestSessionCalibrationChat({
         message,
+        ...(previewRequest === undefined ? {} : { previewRequest }),
         requestId: studentTurn.id,
         sessionId: props.session.sessionId
       });
@@ -116,7 +136,11 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         return response.llmMode === undefined || response.model === undefined ? nextSession : updateSessionLlmMetadata(nextSession, response.llmMode, response.model);
       });
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : "AI 응답을 가져오지 못했습니다.");
+      setChatInput(message);
+      const messageForStudent = error instanceof Error && error.message.trim().length > 0
+        ? `AI 응답을 받지 못했습니다. 잠시 후 다시 보내 주세요. (${error.message})`
+        : "AI 응답을 받지 못했습니다. 잠시 후 다시 보내 주세요.";
+      setChatError(messageForStudent);
     } finally {
       setChatPending(false);
     }
@@ -136,11 +160,12 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
     const firstProblem = independentProblems[0];
     props.setSession((session) =>
       appendCalibrationRecords(session, {
+        artifacts: [{ kind: "prediction_survey_text_responses", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, textResponses: predictionTextResponses, topic } }],
         events: [
-          { type: "calibration_prediction_survey_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, topic } },
+          { type: "calibration_prediction_survey_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, textResponses: predictionTextResponses, topic } },
           ...(firstProblem === undefined ? [] : [startedEventForProblem(firstProblem)])
         ],
-        measures: [{ kind: "prediction_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION, topic } }],
+        measures: [{ kind: "prediction_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION, textResponses: predictionTextResponses, topic } }],
         nextStage: firstProblem?.stage ?? UnderstandingCalibrationStages.reflectionSurvey,
         stage: UnderstandingCalibrationStages.predictionSurvey
       })
@@ -149,9 +174,14 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
 
   if (stage === UnderstandingCalibrationStages.preSurvey) {
     return (
-      <StageFrame disabled={!ratingsComplete(preSurveyItems, preRatings) || preFreeResponse.trim().length === 0} primaryLabel="글 읽기로 이동" sessionTitle={props.session.assignment.title} stage={stage} subtitle={`${topic}에 대해 지금 떠오르는 생각을 먼저 남깁니다.`} title="시작 전 확인" onPrimary={savePreSurvey}>
-        <LikertGroup items={preSurveyItemsForTopic} ratings={preRatings} onChange={(id, value) => setPreRatings((ratings) => updateRating(ratings, id, value))} />
-        <label className="understanding-textarea"><span>{topic}에 대해 현재 알고 있는 내용을 자유롭게 써 보세요.</span><textarea value={preFreeResponse} onChange={(event) => setPreFreeResponse(event.currentTarget.value)} /></label>
+      <StageFrame disabled={!surveyResponsesComplete(preSurveyItems, preRatings, preTextResponses)} primaryLabel="글 읽기로 이동" sessionTitle={props.session.assignment.title} stage={stage} subtitle={`${topic}에 대해 지금 떠오르는 생각을 먼저 남깁니다.`} title="시작 전 확인" onPrimary={savePreSurvey}>
+        <SurveyResponseGroup
+          items={preSurveyItemsForTopic}
+          ratings={preRatings}
+          textResponses={preTextResponses}
+          onRatingChange={(id, value) => setPreRatings((ratings) => updateRating(ratings, id, value))}
+          onTextChange={(id, value) => setPreTextResponses((responses) => updateTextResponse(responses, id, value))}
+        />
       </StageFrame>
     );
   }
@@ -167,18 +197,33 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   if (stage === UnderstandingCalibrationStages.chat) {
     const hasAssistantResponse = props.session.chatTurns.some((turn) => turn.role === "assistant");
     return (
-      <StageFrame disabled={chatPending || !hasAssistantResponse} primaryLabel="다음 활동 전 확인" sessionTitle={props.session.assignment.title} stage={stage} subtitle="글을 읽고 더 확인하고 싶은 내용이 있으면 AI에게 자유롭게 질문해 보세요. 확인이 끝나면 다음 활동으로 이동하세요." title={topic} onPrimary={completeChat}>
-        <ChatLog turns={props.session.chatTurns} />
-        {chatError.length > 0 ? <WarningBanner>{chatError}</WarningBanner> : null}
-        <ChatInput disabled={chatPending} value={chatInput} onChange={setChatInput} onSubmit={() => { void sendChat(); }} />
+      <StageFrame disabled={chatPending || !hasAssistantResponse} layout="split" primaryLabel="다음 활동 전 확인" sessionTitle={props.session.assignment.title} stage={stage} subtitle="글을 읽고 더 확인하고 싶은 내용이 있으면 AI에게 자유롭게 질문해 보세요. 확인이 끝나면 다음 활동으로 이동하세요." title={topic} onPrimary={completeChat}>
+        <div className="calibration-study-layout">
+          <article className="understanding-passage calibration-study-passage"><h2>지문</h2><p>{passage}</p></article>
+          <section aria-label="AI와 대화" className="calibration-chat-panel">
+            <header>
+              <span>AI에게 질문하기</span>
+              <h2>궁금한 점을 물어보세요</h2>
+            </header>
+            <ChatLog turns={props.session.chatTurns} />
+            {chatError.length > 0 ? <WarningBanner>{chatError}</WarningBanner> : null}
+            <ChatInput disabled={chatPending} value={chatInput} onChange={setChatInput} onSubmit={() => { void sendChat(); }} />
+          </section>
+        </div>
       </StageFrame>
     );
   }
 
   if (stage === UnderstandingCalibrationStages.predictionSurvey) {
     return (
-      <StageFrame disabled={!ratingsComplete(predictionSurveyItems, predictionRatings)} primaryLabel="문제 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="다음 활동을 하기 전에 지금 느낌을 표시해 주세요." title="다음 활동 전 확인" onPrimary={savePrediction}>
-        <LikertGroup items={predictionSurveyItemsForTopic} ratings={predictionRatings} onChange={(id, value) => setPredictionRatings((ratings) => updateRating(ratings, id, value))} />
+      <StageFrame disabled={!surveyResponsesComplete(predictionSurveyItems, predictionRatings, predictionTextResponses)} primaryLabel="문제 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="다음 활동을 하기 전에 지금 느낌을 표시해 주세요." title="다음 활동 전 확인" onPrimary={savePrediction}>
+        <SurveyResponseGroup
+          items={predictionSurveyItemsForTopic}
+          ratings={predictionRatings}
+          textResponses={predictionTextResponses}
+          onRatingChange={(id, value) => setPredictionRatings((ratings) => updateRating(ratings, id, value))}
+          onTextChange={(id, value) => setPredictionTextResponses((responses) => updateTextResponse(responses, id, value))}
+        />
       </StageFrame>
     );
   }

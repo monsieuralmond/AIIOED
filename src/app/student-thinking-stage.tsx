@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
-import type { Outline } from "../shared/types";
-import { ThinkingProgressCoach } from "./thinking-progress-coach";
-import { Button, Field, TextArea, TextInput, WarningBanner } from "./ui";
+import type { Outline } from "../shared/types.js";
+import { ThinkingProgressCoach } from "./thinking-progress-coach.js";
+import { Button, Field, TextArea, TextInput, WarningBanner } from "./ui.js";
 
 const missingLabels: Readonly<Record<string, string>> = {
   claim: "나의 주장이 아직 짧아요.",

@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { PilotSession, WritingStage } from "../shared/types";
+import type { PilotSession, WritingStage } from "../shared/types.js";
 
 const assignmentChecklist: Readonly<Record<WritingStage, { readonly title: string; readonly items: readonly string[] }>> = {
   reading: {

@@ -12,7 +12,7 @@ export default defineConfig({
     trace: "retain-on-failure"
   },
   webServer: {
-    command: `READING_COACH_AI_MODE=mock npm run dev -- --host 127.0.0.1 --port ${playwrightPort}`,
+    command: `VITE_USE_LOCAL_RESEARCH_STORAGE=1 READING_COACH_AI_MODE=mock npm run dev -- --host 127.0.0.1 --port ${playwrightPort}`,
     url: baseURL,
     reuseExistingServer
   },

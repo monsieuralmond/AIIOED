@@ -1,4 +1,4 @@
-import type { Assignment } from "../shared/types";
+import type { Assignment } from "../shared/types.js";
 
 export const defaultRequirements = (assignment: Assignment): readonly string[] =>
   assignment.requirements ?? [

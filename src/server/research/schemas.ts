@@ -3,7 +3,9 @@ import { z } from "zod";
 export const sessionStartSchema = z.union([
   z.object({
     assignmentId: z.string().optional(),
-    participantCode: z.string().min(1)
+    loginId: z.string().min(1).optional(),
+    participantCode: z.string().min(1),
+    password: z.string().min(1).optional()
   }),
   z.object({
     sessionId: z.string().min(1)
@@ -51,6 +53,17 @@ export const chatSchema = z.object({
   sessionId: z.string().min(1)
 });
 
+export const chatTurnWriteSchema = z.object({
+  id: z.string().min(1),
+  requestId: z.string().min(1).optional(),
+  responseType: z.enum(["clarify", "question", "evidence_check", "redirect", "revision_guidance", "refusal"]).optional(),
+  role: z.enum(["student", "assistant"]),
+  sessionId: z.string().min(1),
+  stage: z.string().min(1),
+  text: z.string(),
+  timestamp: z.string().optional()
+});
+
 export const exportSchema = z.object({
   anonymized: z.boolean().default(true),
   assignmentId: z.string().optional(),
@@ -77,7 +90,7 @@ const rosterClassSchema = z.object({
 });
 
 const rosterAssignmentSchema = z.object({
-  classGroupId: z.string().min(1),
+  classGroupId: z.string().min(1).optional(),
   createdByTeacherId: z.string().min(1),
   id: z.string().min(1),
   payload: z.record(z.string(), z.unknown()),
@@ -90,22 +103,45 @@ const rosterStudentSchema = z.object({
   classGroupId: z.string().min(1),
   displayLabel: z.string().optional(),
   id: z.string().min(1),
+  loginId: z.string().min(1).optional(),
   participantCode: z.string().min(1),
-  studentAnonymousId: z.string().min(1)
+  password: z.string().min(1).optional(),
+  studentAnonymousId: z.string().min(1),
+  studentNumber: z.number().int().positive().optional()
+});
+
+const rosterTeacherSchema = z.object({
+  displayName: z.string().min(1),
+  id: z.string().min(1),
+  loginId: z.string().min(1),
+  password: z.string().min(1).optional()
 });
 
 export const rosterUpsertSchema = z.object({
   assignments: z.array(rosterAssignmentSchema).default([]),
   classes: z.array(rosterClassSchema).default([]),
-  students: z.array(rosterStudentSchema).default([])
+  deletedAssignmentIds: z.array(z.string().min(1)).default([]),
+  deletedClassIds: z.array(z.string().min(1)).default([]),
+  deletedStudentIds: z.array(z.string().min(1)).default([]),
+  deletedTeacherIds: z.array(z.string().min(1)).default([]),
+  expectedRosterRevision: z.string().min(1).optional(),
+  students: z.array(rosterStudentSchema).default([]),
+  teacherId: z.string().min(1).optional(),
+  teachers: z.array(rosterTeacherSchema).default([])
+});
+
+export const rosterLoadSchema = z.object({
+  teacherId: z.string().min(1).optional()
 });
 
 export type ArtifactWriteInput = z.infer<typeof artifactWriteSchema>;
 export type ChatInput = z.infer<typeof chatSchema>;
+export type ChatTurnWriteInput = z.infer<typeof chatTurnWriteSchema>;
 export type DeleteTestDataInput = z.infer<typeof deleteTestDataSchema>;
 export type EventWriteInput = z.infer<typeof eventWriteSchema>;
 export type ExportInput = z.infer<typeof exportSchema>;
 export type MeasureWriteInput = z.infer<typeof measureWriteSchema>;
+export type RosterLoadInput = z.infer<typeof rosterLoadSchema>;
 export type SessionStartInput = z.infer<typeof sessionStartSchema>;
 export type StageUpdateInput = z.infer<typeof stageUpdateSchema>;
 export type RosterUpsertInput = z.infer<typeof rosterUpsertSchema>;

@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
-import { sessionStatus } from "../session/session";
-import type { Assignment, PilotState, StudentAccount, StudentWorkStatus } from "../shared/types";
-import { Button, Surface } from "./ui";
+import { sessionStatus } from "../session/session.js";
+import type { Assignment, PilotState, StudentAccount, StudentWorkStatus } from "../shared/types.js";
+import { Button, Surface } from "./ui.js";
 
 const statusLabels: Readonly<Record<StudentWorkStatus, string>> = {
   not_started: "시작 전",

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
-import { sampleAssignment } from "../shared/fixtures";
-import { createInitialPilotState, saveAssignmentInState, startStudentSession } from "../session/session";
-import { appendCalibrationRecords } from "./understanding-calibration-session";
+import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
+import { sampleAssignment } from "../shared/fixtures.js";
+import { createInitialPilotState, saveAssignmentInState, startStudentSession } from "../session/session.js";
+import { appendCalibrationRecords } from "./understanding-calibration-session.js";
 
 describe("understanding calibration session records", () => {
   it("stores a submitted stage as events, artifacts, measures, and module stage records", () => {

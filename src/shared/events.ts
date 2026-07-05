@@ -15,6 +15,8 @@ type WritingCoachEventType =
   | "outline_warning_shown"
   | "feedback_generated"
   | "feedback_viewed"
+  | "guided_step_saved"
+  | "guided_writing_submitted"
   | "suggestion_checked"
   | "suggestion_resolved"
   | "submission_created"

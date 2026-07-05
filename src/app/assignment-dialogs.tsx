@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { ResearchModes } from "../shared/research";
-import type { Assignment, ClassGroup } from "../shared/types";
-import { defaultRequirements } from "./assignment-requirements";
-import { Button, Field } from "./ui";
+import { ResearchModes } from "../shared/research.js";
+import type { Assignment, ClassGroup } from "../shared/types.js";
+import { defaultRequirements } from "./assignment-requirements.js";
+import { Button, Field } from "./ui.js";
 
 export function AssignmentPreview(props: { readonly assignment: Assignment; readonly onClose: () => void }): ReactElement {
   const isCalibrationAssignment = props.assignment.researchMode === ResearchModes.understandingCalibration;

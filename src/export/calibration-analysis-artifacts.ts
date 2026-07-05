@@ -2,9 +2,9 @@ import {
   UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
   UNDERSTANDING_CALIBRATION_RUBRIC_VERSION,
   independentProblemsForModule
-} from "../app/understanding-calibration-data";
-import type { IndependentProblem } from "../app/understanding-calibration-data";
-import type { CalibrationAnalysisArtifacts, CalibrationAnalysisProblemArtifact, CalibrationProblemKey, CalibrationQuestionNumber, PilotEvent, PilotSession } from "../shared/types";
+} from "../app/understanding-calibration-data.js";
+import type { IndependentProblem } from "../app/understanding-calibration-data.js";
+import type { CalibrationAnalysisArtifacts, CalibrationAnalysisProblemArtifact, CalibrationProblemKey, CalibrationQuestionNumber, PilotEvent, PilotSession } from "../shared/types.js";
 
 const payloadNumber = (payload: Readonly<Record<string, unknown>>, key: string): number | null => {
   const value = payload[key];

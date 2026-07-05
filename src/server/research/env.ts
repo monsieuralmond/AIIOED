@@ -4,6 +4,7 @@ export type ResearchServerEnv = {
   readonly aiMode: "mock" | "real";
   readonly geminiApiKey: string | undefined;
   readonly geminiModel: string;
+  readonly serverAuthSecret: string | undefined;
   readonly supabaseServiceRoleKey: string;
   readonly supabaseUrl: string;
 };
@@ -26,6 +27,7 @@ export const researchServerEnv = (): ResearchServerEnv => {
     aiMode,
     geminiApiKey: readEnv("GEMINI_API_KEY"),
     geminiModel: readEnv("GEMINI_MODEL") ?? "gemini-2.5-flash-lite",
+    serverAuthSecret: readEnv("SERVER_AUTH_SECRET"),
     supabaseServiceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
     supabaseUrl: requiredEnv("SUPABASE_URL")
   };

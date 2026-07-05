@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   configuredIndependentProblems,
   configuredSurveyItems,
+  emptyRatings,
+  emptyTextResponses,
   independentProblemsForModule,
   predictionSurveyItems,
   predictionSurveyItemsForModule,
   preSurveyItems,
   nextProblemAfter,
-  surveyItemsForTopic
-} from "./understanding-calibration-data";
+  surveyItemsForTopic,
+  surveyResponsesComplete,
+  updateRating,
+  updateTextResponse
+} from "./understanding-calibration-data.js";
 
 describe("surveyItemsForTopic", () => {
   it("renders topic-specific survey labels while preserving rating ids", () => {
@@ -23,6 +28,18 @@ describe("surveyItemsForTopic", () => {
 });
 
 describe("understanding calibration assignment configuration", () => {
+  it("supports free-text survey items alongside Likert items", () => {
+    const items = [
+      { id: "likert_one", label: "나는 설명할 수 있다." },
+      { id: "text_one", label: "내 말로 적어 보세요.", responseType: "text" }
+    ] as const;
+    const ratings = updateRating(emptyRatings(items), "likert_one", 4);
+    const emptyTexts = emptyTextResponses(items);
+
+    expect(surveyResponsesComplete(items, ratings, emptyTexts)).toBe(false);
+    expect(surveyResponsesComplete(items, ratings, updateTextResponse(emptyTexts, "text_one", "짧은 설명"))).toBe(true);
+  });
+
   it("uses teacher-configured survey labels and preserves added or deleted items", () => {
     const items = configuredSurveyItems(predictionSurveyItems, [
       { id: "pred_can_explain_concept", label: "나는 새 주제를 쉬운 말로 설명할 수 있다.", helper: "학생에게는 보조 설명으로 보입니다." },

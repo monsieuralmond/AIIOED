@@ -17,7 +17,9 @@ export const defaultResearchModules = (assignment: Assignment): ResearchModules 
   return {
     understandingCalibration: {
       ...(config?.aiContext === undefined ? {} : { aiContext: config.aiContext }),
+      ...(config?.confidencePromptLabel === undefined ? {} : { confidencePromptLabel: config.confidencePromptLabel }),
       ...(config?.errorStatement === undefined ? {} : { errorStatement: config.errorStatement }),
+      ...(config?.finalReflectionSurveyItems === undefined ? {} : { finalReflectionSurveyItems: config.finalReflectionSurveyItems }),
       ...(config?.independentProblems === undefined ? {} : { independentProblems: config.independentProblems }),
       ...(config?.independentTasks === undefined ? {} : { independentTasks: config.independentTasks }),
       ...(config?.maxChatMinutes === undefined ? {} : { maxChatMinutes: config.maxChatMinutes }),

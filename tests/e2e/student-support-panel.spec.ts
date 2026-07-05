@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent } from "./helpers";
+import { enterStudent } from "./helpers.js";
 
 test("right support pane keeps assignment details in the top task dialog", async ({ page }) => {
   await enterStudent(page);

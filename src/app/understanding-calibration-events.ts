@@ -1,4 +1,4 @@
-import type { PilotSession } from "../shared/types";
+import type { PilotSession } from "../shared/types.js";
 
 export const lastEventTimestamp = (session: PilotSession, type: string): string | null => {
   for (let index = session.events.length - 1; index >= 0; index -= 1) {

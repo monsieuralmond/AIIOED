@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createInitialPilotState, createSession } from "../session/session";
-import { sampleAssignment, sampleStudents } from "../shared/fixtures";
-import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research";
-import type { Assignment, PilotSession } from "../shared/types";
-import { independentProblems, predictionSurveyItems } from "../app/understanding-calibration-data";
+import { createInitialPilotState, createSession } from "../session/session.js";
+import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
+import { ResearchModes, UnderstandingCalibrationStages } from "../shared/research.js";
+import type { Assignment, PilotSession } from "../shared/types.js";
+import { independentProblems, predictionSurveyItems } from "../app/understanding-calibration-data.js";
 import {
   exportCalibrationAttritionRows,
   exportCalibrationChatTurnRows,
@@ -18,7 +18,7 @@ import {
   stringifyCalibrationManualEvaluationCsv,
   stringifyCalibrationRubricCodesCsv,
   stringifyCalibrationSessionsCsv
-} from "./export";
+} from "./export.js";
 
 const makeCalibrationState = () => {
   const student = sampleStudents[0];
@@ -70,6 +70,13 @@ const makeCalibrationState = () => {
         kind: "problem4",
         payload: { answer: "복잡한 문제라도 양자컴퓨터가 유리한 문제와 그렇지 않은 문제가 나뉩니다.", durationMs: 90000, promptVersion: "2026-07-UC-R1", questionNumber: 4, rubricVersion: "2026-07-UC-R1" },
         stage: UnderstandingCalibrationStages.problem4
+      },
+      {
+        createdAt: "2026-07-02T00:10:30.000Z",
+        id: "artifact-final-reflection",
+        kind: "final_reflection",
+        payload: { promptVersion: "2026-07-UC-R1", text: "AI 대화를 다시 보니 원리 설명을 더 확인해야겠다고 느꼈습니다." },
+        stage: UnderstandingCalibrationStages.finalReflection
       }
     ],
     chatTurns: [
@@ -170,6 +177,26 @@ const makeCalibrationState = () => {
         kind: "problem4_confidence",
         payload: { confidence: 5, questionNumber: 4 },
         stage: UnderstandingCalibrationStages.problem4Confidence
+      },
+      {
+        collectedAt: "2026-07-02T00:10:20.000Z",
+        id: "measure-reflection",
+        kind: "reflection_self_report",
+        payload: {
+          ratings: { reflection_explaining_harder: 4 },
+          textResponses: { reflection_hardest_part: "원리를 내 말로 설명하는 부분이 어려웠다." }
+        },
+        stage: UnderstandingCalibrationStages.reflectionSurvey
+      },
+      {
+        collectedAt: "2026-07-02T00:10:50.000Z",
+        id: "measure-final-reflection",
+        kind: "final_reflection_self_report",
+        payload: {
+          ratings: { final_review_missed_important_content: 4 },
+          textResponses: { final_review_helpful_part: "AI가 비유를 든 부분이 도움이 되었다." }
+        },
+        stage: UnderstandingCalibrationStages.finalReflection
       }
     ],
     completedAt: "2026-07-02T00:11:00.000Z",
@@ -202,9 +229,14 @@ describe("understanding calibration CSV export", () => {
     expect(exportedSession.derivedFeatures).toEqual(expect.objectContaining({
       chatTurnCount: 2,
       confidenceMean: 3.5,
+      completedProblemCount: 4,
+      confidenceDrop: -1,
+      confidenceTrajectory: [4, 3, 2, 5],
       containsWhyQuestion: true,
       exampleRequestCount: 1,
       isCompleteForAnalysis: true,
+      hasFinalReflection: true,
+      hasReflectionSurvey: true,
       performanceTotal: null,
       problem1DurationMs: 60000,
       predictionMean: 3.5,
@@ -218,8 +250,12 @@ describe("understanding calibration CSV export", () => {
     expect(exportedSession.manualEvaluation.totalScore).toBeNull();
     expect(sessionRows[0]).toEqual(expect.objectContaining({
       confidenceMean: "3.5",
+      confidenceTrajectory: "[4,3,2,5]",
       isCompleteForAnalysis: "true",
+      problem1_answer: "양자컴퓨터는 양자의 성질을 이용해 정보를 처리하는 컴퓨터입니다.",
+      problem1_confidence: "4",
       problem1DurationMs: "60000",
+      problem1_durationMs: "60000",
       predictionMean: "3.5",
       questionCount: "0"
     }));
@@ -228,7 +264,9 @@ describe("understanding calibration CSV export", () => {
       answer: "양자컴퓨터는 양자의 성질을 이용해 정보를 처리하는 컴퓨터입니다.",
       confidence: "4",
       itemScore: "",
+      problemKey: "problem1",
       problemNumber: "1",
+      questionNumber: "1",
       prompt: "맞춤 문제 1 지시문",
       title: "맞춤 자유 설명"
     }));

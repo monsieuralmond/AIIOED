@@ -1,6 +1,6 @@
-import type { ChatTurn, PilotEvent, PilotEventType, PilotSession, Stage } from "../shared/types";
-import type { ResearchArtifact, ResearchMeasure, ResearchSessionStatus, UnderstandingCalibrationStageRecord } from "../shared/research";
-import { UNDERSTANDING_CALIBRATION_PROMPT_VERSION } from "./understanding-calibration-data";
+import type { ChatTurn, PilotEvent, PilotEventType, PilotSession, Stage } from "../shared/types.js";
+import type { ResearchArtifact, ResearchMeasure, ResearchSessionStatus, UnderstandingCalibrationStageRecord } from "../shared/research.js";
+import { UNDERSTANDING_CALIBRATION_PROMPT_VERSION } from "./understanding-calibration-data.js";
 
 type NewArtifact = {
   readonly kind: string;
@@ -41,7 +41,8 @@ export type CalibrationSessionUpdate = {
 
 type FinalReflectionCompletionInput = {
   readonly completedAt: string;
-  readonly finalReflection: string;
+  readonly ratings: Readonly<Record<string, number>>;
+  readonly textResponses: Readonly<Record<string, string>>;
   readonly topic: string;
 };
 
@@ -59,29 +60,61 @@ export const makeCalibrationChatTurn = (role: ChatTurn["role"], text: string, re
   return responseType === undefined ? base : { ...base, responseType };
 };
 
-const createEvent = (stage: Stage, input: NewEvent, timestamp: string): PilotEvent => ({
-  id: makeId("event"),
-  payload: input.payload ?? {},
-  stage: input.stage ?? stage,
+const sessionPayload = (session: PilotSession, stage: Stage, timestamp: string): Record<string, unknown> => ({
+  assignmentId: session.assignment.id,
+  classGroupId: session.assignment.classGroupId ?? "",
+  researchMode: session.researchMode,
+  sessionId: session.sessionId,
+  stage,
+  studentAnonymousId: session.student.anonymousId,
   timestamp,
-  type: input.type
+  topicId: session.modules.understandingCalibration?.topic ?? session.assignment.title
 });
 
-const createArtifact = (stage: Stage, input: NewArtifact, timestamp: string): CalibrationArtifact => ({
-  createdAt: timestamp,
-  id: makeId("artifact"),
-  kind: input.kind,
-  payload: input.payload,
-  stage: input.stage ?? stage
-});
+const createEvent = (session: PilotSession, stage: Stage, input: NewEvent, timestamp: string): PilotEvent => {
+  const eventStage = input.stage ?? stage;
+  const id = makeId("event");
+  return {
+    id,
+    payload: {
+      ...(input.payload ?? {}),
+      ...sessionPayload(session, eventStage, timestamp),
+      eventId: id,
+      type: input.type
+    },
+    stage: eventStage,
+    timestamp,
+    type: input.type
+  };
+};
 
-const createMeasure = (stage: Stage, input: NewMeasure, timestamp: string): CalibrationMeasure => ({
-  collectedAt: timestamp,
-  id: makeId("measure"),
-  kind: input.kind,
-  payload: input.payload,
-  stage: input.stage ?? stage
-});
+const createArtifact = (session: PilotSession, stage: Stage, input: NewArtifact, timestamp: string): CalibrationArtifact => {
+  const artifactStage = input.stage ?? stage;
+  return {
+    createdAt: timestamp,
+    id: makeId("artifact"),
+    kind: input.kind,
+    payload: {
+      ...input.payload,
+      ...sessionPayload(session, artifactStage, timestamp)
+    },
+    stage: artifactStage
+  };
+};
+
+const createMeasure = (session: PilotSession, stage: Stage, input: NewMeasure, timestamp: string): CalibrationMeasure => {
+  const measureStage = input.stage ?? stage;
+  return {
+    collectedAt: timestamp,
+    id: makeId("measure"),
+    kind: input.kind,
+    payload: {
+      ...input.payload,
+      ...sessionPayload(session, measureStage, timestamp)
+    },
+    stage: measureStage
+  };
+};
 
 const uniqueStages = (stages: readonly Stage[]): readonly Stage[] => {
   const unique: Stage[] = [];
@@ -93,9 +126,9 @@ const uniqueStages = (stages: readonly Stage[]): readonly Stage[] => {
 
 export const appendCalibrationRecords = (session: PilotSession, input: CalibrationSessionUpdate): PilotSession => {
   const timestamp = nowIso();
-  const events = input.events?.map((item) => createEvent(input.stage, item, timestamp)) ?? [];
-  const artifacts = input.artifacts?.map((item) => createArtifact(input.stage, item, timestamp)) ?? [];
-  const measures = input.measures?.map((item) => createMeasure(input.stage, item, timestamp)) ?? [];
+  const events = input.events?.map((item) => createEvent(session, input.stage, item, timestamp)) ?? [];
+  const artifacts = input.artifacts?.map((item) => createArtifact(session, input.stage, item, timestamp)) ?? [];
+  const measures = input.measures?.map((item) => createMeasure(session, input.stage, item, timestamp)) ?? [];
   const currentModule = session.modules.understandingCalibration ?? { version: "1.0" };
   const currentRecords = currentModule.stageRecords ?? {};
   const touchedStages = uniqueStages([
@@ -138,12 +171,32 @@ export const appendCalibrationRecords = (session: PilotSession, input: Calibrati
 };
 
 export const makeFinalReflectionCompletionUpdate = (input: FinalReflectionCompletionInput): CalibrationSessionUpdate => ({
-  artifacts: [{ kind: "final_reflection", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, text: input.finalReflection, topic: input.topic } }],
+  artifacts: [{
+    kind: "final_reflection",
+    payload: {
+      promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+      ratings: input.ratings,
+      text: Object.values(input.textResponses).map((value) => value.trim()).filter((value) => value.length > 0).join("\n\n"),
+      textResponses: input.textResponses,
+      topic: input.topic
+    }
+  }],
   completedAt: input.completedAt,
   events: [
-    { type: "reflection_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, questionNumber: 0, reflectionKind: "final", textLength: input.finalReflection.length, topic: input.topic } },
+    {
+      type: "final_reflection_submitted",
+      payload: {
+        promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+        questionNumber: 0,
+        ratings: input.ratings,
+        reflectionKind: "final",
+        textResponses: input.textResponses,
+        topic: input.topic
+      }
+    },
     { type: "calibration_study_completed", payload: { completedAt: input.completedAt, topic: input.topic }, stage: "completed" }
   ],
+  measures: [{ kind: "final_reflection_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: input.ratings, textResponses: input.textResponses, topic: input.topic } }],
   nextStage: "completed",
   stage: "final_reflection",
   status: "submitted"

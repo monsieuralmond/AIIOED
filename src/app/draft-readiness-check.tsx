@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { Outline } from "../shared/types";
+import type { Outline } from "../shared/types.js";
 
 type ReadinessItem = {
   readonly help: string;
