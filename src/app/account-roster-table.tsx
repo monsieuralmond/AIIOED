@@ -3,16 +3,19 @@ import type { ClassGroup, PilotState, StudentAccount, TeacherAccount } from "../
 
 type RosterTableProps = {
   readonly classNameById: ReadonlyMap<string, string>;
+  readonly canManageRoster: boolean;
+  readonly canManageTeachers: boolean;
   readonly state: PilotState;
   readonly onDeleteClass: (classGroup: ClassGroup) => void;
   readonly onDeleteStudent: (student: StudentAccount) => void;
   readonly onDeleteTeacher: (teacher: TeacherAccount) => void;
+  readonly onResetTeacherPassword: (teacher: TeacherAccount) => void;
 };
 
 export function RosterTable(props: RosterTableProps): ReactElement {
   return (
     <>
-      <DataTable label="반 목록" headers={["반", "담당 교사", "학생 수", "삭제"]}>
+      {props.canManageRoster ? <DataTable label="반 목록" headers={["반", "담당 교사", "학생 수", "삭제"]}>
         {props.state.classGroups.map((classGroup) => {
           const teacher = props.state.teachers.find((item) => item.id === classGroup.teacherId);
           return (
@@ -24,8 +27,8 @@ export function RosterTable(props: RosterTableProps): ReactElement {
             </tr>
           );
         })}
-      </DataTable>
-      <DataTable label="학생 계정 목록" headers={["반", "번호", "학생", "참여자 코드", "학생 아이디", "초기 비밀번호", "삭제"]}>
+      </DataTable> : null}
+      {props.canManageRoster ? <DataTable label="학생 계정 목록" headers={["반", "번호", "학생", "참여자 코드", "학생 아이디", "초기 비밀번호", "삭제"]}>
         {props.state.students.map((student) => (
           <tr key={student.id}>
             <td>{props.classNameById.get(student.classGroupId) ?? "미지정"}</td>
@@ -37,18 +40,33 @@ export function RosterTable(props: RosterTableProps): ReactElement {
             <td className="account-action-cell"><TrashButton label={`학생 삭제: ${student.displayName}`} onClick={() => props.onDeleteStudent(student)} /></td>
           </tr>
         ))}
-      </DataTable>
-      <DataTable label="교사 계정 목록" headers={["교사", "아이디", "비밀번호", "삭제"]}>
-        {props.state.teachers.map((teacher) => (
-          <tr key={teacher.id}>
-            <td>{teacher.displayName}</td>
-            <td>{teacher.loginId}</td>
-            <td>{teacher.password}</td>
-            <td className="account-action-cell"><TrashButton label={`교사 삭제: ${teacher.displayName}`} onClick={() => props.onDeleteTeacher(teacher)} /></td>
-          </tr>
-        ))}
-      </DataTable>
+      </DataTable> : null}
+      {props.canManageTeachers ? (
+        <DataTable label="교사 계정 목록" headers={["교사", "아이디", "비밀번호", "초기화", "삭제"]}>
+          {props.state.teachers.map((teacher) => (
+            <tr key={teacher.id}>
+              <td>{teacher.displayName}</td>
+              <td>{teacher.loginId}</td>
+              <td>생성 또는 초기화 직후에만 표시됩니다</td>
+              <td className="account-action-cell"><ResetButton label={`교사 비밀번호 초기화: ${teacher.displayName}`} onClick={() => props.onResetTeacherPassword(teacher)} /></td>
+              <td className="account-action-cell"><TrashButton label={`교사 삭제: ${teacher.displayName}`} onClick={() => props.onDeleteTeacher(teacher)} /></td>
+            </tr>
+          ))}
+        </DataTable>
+      ) : null}
     </>
+  );
+}
+
+function ResetButton(props: { readonly label: string; readonly onClick: () => void }): ReactElement {
+  return (
+    <button aria-label={props.label} className="account-delete-button" onClick={props.onClick} title={props.label} type="button">
+      <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v5h-5" />
+        <path d="M12 8v5l3 2" />
+      </svg>
+    </button>
   );
 }
 

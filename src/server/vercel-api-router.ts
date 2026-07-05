@@ -2,6 +2,7 @@ import { createUnifiedAiJsonHandler } from "./ai-unified-route.js";
 import type { JsonHandler } from "./research/http.js";
 import { ApiError } from "./research/http.js";
 import { createResearchApiHandlers } from "./research/handlers.js";
+import { authenticateAdmin } from "./research/admin-auth.js";
 import { authenticateStudent } from "./research/student-auth.js";
 import { authenticateTeacher } from "./research/teacher-auth.js";
 import type { LlmMode } from "../shared/types.js";
@@ -13,6 +14,7 @@ const apiRoutePaths = [
   "admin/upsert-roster",
   "ai",
   "artifact",
+  "auth/admin",
   "auth/student",
   "auth/teacher",
   "chat",
@@ -55,6 +57,7 @@ export const createVercelApiJsonHandler = (): JsonHandler => {
     "admin/upsert-roster": researchHandlers.rosterUpsert,
     ai: aiHandler,
     artifact: researchHandlers.artifact,
+    "auth/admin": (payload) => authenticateAdmin(payload),
     "auth/student": (payload) => authenticateStudent(payload),
     "auth/teacher": (payload) => authenticateTeacher(payload),
     chat: researchHandlers.chat,

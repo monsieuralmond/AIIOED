@@ -2,10 +2,10 @@ import { activeSession, assignmentsForStudent, createInitialPilotState, createSe
 import { sampleDraft, sampleOutline } from "../shared/fixtures.js";
 import type { Assignment, PilotSession, PilotState, SelectedActor, Stage, StudentAccount } from "../shared/types.js";
 import { loadPersistedState } from "../session/storage.js";
-import { loadBrowserActorIdentity, loadBrowserTeacherAuth } from "../session/browser-session.js";
+import { loadBrowserActorIdentity, loadBrowserAdminAuth, loadBrowserTeacherAuth } from "../session/browser-session.js";
 import type { DatabaseRoster } from "../session/database-roster.js";
 
-export type Route = "list" | "create" | "student" | "review" | "export" | "accounts";
+export type Route = "admin" | "list" | "create" | "student" | "review" | "export" | "accounts";
 
 export const currentPath = (): string => window.location.pathname;
 
@@ -15,6 +15,7 @@ export const initialRoute = (): Route => {
   if (currentPath().startsWith("/review")) return "review";
   if (currentPath().startsWith("/export")) return "export";
   if (currentPath().startsWith("/accounts")) return "accounts";
+  if (currentPath().startsWith("/admin")) return "admin";
   return "list";
 };
 
@@ -24,6 +25,7 @@ export const routePath = (route: Route): string => {
   if (route === "review") return "/review";
   if (route === "export") return "/export";
   if (route === "accounts") return "/accounts";
+  if (route === "admin") return "/admin";
   return "/";
 };
 
@@ -86,6 +88,10 @@ export const stateWithServerSession = (state: PilotState, session: PilotSession)
 };
 
 const actorAccountExists = (state: PilotState, actor: SelectedActor): boolean => {
+  if (actor.role === "admin") {
+    const adminAuth = loadBrowserAdminAuth();
+    return adminAuth?.adminId === actor.accountId;
+  }
   if (actor.role === "teacher") {
     const teacherAuth = loadBrowserTeacherAuth();
     if (teacherAuth?.teacherId === actor.accountId) return true;

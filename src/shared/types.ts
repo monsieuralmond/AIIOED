@@ -11,7 +11,7 @@ export type Stage = WritingStage | UnderstandingCalibrationStage | GuidedWriting
 
 export type LlmMode = "mock" | "real";
 
-export type UserRole = "teacher" | "student";
+export type UserRole = "admin" | "teacher" | "student";
 
 export type TeacherAccount = {
   readonly id: string;

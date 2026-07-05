@@ -153,21 +153,13 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   },
 
   rosterLoad: async (payload, request) => {
-    const input = rosterLoadSchema.parse(payload);
-    const auth = teacherAuthFromRequest(request);
-    const teacherId = input.teacherId ?? auth?.teacherId;
-    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
-    requireTeacherAuth(request, teacherId);
-    return loadRoster({ teacherId }, request);
+    rosterLoadSchema.parse(payload);
+    return loadRoster(payload, request);
   },
 
   rosterUpsert: async (payload, request) => {
-    const input = rosterUpsertSchema.parse(payload);
-    const auth = teacherAuthFromRequest(request);
-    const teacherId = input.teacherId ?? auth?.teacherId;
-    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
-    requireTeacherAuth(request, teacherId);
-    return upsertRoster({ ...input, teacherId }, request);
+    rosterUpsertSchema.parse(payload);
+    return upsertRoster(payload, request);
   },
 
   sessionList: async (payload, request) => {

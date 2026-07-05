@@ -4,13 +4,14 @@ import { defineConfig } from "vitest/config";
 import { createUnifiedAiJsonHandler } from "./src/server/ai-unified-route";
 import { createResearchApiHandlers } from "./src/server/research/handlers";
 import { connectJsonRoute } from "./src/server/research/http";
+import { authenticateAdmin } from "./src/server/research/admin-auth";
 import { authenticateStudent } from "./src/server/research/student-auth";
 import { authenticateTeacher } from "./src/server/research/teacher-auth";
 import type { LlmMode } from "./src/shared/types";
 
 const aiMode = (value: string | undefined): LlmMode => (value === "mock" ? "mock" : "real");
 
-const serverEnvKeys = ["GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_TIMEOUT_MS", "READING_COACH_AI_MODE", "SERVER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL", "EXPORT_SESSION_LIMIT", "MAX_CHAT_TURNS", "MAX_CHAT_TURNS_PER_MINUTE"] as const;
+const serverEnvKeys = ["ADMIN_DISPLAY_NAME", "ADMIN_ID", "ADMIN_LOGIN_ID", "ADMIN_PASSWORD", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_TIMEOUT_MS", "READING_COACH_AI_MODE", "SERVER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL", "EXPORT_SESSION_LIMIT", "MAX_CHAT_TURNS", "MAX_CHAT_TURNS_PER_MINUTE"] as const;
 
 const installServerEnv = (env: Record<string, string>): void => {
   for (const key of serverEnvKeys) {
@@ -36,6 +37,7 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use("/api/chat", connectJsonRoute(researchHandlers.chat));
           server.middlewares.use("/api/chat-turn", connectJsonRoute(researchHandlers.chatTurn));
+          server.middlewares.use("/api/auth/admin", connectJsonRoute((payload) => authenticateAdmin(payload)));
           server.middlewares.use("/api/auth/student", connectJsonRoute((payload) => authenticateStudent(payload)));
           server.middlewares.use("/api/auth/teacher", connectJsonRoute((payload) => authenticateTeacher(payload)));
           server.middlewares.use("/api/session/start", connectJsonRoute(researchHandlers.sessionStart));
@@ -54,6 +56,7 @@ export default defineConfig(({ mode }) => {
         configurePreviewServer(server) {
           server.middlewares.use("/api/chat", connectJsonRoute(researchHandlers.chat));
           server.middlewares.use("/api/chat-turn", connectJsonRoute(researchHandlers.chatTurn));
+          server.middlewares.use("/api/auth/admin", connectJsonRoute((payload) => authenticateAdmin(payload)));
           server.middlewares.use("/api/auth/student", connectJsonRoute((payload) => authenticateStudent(payload)));
           server.middlewares.use("/api/auth/teacher", connectJsonRoute((payload) => authenticateTeacher(payload)));
           server.middlewares.use("/api/session/start", connectJsonRoute(researchHandlers.sessionStart));

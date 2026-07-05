@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { Button, Field, Surface, TextInput } from "./ui.js";
 
-type RoleEntryMode = "entry" | "teacher";
-type LoginRole = "student" | "teacher";
+type RoleEntryMode = "admin" | "entry" | "teacher";
+type LoginRole = "admin" | "student" | "teacher";
 type StudentLoginInput = {
   readonly loginId: string;
   readonly participantCode: string;
@@ -12,6 +12,7 @@ type StudentLoginInput = {
 
 type RoleEntryProps = {
   readonly mode: RoleEntryMode;
+  readonly onAdmin: (loginId: string, password: string) => boolean | Promise<boolean>;
   readonly onTeacher: (loginId: string, password: string) => boolean | Promise<boolean>;
   readonly onStudentCredentials: (input: StudentLoginInput) => boolean | Promise<boolean>;
 };
@@ -26,14 +27,18 @@ function BackArrowIcon(): ReactElement {
 }
 
 export function RoleEntry(props: RoleEntryProps): ReactElement {
-  const [selectedRole, setSelectedRole] = useState<LoginRole | null>(props.mode === "teacher" ? "teacher" : null);
+  const [selectedRole, setSelectedRole] = useState<LoginRole | null>(props.mode === "entry" ? null : props.mode);
   const [studentParticipantCode, setStudentParticipantCode] = useState("");
   const [studentLoginId, setStudentLoginId] = useState("");
   const [studentPassword, setStudentPassword] = useState("");
+  const [adminLoginId, setAdminLoginId] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [teacherLoginId, setTeacherLoginId] = useState("");
   const [teacherPassword, setTeacherPassword] = useState("");
+  const [adminError, setAdminError] = useState("");
   const [studentError, setStudentError] = useState("");
   const [teacherError, setTeacherError] = useState("");
+  const [adminPending, setAdminPending] = useState(false);
   const [studentPending, setStudentPending] = useState(false);
   const [teacherPending, setTeacherPending] = useState(false);
 
@@ -59,19 +64,32 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
     }
   };
 
+  const submitAdmin = async (): Promise<void> => {
+    setAdminError("");
+    setAdminPending(true);
+    try {
+      if (!(await props.onAdmin(adminLoginId, adminPassword))) setAdminError("관리자 아이디 또는 비밀번호가 맞지 않습니다");
+    } finally {
+      setAdminPending(false);
+    }
+  };
+
   const resetRole = (): void => {
+    setAdminError("");
     setStudentError("");
     setTeacherError("");
     setSelectedRole(null);
   };
 
-  const title = selectedRole === null ? "어떤 계정으로 들어갈까요?" : selectedRole === "student" ? "학생 로그인" : "교사 로그인";
+  const title = selectedRole === null ? "계정을 선택하세요" : selectedRole === "student" ? "학생 로그인" : selectedRole === "teacher" ? "교사 로그인" : "관리자 로그인";
   const description =
     selectedRole === null
       ? "수업에서 받은 계정으로 로그인하면 배정된 활동을 이어서 진행할 수 있습니다."
       : selectedRole === "student"
         ? "수업에서 받은 참여코드와 학생 계정 정보를 입력하세요."
-        : "교사 계정으로 과제, 계정, 학생 기록을 관리합니다.";
+        : selectedRole === "teacher"
+          ? "교사 계정으로 과제, 반, 학생 기록을 관리합니다."
+          : "관리자 계정으로 교사 계정을 생성하고 초기화합니다.";
 
   return (
     <main className="role-entry-page">
@@ -84,8 +102,8 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
         ) : null}
         <Surface className="role-entry">
           <p className="eyebrow">Reading Coach Lab</p>
-          <h1>{props.mode === "teacher" ? "교사 로그인" : title}</h1>
-          <p>{props.mode === "teacher" ? "교사 계정으로 과제, 계정, 학생 기록을 관리합니다." : description}</p>
+          <h1>{title}</h1>
+          <p>{description}</p>
 
           {selectedRole === null ? (
             <div className="role-choice-grid" aria-label="계정 종류 선택">
@@ -95,7 +113,11 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
               </button>
               <button aria-label="교사 계정" type="button" onClick={() => setSelectedRole("teacher")}>
                 <strong>교사</strong>
-                <span>과제, 계정, 학생 기록을 관리합니다.</span>
+                <span>과제, 반, 학생 기록을 관리합니다.</span>
+              </button>
+              <button aria-label="관리자 계정" type="button" onClick={() => setSelectedRole("admin")}>
+                <strong>관리자</strong>
+                <span>교사 계정과 초기 설정을 관리합니다.</span>
               </button>
             </div>
           ) : null}
@@ -134,6 +156,22 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
               </Field>
               {teacherError.length > 0 ? <p className="error-text">{teacherError}</p> : null}
               <Button disabled={teacherPending} variant="primary" onClick={() => { void submitTeacher(); }}>{teacherPending ? "확인 중" : "교사로 시작"}</Button>
+            </section>
+          ) : null}
+
+          {selectedRole === "admin" ? (
+            <section className="login-section" aria-label="관리자 로그인">
+              <header className="login-section-header">
+                <h2>계정 정보</h2>
+              </header>
+              <Field label="관리자 아이디">
+                <TextInput autoComplete="username" value={adminLoginId} onChange={(event) => setAdminLoginId(event.currentTarget.value)} />
+              </Field>
+              <Field label="관리자 비밀번호">
+                <TextInput autoComplete="current-password" type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.currentTarget.value)} />
+              </Field>
+              {adminError.length > 0 ? <p className="error-text">{adminError}</p> : null}
+              <Button disabled={adminPending} variant="primary" onClick={() => { void submitAdmin(); }}>{adminPending ? "확인 중" : "관리자로 시작"}</Button>
             </section>
           ) : null}
         </Surface>

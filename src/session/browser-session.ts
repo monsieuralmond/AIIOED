@@ -3,6 +3,7 @@ import type { SelectedActor } from "../shared/types.js";
 const BROWSER_ACTOR_KEY = "reading-coach-lab:browser-actor:v1";
 const BROWSER_SESSION_KEY = "reading-coach-lab:browser-session:v1";
 const BROWSER_SESSION_TOKEN_KEY = "reading-coach-lab:browser-session-token:v1";
+const BROWSER_ADMIN_AUTH_KEY = "reading-coach-lab:browser-admin-auth:v1";
 const BROWSER_TEACHER_AUTH_KEY = "reading-coach-lab:browser-teacher-auth:v1";
 
 export type BrowserActorIdentity = SelectedActor;
@@ -19,12 +20,17 @@ export type BrowserTeacherAuth = {
   readonly teacherToken: string;
 };
 
+export type BrowserAdminAuth = {
+  readonly adminId: string;
+  readonly adminToken: string;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isActorIdentity = (value: unknown): value is BrowserActorIdentity => {
   if (!isRecord(value)) return false;
   const role = value["role"];
-  return (role === "teacher" || role === "student") && typeof value["accountId"] === "string";
+  return (role === "admin" || role === "teacher" || role === "student") && typeof value["accountId"] === "string";
 };
 
 const isIdentity = (value: unknown): value is BrowserSessionIdentity => {
@@ -34,6 +40,9 @@ const isIdentity = (value: unknown): value is BrowserSessionIdentity => {
 
 const isTeacherAuth = (value: unknown): value is BrowserTeacherAuth =>
   isRecord(value) && typeof value["teacherId"] === "string" && typeof value["teacherToken"] === "string";
+
+const isAdminAuth = (value: unknown): value is BrowserAdminAuth =>
+  isRecord(value) && typeof value["adminId"] === "string" && typeof value["adminToken"] === "string";
 
 export const clearBrowserActorIdentity = (): void => {
   if (typeof window.sessionStorage?.removeItem !== "function") return;
@@ -53,6 +62,11 @@ export const clearBrowserSessionToken = (): void => {
 export const clearBrowserTeacherAuth = (): void => {
   if (typeof window.sessionStorage?.removeItem !== "function") return;
   window.sessionStorage.removeItem(BROWSER_TEACHER_AUTH_KEY);
+};
+
+export const clearBrowserAdminAuth = (): void => {
+  if (typeof window.sessionStorage?.removeItem !== "function") return;
+  window.sessionStorage.removeItem(BROWSER_ADMIN_AUTH_KEY);
 };
 
 export const loadBrowserActorIdentity = (): BrowserActorIdentity | null => {
@@ -97,6 +111,18 @@ export const loadBrowserTeacherAuth = (): BrowserTeacherAuth | null => {
   }
 };
 
+export const loadBrowserAdminAuth = (): BrowserAdminAuth | null => {
+  if (typeof window.sessionStorage?.getItem !== "function") return null;
+  const raw = window.sessionStorage.getItem(BROWSER_ADMIN_AUTH_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isAdminAuth(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 export const saveBrowserSessionIdentity = (identity: BrowserSessionIdentity): void => {
   if (typeof window.localStorage?.setItem !== "function") return;
   window.localStorage.setItem(BROWSER_SESSION_KEY, JSON.stringify(identity));
@@ -115,4 +141,9 @@ export const saveBrowserSessionToken = (token: string): void => {
 export const saveBrowserTeacherAuth = (auth: BrowserTeacherAuth): void => {
   if (typeof window.sessionStorage?.setItem !== "function") return;
   window.sessionStorage.setItem(BROWSER_TEACHER_AUTH_KEY, JSON.stringify(auth));
+};
+
+export const saveBrowserAdminAuth = (auth: BrowserAdminAuth): void => {
+  if (typeof window.sessionStorage?.setItem !== "function") return;
+  window.sessionStorage.setItem(BROWSER_ADMIN_AUTH_KEY, JSON.stringify(auth));
 };

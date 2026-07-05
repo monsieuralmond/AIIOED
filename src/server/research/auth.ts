@@ -17,12 +17,19 @@ const tokenPayloadSchema = z.discriminatedUnion("kind", [
     expiresAt: z.number().int().positive(),
     kind: z.literal("teacher"),
     teacherId: z.string().min(1)
+  }),
+  z.object({
+    adminId: z.string().min(1),
+    expiresAt: z.number().int().positive(),
+    kind: z.literal("admin")
   })
 ]);
 
 type TokenPayload = z.infer<typeof tokenPayloadSchema>;
 
 const sessionTokenHeader = "x-research-session-token";
+const adminIdHeader = "x-research-admin-id";
+const adminTokenHeader = "x-research-admin-token";
 const teacherIdHeader = "x-research-teacher-id";
 const teacherTokenHeader = "x-research-teacher-token";
 const tokenTtlMs = 1000 * 60 * 60 * 12;
@@ -86,6 +93,13 @@ export const issueTeacherToken = (teacherId: string): string =>
     teacherId
   });
 
+export const issueAdminToken = (adminId: string): string =>
+  signedToken({
+    adminId,
+    expiresAt: Date.now() + tokenTtlMs,
+    kind: "admin"
+  });
+
 export const requireSessionAuth = (request: IncomingMessage, context: Pick<SessionContext, "assignmentId" | "classGroupId" | "sessionId" | "studentAnonymousId">): void => {
   const payload = parseToken(headerValue(request, sessionTokenHeader) ?? "");
   if (payload?.kind !== "session" ||
@@ -104,10 +118,26 @@ export const teacherAuthFromRequest = (request: IncomingMessage): { readonly tea
   return { teacherId, token };
 };
 
+export const adminAuthFromRequest = (request: IncomingMessage): { readonly adminId: string; readonly token: string } | null => {
+  const adminId = headerValue(request, adminIdHeader);
+  const token = headerValue(request, adminTokenHeader);
+  if (adminId === null || token === null) return null;
+  return { adminId, token };
+};
+
 export const requireTeacherAuth = (request: IncomingMessage, teacherId: string): void => {
   const payload = parseToken(headerValue(request, teacherTokenHeader) ?? "");
   const requestTeacherId = headerValue(request, teacherIdHeader);
   if (requestTeacherId !== teacherId || payload?.kind !== "teacher" || payload.teacherId !== teacherId) {
     throw new ApiError(401, "Teacher authorization is required.");
   }
+};
+
+export const requireAdminAuth = (request: IncomingMessage): string => {
+  const payload = parseToken(headerValue(request, adminTokenHeader) ?? "");
+  const requestAdminId = headerValue(request, adminIdHeader);
+  if (requestAdminId === null || payload?.kind !== "admin" || payload.adminId !== requestAdminId) {
+    throw new ApiError(401, "Admin authorization is required.");
+  }
+  return requestAdminId;
 };

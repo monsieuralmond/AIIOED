@@ -6,6 +6,8 @@ import { RosterTable } from "./account-roster-table.js";
 import { Button, Field, Surface, TextInput } from "./ui.js";
 
 type AccountManagementProps = {
+  readonly currentTeacherId?: string;
+  readonly mode: "admin" | "teacher";
   readonly state: PilotState;
   readonly onBack: () => void;
   readonly onCreateClass: (input: CreateClassGroupInput) => Promise<string | null> | string | null;
@@ -15,14 +17,17 @@ type AccountManagementProps = {
   readonly onDeleteClass: (classGroupId: string) => Promise<string | null> | string | null;
   readonly onDeleteStudent: (studentId: string) => Promise<string | null> | string | null;
   readonly onDeleteTeacher: (teacherId: string) => Promise<string | null> | string | null;
+  readonly onResetTeacherPassword: (teacherId: string, password: string) => Promise<string | null> | string | null;
 };
 
 const firstTeacherId = (teachers: readonly TeacherAccount[]): string => teachers[0]?.id ?? "";
 const firstClassId = (classGroups: readonly ClassGroup[]): string => classGroups[0]?.id ?? "";
 
 export function AccountManagement(props: AccountManagementProps): ReactElement {
+  const canManageTeachers = props.mode === "admin";
+  const canManageRoster = props.mode === "teacher";
   const [className, setClassName] = useState("");
-  const [classTeacherId, setClassTeacherId] = useState(firstTeacherId(props.state.teachers));
+  const [classTeacherId, setClassTeacherId] = useState(props.currentTeacherId ?? firstTeacherId(props.state.teachers));
   const [studentClassId, setStudentClassId] = useState(firstClassId(props.state.classGroups));
   const [studentNumber, setStudentNumber] = useState("");
   const [studentName, setStudentName] = useState("");
@@ -46,12 +51,12 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
   useEffect(() => {
     const teacherIds = new Set(props.state.teachers.map((teacher) => teacher.id));
     const classIds = new Set(props.state.classGroups.map((classGroup) => classGroup.id));
-    const nextTeacherId = firstTeacherId(props.state.teachers);
+    const nextTeacherId = props.currentTeacherId ?? firstTeacherId(props.state.teachers);
     const nextClassId = firstClassId(props.state.classGroups);
     if (classTeacherId !== nextTeacherId && !teacherIds.has(classTeacherId)) setClassTeacherId(nextTeacherId);
     if (studentClassId !== nextClassId && !classIds.has(studentClassId)) setStudentClassId(nextClassId);
     if (bulkClassId !== nextClassId && !classIds.has(bulkClassId)) setBulkClassId(nextClassId);
-  }, [bulkClassId, classTeacherId, props.state.classGroups, props.state.teachers, studentClassId]);
+  }, [bulkClassId, classTeacherId, props.currentTeacherId, props.state.classGroups, props.state.teachers, studentClassId]);
 
   useEffect(() => {
     if (!isSaving) return undefined;
@@ -145,7 +150,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
   const createTeacher = (): void => {
     void runAccountAction(
       () => props.onCreateTeacher({ displayName: teacherName, loginId: teacherLoginId, password: teacherPassword }),
-      "교사 계정을 만들었습니다.",
+      `교사 계정을 만들었습니다. 초기 비밀번호: ${teacherPassword}`,
       () => {
         setTeacherName("");
         setTeacherLoginId("");
@@ -166,34 +171,42 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
     void runAccountAction(() => props.onDeleteTeacher(teacher.id), "교사 계정을 삭제했습니다.");
   };
 
+  const resetTeacherPassword = (teacher: TeacherAccount): void => {
+    const nextPassword = `test-${Math.random().toString(36).slice(2, 6)}`;
+    void runAccountAction(
+      () => props.onResetTeacherPassword(teacher.id, nextPassword),
+      `교사 비밀번호를 초기화했습니다. 새 비밀번호: ${nextPassword}`
+    );
+  };
+
   return (
     <main className="account-page">
       <section className="teacher-page-heading">
         <div>
           <h1>계정 관리</h1>
-          <p>반, 번호, 학생 참여자 코드, 교사 계정을 파일럿 데이터에 저장합니다.</p>
+          <p>{props.mode === "admin" ? "관리자만 교사 계정을 만들고 초기화할 수 있습니다." : "반, 번호, 학생 참여자 코드를 파일럿 데이터에 저장합니다."}</p>
         </div>
-        <Button onClick={props.onBack}>과제로 돌아가기</Button>
+        <Button onClick={props.onBack}>{props.mode === "admin" ? "처음으로" : "과제로 돌아가기"}</Button>
       </section>
       {message.length > 0 ? <p className="account-message">{message}</p> : null}
       <div className="account-management-layout">
         <section aria-label="계정 만들기" className="account-form-column">
           <div className="account-column-heading">
             <h2>새로 만들기</h2>
-            <p>수업 전에 반, 학생, 교사 계정을 차례대로 추가합니다.</p>
+            <p>{props.mode === "admin" ? "교사 계정을 만들거나 필요할 때 초기화합니다." : "수업 전에 반과 학생 계정을 차례대로 추가합니다."}</p>
           </div>
-          <Surface className="account-section">
+          {canManageRoster ? <Surface className="account-section">
             <h3>반 만들기</h3>
             <Field label="새 반 이름"><TextInput value={className} onChange={(event) => setClassName(event.currentTarget.value)} /></Field>
-            <label className="ui-field">
+            {props.currentTeacherId === undefined ? <label className="ui-field">
               <span>담당 교사</span>
               <select className="ui-control" value={classTeacherId} onChange={(event) => setClassTeacherId(event.currentTarget.value)}>
                 {props.state.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.displayName}</option>)}
               </select>
-            </label>
+            </label> : null}
             <Button disabled={isSaving} variant="primary" onClick={createClass}>반 만들기</Button>
-          </Surface>
-          <Surface className="account-section">
+          </Surface> : null}
+          {canManageRoster ? <Surface className="account-section">
             <h3>학생 만들기</h3>
             <label className="ui-field">
               <span>학생 반</span>
@@ -211,8 +224,8 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
             </div>
             <Field label="학생 이름"><TextInput value={studentName} onChange={(event) => setStudentName(event.currentTarget.value)} /></Field>
             <Button disabled={isSaving} variant="primary" onClick={createStudent}>학생 만들기</Button>
-          </Surface>
-          <Surface className="account-section">
+          </Surface> : null}
+          {canManageRoster ? <Surface className="account-section">
             <h3>학생 일괄 만들기</h3>
             <p className="account-helper">예: 아이디 접두어 student-, 시작 번호 3, 생성 갯수 5 → student-03부터 student-07까지 만듭니다.</p>
             <label className="ui-field">
@@ -231,8 +244,8 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
             </div>
             <Field label="학생 이름 접두어"><TextInput value={bulkNamePrefix} onChange={(event) => setBulkNamePrefix(event.currentTarget.value)} /></Field>
             <Button disabled={isSaving} variant="primary" onClick={createStudents}>학생 일괄 만들기</Button>
-          </Surface>
-          <Surface className="account-section">
+          </Surface> : null}
+          {canManageTeachers ? <Surface className="account-section">
             <h3>교사 만들기</h3>
             <Field label="교사 이름"><TextInput value={teacherName} onChange={(event) => setTeacherName(event.currentTarget.value)} /></Field>
             <div className="account-field-grid">
@@ -240,19 +253,22 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
               <Field label="교사 비밀번호 만들기"><TextInput type="password" value={teacherPassword} onChange={(event) => setTeacherPassword(event.currentTarget.value)} /></Field>
             </div>
             <Button disabled={isSaving} variant="primary" onClick={createTeacher}>교사 만들기</Button>
-          </Surface>
+          </Surface> : null}
         </section>
         <section aria-label="저장된 계정 목록" className="account-list-column">
           <div className="account-column-heading">
             <h2>저장된 목록</h2>
-            <p>생성된 반, 학생 참여자 코드, 교사 아이디를 한곳에서 확인합니다.</p>
+            <p>{props.mode === "admin" ? "교사 계정은 생성하거나 초기화한 직후에만 비밀번호를 확인할 수 있습니다." : "생성된 반, 학생 참여자 코드, 학생 아이디를 확인합니다."}</p>
           </div>
           <RosterTable
             classNameById={classNameById}
+            canManageRoster={canManageRoster}
+            canManageTeachers={canManageTeachers}
             state={props.state}
             onDeleteClass={deleteClass}
             onDeleteStudent={deleteStudent}
             onDeleteTeacher={deleteTeacher}
+            onResetTeacherPassword={resetTeacherPassword}
           />
         </section>
       </div>

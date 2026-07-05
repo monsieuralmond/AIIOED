@@ -3,6 +3,7 @@ import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sampleAssignment } from "../../shared/fixtures.js";
 import { ResearchConditions, ResearchModes } from "../../shared/research.js";
+import { issueAdminToken, issueTeacherToken } from "./auth.js";
 import { loadRoster, upsertRoster } from "./roster-handlers.js";
 
 type RecordedFetch = {
@@ -12,7 +13,21 @@ type RecordedFetch = {
   readonly url: string;
 };
 
-const request = (): IncomingMessage => new IncomingMessage(new Socket());
+const requestWithHeaders = (headers: Record<string, string>): IncomingMessage => {
+  const request = new IncomingMessage(new Socket());
+  request.headers = headers;
+  return request;
+};
+
+const adminRequest = (): IncomingMessage => requestWithHeaders({
+  "x-research-admin-id": "admin-root",
+  "x-research-admin-token": issueAdminToken("admin-root")
+});
+
+const teacherRequest = (teacherId: string): IncomingMessage => requestWithHeaders({
+  "x-research-teacher-id": teacherId,
+  "x-research-teacher-token": issueTeacherToken(teacherId)
+});
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -78,7 +93,7 @@ describe("roster handlers", () => {
       classes: [],
       students: [],
       teacherId: "teacher-research"
-    }, request());
+    }, teacherRequest("teacher-research"));
 
     expect(calls.some((call) => call.method === "POST" && call.table === "exports")).toBe(true);
     const assignmentUpsert = calls.find((call) => call.method === "POST" && call.table === "assignments");
@@ -140,7 +155,7 @@ describe("roster handlers", () => {
         loginId: "teacher",
         password: "teacher-pw"
       }]
-    }, request());
+    }, adminRequest());
 
     const exportCall = calls.find((call) => call.method === "POST" && call.table === "exports");
     if (exportCall === undefined || !isRecord(exportCall.body)) throw new Error("export snapshot was not stored.");
@@ -166,7 +181,48 @@ describe("roster handlers", () => {
     expect(deleteCalls.some((call) => call.table === "students" && call.url.includes("class_group_id=in.(class-old)"))).toBe(true);
   });
 
-  it("allows the active teacher to create another teacher account", async () => {
+  it("rejects the active teacher creating another teacher account", async () => {
+    const calls: RecordedFetch[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const table = tableFromUrl(url);
+      calls.push({ body: parsedBody(init), method, table, url });
+      if (method === "POST" && table === "exports") return new Response(JSON.stringify([{ id: "export-roster" }]), { status: 200 });
+      if (method === "GET" && table === "teachers") {
+        return new Response(JSON.stringify([
+          { id: "teacher-research", updated_at: "2026-07-05T00:00:00.000Z" }
+        ]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(upsertRoster({
+      assignments: [],
+      classes: [],
+      students: [],
+      teacherId: "teacher-research",
+      teachers: [
+        {
+          displayName: "연구 교사",
+          id: "teacher-research",
+          loginId: "teacher",
+          password: "teacher-pw"
+        },
+        {
+          displayName: "보조 교사",
+          id: "teacher-helper",
+          loginId: "helper",
+          password: "helper-pw"
+        }
+      ]
+    }, teacherRequest("teacher-research"))).rejects.toMatchObject({ statusCode: 403 });
+
+    expect(calls.some((call) => call.method === "POST" && call.table === "teachers")).toBe(false);
+  });
+
+  it("allows the admin to create another teacher account", async () => {
     const calls: RecordedFetch[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
@@ -187,7 +243,6 @@ describe("roster handlers", () => {
       assignments: [],
       classes: [],
       students: [],
-      teacherId: "teacher-research",
       teachers: [
         {
           displayName: "연구 교사",
@@ -202,7 +257,7 @@ describe("roster handlers", () => {
           password: "helper-pw"
         }
       ]
-    }, request());
+    }, adminRequest());
 
     const teacherUpsert = calls.find((call) => call.method === "POST" && call.table === "teachers");
     expect(teacherUpsert?.body).toEqual(expect.arrayContaining([
@@ -245,9 +300,9 @@ describe("roster handlers", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const roster = await loadRoster({}, request());
+    const roster = await loadRoster({}, adminRequest());
 
-    expect(roster).toEqual({
+    expect(roster).toEqual(expect.objectContaining({
       assignments: [],
       classes: [],
       deletedAssignmentIds: [],
@@ -256,7 +311,9 @@ describe("roster handlers", () => {
       deletedTeacherIds: [],
       students: [],
       teachers: []
-    });
+    }));
+    if (!isRecord(roster)) throw new Error("loaded roster is invalid.");
+    expect(typeof roster["rosterRevision"]).toBe("string");
     expect(calls.some((call) => call.method === "GET" && call.table === "exports")).toBe(false);
   });
 

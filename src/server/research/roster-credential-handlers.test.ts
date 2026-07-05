@@ -1,6 +1,7 @@
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { issueTeacherToken } from "./auth.js";
 import { loadRoster, upsertRoster } from "./roster-handlers.js";
 
 type RecordedFetch = {
@@ -10,7 +11,14 @@ type RecordedFetch = {
   readonly url: string;
 };
 
-const request = (): IncomingMessage => new IncomingMessage(new Socket());
+const teacherRequest = (teacherId: string): IncomingMessage => {
+  const request = new IncomingMessage(new Socket());
+  request.headers = {
+    "x-research-teacher-id": teacherId,
+    "x-research-teacher-token": issueTeacherToken(teacherId)
+  };
+  return request;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -62,13 +70,13 @@ describe("roster credential persistence", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const roster = await loadRoster({ teacherId: "teacher-research" }, request());
+    const roster = await loadRoster({ teacherId: "teacher-research" }, teacherRequest("teacher-research"));
 
     if (!isRecord(roster) || !Array.isArray(roster["students"]) || !isRecord(roster["students"][0])) throw new Error("loaded roster students are invalid.");
     expect(roster["students"][0]["password"]).toBe("pw-001");
   });
 
-  it("loads stored teacher passwords and original participant codes for account management", async () => {
+  it("loads original participant codes but does not expose teacher passwords to teachers", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -106,17 +114,17 @@ describe("roster credential persistence", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const roster = await loadRoster({ teacherId: "teacher-research" }, request());
+    const roster = await loadRoster({ teacherId: "teacher-research" }, teacherRequest("teacher-research"));
 
     if (!isRecord(roster) || !Array.isArray(roster["students"]) || !Array.isArray(roster["teachers"])) throw new Error("loaded roster is invalid.");
     const student = roster["students"][0];
     const teacher = roster["teachers"][0];
     if (!isRecord(student) || !isRecord(teacher)) throw new Error("loaded roster rows are invalid.");
     expect(student["participantCode"]).toBe("S 001");
-    expect(teacher["password"]).toBe("teacher-pw");
+    expect(teacher).not.toHaveProperty("password");
   });
 
-  it("loads teacher accounts created from account management for the active teacher", async () => {
+  it("loads only the active teacher account for teacher roster reads", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -151,13 +159,11 @@ describe("roster credential persistence", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const roster = await loadRoster({ teacherId: "teacher-research" }, request());
+    const roster = await loadRoster({ teacherId: "teacher-research" }, teacherRequest("teacher-research"));
 
     if (!isRecord(roster) || !Array.isArray(roster["teachers"])) throw new Error("loaded roster is invalid.");
-    expect(roster["teachers"]).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "teacher-research", password: "teacher-pw" }),
-      expect.objectContaining({ id: "teacher-helper", password: "helper-pw" })
-    ]));
+    expect(roster["teachers"]).toEqual([expect.objectContaining({ id: "teacher-research" })]);
+    expect(roster["teachers"][0]).not.toHaveProperty("password");
   });
 
   it("preserves existing credential hashes when roster rows omit passwords", async () => {
@@ -201,7 +207,7 @@ describe("roster credential persistence", () => {
       }],
       teacherId: "teacher-research",
       teachers: [{ displayName: "연구 교사", id: "teacher-research", loginId: "teacher" }]
-    }, request());
+    }, teacherRequest("teacher-research"));
 
     const teacherPatch = calls.find((call) => call.method === "PATCH" && call.table === "teachers");
     const studentPatch = calls.find((call) => call.method === "PATCH" && call.table === "students");
@@ -239,7 +245,7 @@ describe("roster credential persistence", () => {
       deletedClassIds: ["class-foreign"],
       students: [],
       teacherId: "teacher-research"
-    }, request())).rejects.toMatchObject({ statusCode: 403 });
+    }, teacherRequest("teacher-research"))).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it("rejects stale roster revisions before writing a snapshot", async () => {
@@ -262,7 +268,7 @@ describe("roster credential persistence", () => {
       expectedRosterRevision: "stale-revision",
       students: [],
       teacherId: "teacher-research"
-    }, request())).rejects.toMatchObject({ statusCode: 409 });
+    }, teacherRequest("teacher-research"))).rejects.toMatchObject({ statusCode: 409 });
     expect(calls.some((call) => call.method === "POST" && call.table === "exports")).toBe(false);
   });
 });

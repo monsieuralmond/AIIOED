@@ -2,7 +2,7 @@ import type { CalibrationChatRequest, CalibrationChatResponse } from "../shared/
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ResearchArtifact, ResearchMeasure } from "../shared/research.js";
 import type { Assignment, ChatTurn, PilotEvent, PilotState, PilotSession, Stage, StudentAccount } from "../shared/types.js";
-import { loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
+import { loadBrowserAdminAuth, loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
 import type { BrowserSessionIdentity } from "./browser-session.js";
 import { parseDatabaseRoster } from "./database-roster.js";
 import type { DatabaseRoster } from "./database-roster.js";
@@ -33,6 +33,12 @@ export type TeacherAuthResponse = {
   readonly displayName: string;
   readonly teacherId: string;
   readonly teacherToken: string;
+};
+
+export type AdminAuthResponse = {
+  readonly adminId: string;
+  readonly adminToken: string;
+  readonly displayName: string;
 };
 
 export type StudentAuthResponse = {
@@ -159,6 +165,22 @@ const teacherHeaders = (): Readonly<Record<string, string>> => {
   return auth === null ? {} : { "x-research-teacher-id": auth.teacherId, "x-research-teacher-token": auth.teacherToken };
 };
 
+const adminHeaders = (): Readonly<Record<string, string>> => {
+  const auth = loadBrowserAdminAuth();
+  return auth === null ? {} : { "x-research-admin-id": auth.adminId, "x-research-admin-token": auth.adminToken };
+};
+
+const rosterHeaders = (): Readonly<Record<string, string>> => {
+  const adminAuth = adminHeaders();
+  return Object.keys(adminAuth).length > 0 ? adminAuth : teacherHeaders();
+};
+
+const isAdminAuthResponse = (value: unknown): value is AdminAuthResponse =>
+  isRecord(value) &&
+  typeof value["adminId"] === "string" &&
+  typeof value["adminToken"] === "string" &&
+  typeof value["displayName"] === "string";
+
 const isTeacherAuthResponse = (value: unknown): value is TeacherAuthResponse =>
   isRecord(value) &&
   typeof value["displayName"] === "string" &&
@@ -243,13 +265,13 @@ export const requestDatabaseExport = async (input: { readonly assignmentId?: str
     ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
     ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
     ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
-  }, teacherHeaders());
+  }, rosterHeaders());
   if (!isDatabaseExportBundle(payload)) throw new Error("DB export 응답 형식이 올바르지 않습니다.");
   return payload;
 };
 
 export const loadRosterFromDatabase = async (teacherId?: string): Promise<DatabaseRoster> => {
-  const payload = await postJson("/api/admin/roster", teacherId === undefined ? {} : { teacherId }, teacherHeaders());
+  const payload = await postJson("/api/admin/roster", teacherId === undefined ? {} : { teacherId }, rosterHeaders());
   return parseDatabaseRoster(payload);
 };
 
@@ -267,6 +289,12 @@ export const loadTeacherSessionsFromDatabase = async (input: { readonly assignme
 export const authenticateTeacherWithDatabase = async (input: { readonly loginId: string; readonly password: string }): Promise<TeacherAuthResponse> => {
   const payload = await postJson("/api/auth/teacher", input);
   if (!isTeacherAuthResponse(payload)) throw new Error("교사 인증 응답 형식이 올바르지 않습니다.");
+  return payload;
+};
+
+export const authenticateAdminWithDatabase = async (input: { readonly loginId: string; readonly password: string }): Promise<AdminAuthResponse> => {
+  const payload = await postJson("/api/auth/admin", input);
+  if (!isAdminAuthResponse(payload)) throw new Error("관리자 인증 응답 형식이 올바르지 않습니다.");
   return payload;
 };
 
@@ -296,10 +324,11 @@ export const syncRosterToDatabase = async (state: PilotState, deletedIds: {
   readonly deletedStudentIds?: readonly string[];
   readonly deletedTeacherIds?: readonly string[];
 } = {}, expectedRosterRevision?: string | null): Promise<RosterSyncResponse> => {
-  const teacherId = state.selectedActor?.role === "teacher" ? state.selectedActor.accountId : state.teacher.id;
+  const selectedActor = state.selectedActor;
+  const teacherId = loadBrowserAdminAuth() !== null ? undefined : selectedActor?.role === "teacher" ? selectedActor.accountId : state.teacher.id;
   const payload = await postJson("/api/admin/upsert-roster", {
     assignments: state.assignments.map((assignment) => ({
-      createdByTeacherId: assignment.createdByTeacherId ?? teacherId,
+      createdByTeacherId: assignment.createdByTeacherId ?? teacherId ?? state.teacher.id,
       id: assignment.id,
       payload: assignment,
       researchCondition: assignment.researchCondition ?? ResearchConditions.singleGroupBaseline,
@@ -333,8 +362,8 @@ export const syncRosterToDatabase = async (state: PilotState, deletedIds: {
     ...(deletedIds.deletedStudentIds === undefined ? {} : { deletedStudentIds: deletedIds.deletedStudentIds }),
     ...(deletedIds.deletedTeacherIds === undefined ? {} : { deletedTeacherIds: deletedIds.deletedTeacherIds }),
     ...(expectedRosterRevision === undefined || expectedRosterRevision === null ? {} : { expectedRosterRevision }),
-    teacherId
-  }, teacherHeaders());
+    ...(teacherId === undefined ? {} : { teacherId })
+  }, rosterHeaders());
   return isRecord(payload) && typeof payload["rosterRevision"] === "string" ? { rosterRevision: payload["rosterRevision"] } : {};
 };
 

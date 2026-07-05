@@ -11,6 +11,7 @@ import { SupabaseRestClient } from "./supabase-rest.js";
 import { assertNoLockedResearchDataDeletion } from "./roster-locked-sessions.js";
 import { deleteRosterRows, sanitizedRosterSnapshot } from "./roster-snapshot.js";
 import type { RosterAssignmentRow, RosterClassRow, RosterStudentRow, RosterTeacherRow } from "./roster-row-types.js";
+import { adminAuthFromRequest, requireAdminAuth, requireTeacherAuth } from "./auth.js";
 
 const rosterDb = (): SupabaseRestClient => {
   const env = researchServerEnv();
@@ -61,7 +62,7 @@ const rosterScopeForTeacher = async (db: SupabaseRestClient, teacherId: string):
   const [classes, assignments, teachers] = await Promise.all([
     db.get<readonly RosterClassRow[]>("classes", `select=id,teacher_id,updated_at&teacher_id=eq.${encode(teacherId)}&order=id.asc`),
     db.get<readonly RosterAssignmentRow[]>("assignments", `select=id,created_by_teacher_id,updated_at&created_by_teacher_id=eq.${encode(teacherId)}&order=id.asc`),
-    db.get<readonly RosterTeacherRow[]>("teachers", "select=id,updated_at&order=id.asc")
+    db.get<readonly RosterTeacherRow[]>("teachers", `select=id,updated_at&id=eq.${encode(teacherId)}&order=id.asc`)
   ]);
   const classIds = classes.map((classGroup) => classGroup.id);
   const students = classIds.length === 0
@@ -70,6 +71,20 @@ const rosterScopeForTeacher = async (db: SupabaseRestClient, teacherId: string):
   return {
     assignmentIds: new Set(assignments.map((assignment) => assignment.id)),
     classIds: new Set(classIds),
+    revision: revisionHash({ assignments, classes, students, teachers })
+  };
+};
+
+const rosterScopeForAdmin = async (db: SupabaseRestClient): Promise<RosterScope> => {
+  const [classes, assignments, teachers, students] = await Promise.all([
+    db.get<readonly RosterClassRow[]>("classes", "select=id,teacher_id,updated_at&order=id.asc"),
+    db.get<readonly RosterAssignmentRow[]>("assignments", "select=id,created_by_teacher_id,updated_at&order=id.asc"),
+    db.get<readonly RosterTeacherRow[]>("teachers", "select=id,updated_at&order=id.asc"),
+    db.get<readonly RosterStudentRow[]>("students", "select=id,class_group_id,updated_at&order=id.asc")
+  ]);
+  return {
+    assignmentIds: new Set(assignments.map((assignment) => assignment.id)),
+    classIds: new Set(classes.map((classGroup) => classGroup.id)),
     revision: revisionHash({ assignments, classes, students, teachers })
   };
 };
@@ -83,6 +98,12 @@ const validateRosterOwnership = async (db: SupabaseRestClient, input: RosterUpse
   if (input.expectedRosterRevision !== undefined && input.expectedRosterRevision !== scope.revision) {
     throw new ApiError(409, "Roster changed on the server. Reload before saving again.");
   }
+
+  if (input.deletedTeacherIds.length > 0) throw new ApiError(403, "Only admins can delete teacher accounts.");
+  const foreignTeacher = input.teachers.find((teacher) => teacher.id !== teacherId);
+  if (foreignTeacher !== undefined) throw new ApiError(403, `Teacher account does not belong to this teacher: ${foreignTeacher.id}`);
+  const teacherPasswordChange = input.teachers.find(hasProvidedPassword);
+  if (teacherPasswordChange !== undefined) throw new ApiError(403, "Only admins can create or reset teacher passwords.");
 
   const incomingClassIds = input.classes.map((classGroup) => classGroup.id);
   const allowedClassIds = new Set([...scope.classIds, ...incomingClassIds]);
@@ -111,15 +132,24 @@ const validateRosterOwnership = async (db: SupabaseRestClient, input: RosterUpse
   await assertNoLockedResearchDataDeletion(db, input, existingStudents);
 };
 
-export const loadRoster: JsonHandler = async (payload) => {
+export const loadRoster: JsonHandler = async (payload, request) => {
   const input = rosterLoadSchema.parse(payload);
   const db = rosterDb();
+  const isAdminRequest = adminAuthFromRequest(request) !== null;
+  if (input.teacherId === undefined) {
+    requireAdminAuth(request);
+  } else if (isAdminRequest) {
+    requireAdminAuth(request);
+  } else {
+    requireTeacherAuth(request, input.teacherId);
+  }
   const teacherFilter = input.teacherId === undefined ? "" : `&teacher_id=eq.${encode(input.teacherId)}`;
   const assignmentTeacherFilter = input.teacherId === undefined ? "" : `&created_by_teacher_id=eq.${encode(input.teacherId)}`;
+  const teacherAccountFilter = input.teacherId === undefined ? "" : `&id=eq.${encode(input.teacherId)}`;
   const [classes, assignments, teachers] = await Promise.all([
     db.get<readonly RosterClassRow[]>("classes", `select=id,name,teacher_id${teacherFilter}`),
     db.get<readonly RosterAssignmentRow[]>("assignments", `select=id,class_group_id,created_by_teacher_id,title,research_mode,research_condition,assignment${assignmentTeacherFilter}`),
-    db.get<readonly RosterTeacherRow[]>("teachers", "select=id,display_name,initial_password,login_id&order=id.asc")
+    db.get<readonly RosterTeacherRow[]>("teachers", `select=id,display_name,login_id${teacherAccountFilter}&order=id.asc`)
   ]);
   const classIds = classes.map((classGroup) => classGroup.id);
   const students = input.teacherId === undefined
@@ -155,31 +185,41 @@ export const loadRoster: JsonHandler = async (payload) => {
     teachers: teachers.map((teacher) => ({
       displayName: teacher.display_name ?? teacher.id,
       id: teacher.id,
-      loginId: teacher.login_id ?? teacher.id,
-      ...(teacher.initial_password === undefined || teacher.initial_password === null ? {} : { password: teacher.initial_password })
+      loginId: teacher.login_id ?? teacher.id
     }))
   });
-  const scope = input.teacherId === undefined ? null : await rosterScopeForTeacher(db, input.teacherId);
+  const scope = input.teacherId === undefined ? await rosterScopeForAdmin(db) : await rosterScopeForTeacher(db, input.teacherId);
   return {
     ...roster,
-    ...(scope === null ? {} : { rosterRevision: scope.revision })
+    rosterRevision: scope.revision
   };
 };
 
-export const upsertRoster: JsonHandler = async (payload) => {
+export const upsertRoster: JsonHandler = async (payload, request) => {
   const input = rosterUpsertSchema.parse(payload);
   const db = rosterDb();
-  const teacherId = teacherIdForRoster(input);
-  if (teacherId === null) throw new ApiError(401, "Teacher authorization is required.");
-  const scope = await rosterScopeForTeacher(db, teacherId);
-  await validateRosterOwnership(db, input, teacherId, scope);
+  const isAdminRequest = adminAuthFromRequest(request) !== null;
+  const teacherId = isAdminRequest ? null : teacherIdForRoster(input);
+  const scope = isAdminRequest ? await rosterScopeForAdmin(db) : teacherId === null ? null : await rosterScopeForTeacher(db, teacherId);
+  if (isAdminRequest) {
+    requireAdminAuth(request);
+    if (scope === null) throw new ApiError(401, "Admin authorization is required.");
+    if (input.expectedRosterRevision !== undefined && input.expectedRosterRevision !== scope.revision) {
+      throw new ApiError(409, "Roster changed on the server. Reload before saving again.");
+    }
+  } else {
+    if (teacherId === null || scope === null) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
+    await validateRosterOwnership(db, input, teacherId, scope);
+  }
+  const snapshotTeacherId = teacherId ?? input.teachers[0]?.id ?? input.classes[0]?.teacherId ?? input.assignments[0]?.createdByTeacherId ?? null;
   await db.insert("exports", {
     anonymized: false,
     assignment_id: null,
     class_group_id: null,
     completed_only: false,
     export_kind: "app_roster_snapshot",
-    generated_by_teacher_id: teacherId,
+    generated_by_teacher_id: snapshotTeacherId,
     payload: sanitizedRosterSnapshot(input)
   });
   await deleteRosterRows(db, input);
@@ -202,14 +242,14 @@ export const upsertRoster: JsonHandler = async (payload) => {
     await db.upsert("classes", input.classes.map((item) => ({
       id: item.id,
       name: item.name,
-      teacher_id: teacherId
+      teacher_id: teacherId ?? item.teacherId
     })), "id");
   }
   if (input.assignments.length > 0) {
     await db.upsert("assignments", input.assignments.map((item) => ({
       assignment: item.payload,
       class_group_id: item.classGroupId ?? null,
-      created_by_teacher_id: teacherId,
+      created_by_teacher_id: teacherId ?? item.createdByTeacherId,
       id: item.id,
       research_condition: item.researchCondition,
       research_mode: item.researchMode,
@@ -235,6 +275,6 @@ export const upsertRoster: JsonHandler = async (payload) => {
   return {
     counts: { assignments: input.assignments.length, classes: input.classes.length, students: input.students.length },
     ok: true,
-    rosterRevision: (await rosterScopeForTeacher(db, teacherId)).revision
+    rosterRevision: (teacherId === null ? await rosterScopeForAdmin(db) : await rosterScopeForTeacher(db, teacherId)).revision
   };
 };

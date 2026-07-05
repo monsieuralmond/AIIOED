@@ -3,8 +3,8 @@ import type { ReactElement } from "react";
 import { unavailableFileSync } from "../session/file-sync.js";
 import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
-import { clearBrowserActorIdentity, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
-import { authenticateStudentWithDatabase, authenticateTeacherWithDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import { clearBrowserActorIdentity, clearBrowserAdminAuth, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
+import { authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
 import { AccountManagement } from "./account-management.js";
@@ -51,6 +51,7 @@ export function App(): ReactElement {
   const session = activeSession(pilotState);
   const actor = pilotState.selectedActor;
   const teacherRoute = route === "create" || route === "review" || route === "export" || route === "accounts";
+  const adminRoute = route === "admin";
 
   useEffect(() => {
     pilotStateRef.current = pilotState;
@@ -90,7 +91,7 @@ export function App(): ReactElement {
     readonly deletedTeacherIds?: readonly string[];
   } = {}): Promise<void> => {
     if (useLocalResearchStorage) return Promise.resolve();
-    if (actor?.role !== "teacher" || !rosterReady) return Promise.resolve();
+    if ((actor?.role !== "teacher" && actor?.role !== "admin") || !rosterReady) return Promise.resolve();
     const syncRoster = async (): Promise<void> => {
       const result = await syncRosterToDatabase(nextState, deletedIds, rosterRevisionRef.current);
       if (result.rosterRevision !== undefined) updateRosterRevision(result.rosterRevision);
@@ -168,13 +169,13 @@ export function App(): ReactElement {
       setRosterReady(true);
       return;
     }
-    if (actor?.role !== "teacher") {
+    if (actor?.role !== "teacher" && actor?.role !== "admin") {
       setRosterReady(true);
       return;
     }
     let cancelled = false;
     setRosterReady(false);
-    loadRosterFromDatabase(actor.accountId)
+    loadRosterFromDatabase(actor.role === "teacher" ? actor.accountId : undefined)
       .then((roster) => {
         if (cancelled) return;
         updateRosterRevision(roster.rosterRevision ?? null);
@@ -287,6 +288,7 @@ export function App(): ReactElement {
       try {
         const auth = await authenticateTeacherWithDatabase({ loginId, password });
         const nextActor: SelectedActor = { role: "teacher", accountId: auth.teacherId };
+        clearBrowserAdminAuth();
         clearBrowserSessionIdentity();
         clearBrowserSessionToken();
         saveBrowserTeacherAuth({ teacherId: auth.teacherId, teacherToken: auth.teacherToken });
@@ -308,6 +310,7 @@ export function App(): ReactElement {
     const teacher = teacherByCredentials(pilotState, loginId, password);
     if (teacher === null) return false;
     const nextActor: SelectedActor = { role: "teacher", accountId: teacher.id };
+    clearBrowserAdminAuth();
     clearBrowserSessionIdentity();
     clearBrowserSessionToken();
     saveBrowserActorIdentity(nextActor);
@@ -316,11 +319,41 @@ export function App(): ReactElement {
     return true;
   };
 
+  const chooseAdmin = async (loginId: string, password: string): Promise<boolean> => {
+    if (useLocalResearchStorage) {
+      if (loginId !== "admin" || password !== "test") return false;
+      const nextActor: SelectedActor = { role: "admin", accountId: "admin-root" };
+      clearBrowserTeacherAuth();
+      clearBrowserSessionIdentity();
+      clearBrowserSessionToken();
+      saveBrowserActorIdentity(nextActor);
+      setPilotState((state) => selectActor(state, nextActor));
+      openRoute("admin");
+      return true;
+    }
+    try {
+      const auth = await authenticateAdminWithDatabase({ loginId, password });
+      const nextActor: SelectedActor = { role: "admin", accountId: auth.adminId };
+      clearBrowserTeacherAuth();
+      clearBrowserSessionIdentity();
+      clearBrowserSessionToken();
+      saveBrowserAdminAuth({ adminId: auth.adminId, adminToken: auth.adminToken });
+      saveBrowserActorIdentity(nextActor);
+      setPilotState((state) => selectActor(state, nextActor));
+      openRoute("admin");
+      return true;
+    } catch (error) {
+      if (error instanceof Error) console.error(`Admin login failed: ${error.message}`);
+      return false;
+    }
+  };
+
   const startServerSessionForStudent = async (student: StudentAccount): Promise<boolean> => {
     if (useLocalResearchStorage) {
       const assignment = assignmentsForStudent(pilotState, student)[0];
       if (assignment === undefined) return false;
       const nextActor: SelectedActor = { accountId: student.id, role: "student" };
+      clearBrowserAdminAuth();
       clearBrowserTeacherAuth();
       clearBrowserSessionIdentity();
       clearBrowserSessionToken();
@@ -337,6 +370,7 @@ export function App(): ReactElement {
         participantCode: student.participantCode,
         password: student.password
       });
+      clearBrowserAdminAuth();
       clearBrowserTeacherAuth();
       saveBrowserSessionIdentity({
         assignmentId: result.assignmentId,
@@ -369,6 +403,7 @@ export function App(): ReactElement {
       try {
         const result = await authenticateStudentWithDatabase(input);
         const nextActor: SelectedActor = { accountId: result.student.id, role: "student" };
+        clearBrowserAdminAuth();
         clearBrowserTeacherAuth();
         clearBrowserSessionIdentity();
         clearBrowserSessionToken();
@@ -397,6 +432,7 @@ export function App(): ReactElement {
     clearBrowserSessionIdentity();
     clearBrowserSessionToken();
     clearBrowserActorIdentity();
+    clearBrowserAdminAuth();
     clearBrowserTeacherAuth();
     setPilotState((state) => selectActor(state, null));
     openRoute("list");
@@ -433,6 +469,7 @@ export function App(): ReactElement {
 
   const actorName = (selectedActor: SelectedActor | null): string | undefined => {
     if (selectedActor === null) return undefined;
+    if (selectedActor.role === "admin") return "관리자";
     if (selectedActor.role === "teacher") return pilotState.teachers.find((teacher) => teacher.id === selectedActor.accountId)?.displayName;
     return pilotState.students.find((student) => student.id === selectedActor.accountId)?.displayName;
   };
@@ -507,6 +544,15 @@ export function App(): ReactElement {
     }
   };
 
+  const resetTeacherPasswordInState = (state: PilotState, teacherId: string, password: string): PilotState => {
+    if (!state.teachers.some((teacher) => teacher.id === teacherId)) throw new PilotStateError("초기화할 교사 계정을 찾을 수 없습니다.");
+    return {
+      ...state,
+      teacher: state.teacher.id === teacherId ? { ...state.teacher, password } : state.teacher,
+      teachers: state.teachers.map((teacher) => (teacher.id === teacherId ? { ...teacher, password } : teacher))
+    };
+  };
+
   const removeAssignment = (assignmentId: string): string | null => {
     const error = mutateAccountState((state) => deleteAssignment(state, assignmentId), { deletedAssignmentIds: [assignmentId] });
     if (error !== null) return error;
@@ -543,20 +589,39 @@ export function App(): ReactElement {
     if (route === "export") return <ExportView fileSync={fileSync} state={pilotState} onStudent={openStudent} />;
     if (route === "accounts") return (
       <AccountManagement
+        {...(actor?.role === "teacher" ? { currentTeacherId: actor.accountId } : {})}
+        mode="teacher"
         state={pilotState}
         onBack={() => openRoute("list")}
         onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input))}
         onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input))}
         onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
-        onCreateTeacher={(input: CreateTeacherInput) => mutateAccountStateAndWait((state) => createTeacherAccount(state, input))}
+        onCreateTeacher={() => "교사 계정은 관리자 화면에서만 만들 수 있습니다."}
         onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
         onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
-        onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), { deletedTeacherIds: [teacherId] })}
+        onDeleteTeacher={() => "교사 계정은 관리자 화면에서만 삭제할 수 있습니다."}
+        onResetTeacherPassword={() => "교사 비밀번호는 관리자 화면에서만 초기화할 수 있습니다."}
       />
     );
     if (route === "student") return session === null ? renderTeacherList() : renderStudentWorkspace();
     return null;
   };
+
+  const renderAdminRoute = (): ReactElement => (
+    <AccountManagement
+      mode="admin"
+      state={pilotState}
+      onBack={switchRole}
+      onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input))}
+      onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input))}
+      onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
+      onCreateTeacher={(input: CreateTeacherInput) => mutateAccountStateAndWait((state) => createTeacherAccount(state, input))}
+      onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
+      onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
+      onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), { deletedTeacherIds: [teacherId] })}
+      onResetTeacherPassword={(teacherId: string, password: string) => mutateAccountStateAndWait((state) => resetTeacherPasswordInState(state, teacherId, password))}
+    />
+  );
   const renderTeacherRosterLoading = (): ReactElement => (
     <main className="form-page" aria-label="과제 불러오기">
       <section className="assignment-form">
@@ -566,13 +631,19 @@ export function App(): ReactElement {
     </main>
   );
   const currentStudent = actor?.role === "student" ? pilotState.students.find((student) => student.id === actor.accountId) ?? null : null;
+  const routeRequiresLogin = actor === null ||
+    (teacherRoute && actor.role !== "teacher") ||
+    (adminRoute && actor.role !== "admin");
+  const roleEntryMode = adminRoute ? "admin" : teacherRoute ? "teacher" : "entry";
 
   return (
       <div className="app-shell" data-testid="app-shell">
-      <TopBar actorName={actorName(actor)} onHome={() => openRoute("list")} onLogout={actor?.role === "student" ? switchRole : undefined} onSwitchRole={actor?.role === "teacher" && route !== "student" ? switchRole : undefined} />
-      {actor === null || (actor.role !== "teacher" && teacherRoute) ? <RoleEntry mode={teacherRoute ? "teacher" : "entry"} onTeacher={chooseTeacher} onStudentCredentials={chooseStudentCredentials} /> : null}
+      <TopBar actorName={actorName(actor)} onHome={() => openRoute("list")} onLogout={actor?.role === "student" ? switchRole : undefined} onSwitchRole={actor !== null && actor.role !== "student" && route !== "student" ? switchRole : undefined} />
+      {routeRequiresLogin ? <RoleEntry mode={roleEntryMode} onAdmin={chooseAdmin} onTeacher={chooseTeacher} onStudentCredentials={chooseStudentCredentials} /> : null}
       {actor?.role === "teacher" && !rosterReady ? renderTeacherRosterLoading() : null}
       {actor?.role === "teacher" && rosterReady ? renderTeacherRoute() : null}
+      {actor?.role === "admin" && !rosterReady ? renderTeacherRosterLoading() : null}
+      {actor?.role === "admin" && rosterReady ? renderAdminRoute() : null}
       {currentStudent !== null && route !== "student" && !teacherRoute ? <StudentAssignments assignments={assignmentsForStudent(pilotState, currentStudent)} state={pilotState} student={currentStudent} onStart={startSelectedStudentAssignment} /> : null}
       {actor?.role === "student" && route === "student" ? renderStudentWorkspace() : null}
     </div>

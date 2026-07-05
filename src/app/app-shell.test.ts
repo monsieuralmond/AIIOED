@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import { loadBrowserSessionIdentity, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
+import { loadBrowserSessionIdentity, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
 import { createSession, enterStage } from "../session/session.js";
 import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher } from "../shared/fixtures.js";
 
@@ -24,14 +24,15 @@ describe("App shell", () => {
 
     expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     expect(screen.getAllByText("Reading Coach Lab").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "어떤 계정으로 들어갈까요?" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "계정을 선택하세요" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "학생 계정" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "교사 계정" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "관리자 계정" })).toBeInTheDocument();
     expect(screen.queryByLabelText("참여자 코드")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "학생 계정" }));
     expect(screen.getByRole("heading", { name: "학생 로그인" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "어떤 계정으로 들어갈까요?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "계정을 선택하세요" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("참여코드")).toBeInTheDocument();
     expect(screen.getByLabelText("학생 아이디")).toBeInTheDocument();
     expect(screen.getByLabelText("학생 비밀번호")).toBeInTheDocument();
@@ -61,7 +62,7 @@ describe("App shell", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "학생 현황" })).toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: "교사 로그인" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "어떤 계정으로 들어갈까요?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "계정을 선택하세요" })).not.toBeInTheDocument();
   });
 
   it("does not show the seeded plastic assignment while the database roster is still loading", () => {
@@ -440,7 +441,7 @@ describe("App shell", () => {
     expect(upsertBodies[1]?.["expectedRosterRevision"]).toBe("revision-2");
   });
 
-  it("keeps a newly created teacher account in the saved roster", async () => {
+  it("keeps a newly created teacher account in the saved roster from the admin screen", async () => {
     const upsertBodies: Record<string, unknown>[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = input instanceof Request ? input.url : String(input);
@@ -466,9 +467,9 @@ describe("App shell", () => {
       return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.pushState({}, "", "/accounts");
-    saveBrowserActorIdentity({ accountId: sampleTeacher.id, role: "teacher" });
-    saveBrowserTeacherAuth({ teacherId: sampleTeacher.id, teacherToken: "teacher-token-test" });
+    window.history.pushState({}, "", "/admin");
+    saveBrowserActorIdentity({ accountId: "admin-root", role: "admin" });
+    saveBrowserAdminAuth({ adminId: "admin-root", adminToken: "admin-token-test" });
 
     render(createElement(App));
 
@@ -574,7 +575,7 @@ describe("App shell", () => {
 
     render(createElement(App));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "어떤 계정으로 들어갈까요?" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "계정을 선택하세요" })).toBeInTheDocument());
     expect(fetchMock.mock.calls.some((call) => {
       const input = call[0];
       if (input instanceof Request) return input.url.endsWith("/api/session/resume");
