@@ -562,8 +562,8 @@ export function App(): ReactElement {
     }
   };
 
-  const resetTeacherPasswordInState = (state: PilotState, teacherId: string, password: string): PilotState => {
-    if (!state.teachers.some((teacher) => teacher.id === teacherId)) throw new PilotStateError("초기화할 교사 계정을 찾을 수 없습니다.");
+  const updateTeacherPasswordInState = (state: PilotState, teacherId: string, password: string): PilotState => {
+    if (!state.teachers.some((teacher) => teacher.id === teacherId)) throw new PilotStateError("수정할 교사 계정을 찾을 수 없습니다.");
     return {
       ...state,
       teacher: state.teacher.id === teacherId ? { ...state.teacher, password } : state.teacher,
@@ -618,7 +618,7 @@ export function App(): ReactElement {
         onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
         onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
         onDeleteTeacher={() => "교사 계정은 관리자 화면에서만 삭제할 수 있습니다."}
-        onResetTeacherPassword={() => "교사 비밀번호는 관리자 화면에서만 초기화할 수 있습니다."}
+        onUpdateTeacherPassword={() => "교사 비밀번호는 관리자 화면에서만 수정할 수 있습니다."}
       />
     );
     if (route === "student") return session === null ? renderTeacherList() : renderStudentWorkspace();
@@ -637,7 +637,7 @@ export function App(): ReactElement {
       onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
       onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
       onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), { deletedTeacherIds: [teacherId] })}
-      onResetTeacherPassword={(teacherId: string, password: string) => mutateAccountStateAndWait((state) => resetTeacherPasswordInState(state, teacherId, password))}
+      onUpdateTeacherPassword={(teacherId: string, password: string) => mutateAccountStateAndWait((state) => updateTeacherPasswordInState(state, teacherId, password))}
     />
   );
   const renderTeacherRosterLoading = (): ReactElement => (

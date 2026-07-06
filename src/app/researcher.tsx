@@ -30,12 +30,13 @@ type AssignmentProgress = {
   readonly submittedCount: number;
 };
 
+const studentsForAssignment = (state: PilotState, assignment: Assignment) =>
+  state.students.filter((student) => assignment.classGroupId === undefined || student.classGroupId === assignment.classGroupId);
+
 const assignmentProgress = (state: PilotState, assignment: Assignment): AssignmentProgress => {
-  const classGroup = state.classGroups.find((item) => item.id === assignment.classGroupId);
-  const assignedStudentCount = classGroup === undefined ? state.students.length : classGroup.studentIds.length;
   const sessions = state.sessions.filter((session) => session.assignment.id === assignment.id);
   return {
-    assignedStudentCount,
+    assignedStudentCount: studentsForAssignment(state, assignment).length,
     inProgressCount: sessions.filter((session) => session.finalSubmission === null && session.events.length > 0).length,
     submittedCount: sessions.filter((session) => session.finalSubmission !== null).length
   };

@@ -146,10 +146,11 @@ export const loadRoster: JsonHandler = async (payload, request) => {
   const teacherFilter = input.teacherId === undefined ? "" : `&teacher_id=eq.${encode(input.teacherId)}`;
   const assignmentTeacherFilter = input.teacherId === undefined ? "" : `&created_by_teacher_id=eq.${encode(input.teacherId)}`;
   const teacherAccountFilter = input.teacherId === undefined ? "" : `&id=eq.${encode(input.teacherId)}`;
+  const teacherAccountColumns = isAdminRequest ? "id,display_name,initial_password,login_id" : "id,display_name,login_id";
   const [classes, assignments, teachers] = await Promise.all([
     db.get<readonly RosterClassRow[]>("classes", `select=id,name,teacher_id${teacherFilter}`),
     db.get<readonly RosterAssignmentRow[]>("assignments", `select=id,class_group_id,created_by_teacher_id,title,research_mode,research_condition,assignment${assignmentTeacherFilter}`),
-    db.get<readonly RosterTeacherRow[]>("teachers", `select=id,display_name,login_id${teacherAccountFilter}&order=id.asc`)
+    db.get<readonly RosterTeacherRow[]>("teachers", `select=${teacherAccountColumns}${teacherAccountFilter}&order=id.asc`)
   ]);
   const classIds = classes.map((classGroup) => classGroup.id);
   const students = input.teacherId === undefined
@@ -185,7 +186,8 @@ export const loadRoster: JsonHandler = async (payload, request) => {
     teachers: teachers.map((teacher) => ({
       displayName: teacher.display_name ?? teacher.id,
       id: teacher.id,
-      loginId: teacher.login_id ?? teacher.id
+      loginId: teacher.login_id ?? teacher.id,
+      ...(isAdminRequest && teacher.initial_password !== undefined && teacher.initial_password !== null ? { password: teacher.initial_password } : {})
     }))
   });
   const scope = input.teacherId === undefined ? await rosterScopeForAdmin(db) : await rosterScopeForTeacher(db, input.teacherId);

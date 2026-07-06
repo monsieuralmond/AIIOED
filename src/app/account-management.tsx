@@ -17,7 +17,7 @@ type AccountManagementProps = {
   readonly onDeleteClass: (classGroupId: string) => Promise<string | null> | string | null;
   readonly onDeleteStudent: (studentId: string) => Promise<string | null> | string | null;
   readonly onDeleteTeacher: (teacherId: string) => Promise<string | null> | string | null;
-  readonly onResetTeacherPassword: (teacherId: string, password: string) => Promise<string | null> | string | null;
+  readonly onUpdateTeacherPassword: (teacherId: string, password: string) => Promise<string | null> | string | null;
 };
 
 const firstTeacherId = (teachers: readonly TeacherAccount[]): string => teachers[0]?.id ?? "";
@@ -171,11 +171,10 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
     void runAccountAction(() => props.onDeleteTeacher(teacher.id), "교사 계정을 삭제했습니다.");
   };
 
-  const resetTeacherPassword = (teacher: TeacherAccount): void => {
-    const nextPassword = `test-${Math.random().toString(36).slice(2, 6)}`;
+  const updateTeacherPassword = (teacher: TeacherAccount, password: string): void => {
     void runAccountAction(
-      () => props.onResetTeacherPassword(teacher.id, nextPassword),
-      `교사 비밀번호를 초기화했습니다. 새 비밀번호: ${nextPassword}`
+      () => props.onUpdateTeacherPassword(teacher.id, password),
+      `교사 비밀번호를 수정했습니다. 새 비밀번호: ${password}`
     );
   };
 
@@ -184,7 +183,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
       <section className="teacher-page-heading">
         <div>
           <h1>계정 관리</h1>
-          <p>{props.mode === "admin" ? "관리자만 교사 계정을 만들고 초기화할 수 있습니다." : "반, 번호, 학생 참여자 코드를 파일럿 데이터에 저장합니다."}</p>
+          <p>{props.mode === "admin" ? "관리자만 교사 계정을 만들고 비밀번호를 확인하거나 수정할 수 있습니다." : "반, 번호, 학생 참여자 코드를 파일럿 데이터에 저장합니다."}</p>
         </div>
         <Button onClick={props.onBack}>{props.mode === "admin" ? "처음으로" : "과제로 돌아가기"}</Button>
       </section>
@@ -193,7 +192,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
         <section aria-label="계정 만들기" className="account-form-column">
           <div className="account-column-heading">
             <h2>새로 만들기</h2>
-            <p>{props.mode === "admin" ? "교사 계정을 만들거나 필요할 때 초기화합니다." : "수업 전에 반과 학생 계정을 차례대로 추가합니다."}</p>
+            <p>{props.mode === "admin" ? "교사 계정을 만들고 저장된 계정 목록에서 비밀번호를 관리합니다." : "수업 전에 반과 학생 계정을 차례대로 추가합니다."}</p>
           </div>
           {canManageRoster ? <Surface className="account-section">
             <h3>반 만들기</h3>
@@ -258,7 +257,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
         <section aria-label="저장된 계정 목록" className="account-list-column">
           <div className="account-column-heading">
             <h2>저장된 목록</h2>
-            <p>{props.mode === "admin" ? "교사 계정은 생성하거나 초기화한 직후에만 비밀번호를 확인할 수 있습니다." : "생성된 반, 학생 참여자 코드, 학생 아이디를 확인합니다."}</p>
+            <p>{props.mode === "admin" ? "저장된 교사 비밀번호를 확인하고 필요한 경우 새 비밀번호로 수정합니다." : "생성된 반, 학생 참여자 코드, 학생 아이디를 확인합니다."}</p>
           </div>
           <RosterTable
             classNameById={classNameById}
@@ -268,7 +267,7 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
             onDeleteClass={deleteClass}
             onDeleteStudent={deleteStudent}
             onDeleteTeacher={deleteTeacher}
-            onResetTeacherPassword={resetTeacherPassword}
+            onUpdateTeacherPassword={updateTeacherPassword}
           />
         </section>
       </div>

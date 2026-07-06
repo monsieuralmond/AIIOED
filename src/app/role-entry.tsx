@@ -89,7 +89,7 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
         ? "수업에서 받은 참여코드와 학생 계정 정보를 입력하세요."
         : selectedRole === "teacher"
           ? "교사 계정으로 과제, 반, 학생 기록을 관리합니다."
-          : "관리자 계정으로 교사 계정을 생성하고 초기화합니다.";
+          : "관리자 계정으로 교사 계정을 만들고 비밀번호를 확인하거나 수정합니다.";
 
   return (
     <main className="role-entry-page">

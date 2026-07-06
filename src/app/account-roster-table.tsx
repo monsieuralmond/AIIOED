@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import type { ClassGroup, PilotState, StudentAccount, TeacherAccount } from "../shared/types.js";
 
@@ -9,7 +10,7 @@ type RosterTableProps = {
   readonly onDeleteClass: (classGroup: ClassGroup) => void;
   readonly onDeleteStudent: (student: StudentAccount) => void;
   readonly onDeleteTeacher: (teacher: TeacherAccount) => void;
-  readonly onResetTeacherPassword: (teacher: TeacherAccount) => void;
+  readonly onUpdateTeacherPassword: (teacher: TeacherAccount, password: string) => void;
 };
 
 export function RosterTable(props: RosterTableProps): ReactElement {
@@ -42,15 +43,14 @@ export function RosterTable(props: RosterTableProps): ReactElement {
         ))}
       </DataTable> : null}
       {props.canManageTeachers ? (
-        <DataTable label="교사 계정 목록" headers={["교사", "아이디", "비밀번호", "초기화", "삭제"]}>
+        <DataTable className="teacher-account-table" label="교사 계정 목록" headers={["교사", "아이디", "비밀번호 수정", "삭제"]}>
           {props.state.teachers.map((teacher) => (
-            <tr key={teacher.id}>
-              <td>{teacher.displayName}</td>
-              <td>{teacher.loginId}</td>
-              <td>생성 또는 초기화 직후에만 표시됩니다</td>
-              <td className="account-action-cell"><ResetButton label={`교사 비밀번호 초기화: ${teacher.displayName}`} onClick={() => props.onResetTeacherPassword(teacher)} /></td>
-              <td className="account-action-cell"><TrashButton label={`교사 삭제: ${teacher.displayName}`} onClick={() => props.onDeleteTeacher(teacher)} /></td>
-            </tr>
+            <TeacherRow
+              key={teacher.id}
+              teacher={teacher}
+              onDelete={props.onDeleteTeacher}
+              onUpdatePassword={props.onUpdateTeacherPassword}
+            />
           ))}
         </DataTable>
       ) : null}
@@ -58,15 +58,48 @@ export function RosterTable(props: RosterTableProps): ReactElement {
   );
 }
 
-function ResetButton(props: { readonly label: string; readonly onClick: () => void }): ReactElement {
+function TeacherRow(props: {
+  readonly teacher: TeacherAccount;
+  readonly onDelete: (teacher: TeacherAccount) => void;
+  readonly onUpdatePassword: (teacher: TeacherAccount, password: string) => void;
+}): ReactElement {
+  const [draft, setDraft] = useState(props.teacher.password);
+  useEffect(() => setDraft(props.teacher.password), [props.teacher.id, props.teacher.password]);
+  const normalizedDraft = draft.trim();
+  const hasStoredPassword = props.teacher.password.trim().length > 0;
+  const saveDisabled = normalizedDraft.length === 0 || normalizedDraft === props.teacher.password;
   return (
-    <button aria-label={props.label} className="account-delete-button" onClick={props.onClick} title={props.label} type="button">
-      <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
-        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-        <path d="M20 4v5h-5" />
-        <path d="M12 8v5l3 2" />
-      </svg>
-    </button>
+    <tr>
+      <td>{props.teacher.displayName}</td>
+      <td>{props.teacher.loginId}</td>
+      <td className="account-password-cell">
+        <div className="account-password-editor">
+          <input
+            aria-label={`교사 비밀번호: ${props.teacher.displayName}`}
+            autoComplete="off"
+            className="account-password-input"
+            placeholder="새 비밀번호 입력"
+            type="text"
+            value={draft}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+          />
+          <button
+            aria-label={`교사 비밀번호 저장: ${props.teacher.displayName}`}
+            className="account-save-button"
+            disabled={saveDisabled}
+            title={`교사 비밀번호 저장: ${props.teacher.displayName}`}
+            type="button"
+            onClick={() => props.onUpdatePassword(props.teacher, normalizedDraft)}
+          >
+            <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </button>
+        </div>
+        {hasStoredPassword ? null : <span className="account-password-hint">저장된 원문 비밀번호가 없습니다. 새 비밀번호를 입력해 저장하세요.</span>}
+      </td>
+      <td className="account-action-cell"><TrashButton label={`교사 삭제: ${props.teacher.displayName}`} onClick={() => props.onDelete(props.teacher)} /></td>
+    </tr>
   );
 }
 
@@ -84,9 +117,9 @@ function TrashButton(props: { readonly label: string; readonly onClick: () => vo
   );
 }
 
-function DataTable(props: { readonly children: ReactElement | readonly ReactElement[]; readonly headers: readonly string[]; readonly label: string }): ReactElement {
+function DataTable(props: { readonly children: ReactElement | readonly ReactElement[]; readonly className?: string; readonly headers: readonly string[]; readonly label: string }): ReactElement {
   return (
-    <section className="account-table-wrap">
+    <section className={props.className === undefined ? "account-table-wrap" : `account-table-wrap ${props.className}`}>
       <h3>{props.label}</h3>
       <table aria-label={props.label} className="account-table">
         <thead><tr>{props.headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead>

@@ -1,7 +1,7 @@
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { issueTeacherToken } from "./auth.js";
+import { issueAdminToken, issueTeacherToken } from "./auth.js";
 import { loadRoster, upsertRoster } from "./roster-handlers.js";
 
 type RecordedFetch = {
@@ -16,6 +16,15 @@ const teacherRequest = (teacherId: string): IncomingMessage => {
   request.headers = {
     "x-research-teacher-id": teacherId,
     "x-research-teacher-token": issueTeacherToken(teacherId)
+  };
+  return request;
+};
+
+const adminRequest = (): IncomingMessage => {
+  const request = new IncomingMessage(new Socket());
+  request.headers = {
+    "x-research-admin-id": "admin-root",
+    "x-research-admin-token": issueAdminToken("admin-root")
   };
   return request;
 };
@@ -122,6 +131,35 @@ describe("roster credential persistence", () => {
     if (!isRecord(student) || !isRecord(teacher)) throw new Error("loaded roster rows are invalid.");
     expect(student["participantCode"]).toBe("S 001");
     expect(teacher).not.toHaveProperty("password");
+  });
+
+  it("loads stored teacher passwords for admin account management", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const table = tableFromUrl(url);
+      if (method === "GET" && table === "teachers") {
+        return new Response(JSON.stringify([
+          {
+            display_name: "연구 교사",
+            id: "teacher-research",
+            initial_password: "teacher-pw",
+            login_id: "teacher"
+          }
+        ]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const roster = await loadRoster({}, adminRequest());
+
+    if (!isRecord(roster) || !Array.isArray(roster["teachers"]) || !isRecord(roster["teachers"][0])) throw new Error("loaded roster teachers are invalid.");
+    expect(roster["teachers"][0]["password"]).toBe("teacher-pw");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("select=id,display_name,initial_password,login_id"),
+      expect.anything()
+    );
   });
 
   it("loads only the active teacher account for teacher roster reads", async () => {

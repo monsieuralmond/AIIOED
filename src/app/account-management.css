@@ -105,6 +105,36 @@
   width: 100%;
 }
 
+.teacher-account-table .account-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.teacher-account-table th,
+.teacher-account-table td {
+  overflow-wrap: anywhere;
+}
+
+.teacher-account-table th:nth-child(1),
+.teacher-account-table td:nth-child(1) {
+  width: 24%;
+}
+
+.teacher-account-table th:nth-child(2),
+.teacher-account-table td:nth-child(2) {
+  width: 16%;
+}
+
+.teacher-account-table th:nth-child(3),
+.teacher-account-table td:nth-child(3) {
+  width: 50%;
+}
+
+.teacher-account-table th:nth-child(4),
+.teacher-account-table td:nth-child(4) {
+  width: 10%;
+}
+
 .account-table th,
 .account-table td {
   border-bottom: 1px solid var(--border-subtle);
@@ -123,11 +153,48 @@
   width: 1%;
 }
 
+.account-password-cell {
+  vertical-align: top;
+}
+
+.account-password-editor {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.account-password-input {
+  flex: 1;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-document);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 var(--space-3);
+}
+
+.account-password-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--border-accent-soft);
+  outline: none;
+}
+
+.account-password-hint {
+  color: var(--text-secondary);
+  display: block;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  margin-top: var(--space-2);
+}
+
 .account-table th:last-child {
   text-align: right;
 }
 
-.account-delete-button {
+.account-delete-button,
+.account-save-button {
   align-items: center;
   background: var(--surface-primary);
   border: 1px solid var(--border-subtle);
@@ -141,6 +208,24 @@
   width: 34px;
 }
 
+.account-save-button {
+  color: var(--accent-primary);
+}
+
+.account-save-button:hover,
+.account-save-button:focus-visible {
+  background: var(--surface-coach);
+  border-color: var(--border-accent-soft);
+  color: var(--accent-primary);
+}
+
+.account-save-button:disabled {
+  background: var(--surface-muted);
+  border-color: var(--border-subtle);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
 .account-delete-button:hover,
 .account-delete-button:focus-visible {
   background: var(--surface-warning);
@@ -148,7 +233,8 @@
   color: var(--status-error);
 }
 
-.account-delete-button svg {
+.account-delete-button svg,
+.account-save-button svg {
   height: var(--font-size-md);
   stroke: currentColor;
   stroke-linecap: round;
