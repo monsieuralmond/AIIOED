@@ -4,7 +4,7 @@ import { unavailableFileSync } from "../session/file-sync.js";
 import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
 import { clearBrowserActorIdentity, clearBrowserAdminAuth, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
-import { authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import { authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
 import { AccountManagement } from "./account-management.js";
@@ -50,8 +50,8 @@ export function App(): ReactElement {
   const activeAssignment = pilotState.assignments.find((assignment) => assignment.id === pilotState.activeAssignmentId) ?? pilotState.assignments[0] ?? null;
   const session = activeSession(pilotState);
   const actor = pilotState.selectedActor;
-  const teacherRoute = route === "create" || route === "review" || route === "export" || route === "accounts";
-  const adminRoute = route === "admin";
+  const teacherRoute = route === "create" || route === "review" || route === "accounts";
+  const adminRoute = route === "admin" || route === "export";
 
   useEffect(() => {
     pilotStateRef.current = pilotState;
@@ -191,10 +191,15 @@ export function App(): ReactElement {
   }, [actor?.accountId, actor?.role]);
 
   useEffect(() => {
-    if (useLocalResearchStorage || actor?.role !== "teacher" || !rosterReady || route === "student") return;
+    if (useLocalResearchStorage || !rosterReady || route === "student") return;
+    if (actor?.role !== "teacher" && actor?.role !== "admin") return;
+    if (actor.role === "admin" && route !== "export") return;
     let cancelled = false;
     const refreshSessions = (): void => {
-      loadTeacherSessionsFromDatabase({ teacherId: actor.accountId })
+      const loader = actor.role === "admin"
+        ? loadAdminSessionsFromDatabase()
+        : loadTeacherSessionsFromDatabase({ teacherId: actor.accountId });
+      loader
         .then((result) => {
           if (cancelled) return;
           setPilotState((state) => {
@@ -580,7 +585,7 @@ export function App(): ReactElement {
   };
 
   const renderTeacherRoute = (): ReactElement | null => {
-    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={pilotState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} onExport={() => openRoute("export")} />;
+    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={pilotState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} />;
     const newAssignmentTemplate = (): Assignment => ({
       assignmentMode: "full_process",
       essayType: "주장 글쓰기",
@@ -604,7 +609,6 @@ export function App(): ReactElement {
       return <CreateAssignment assignment={assignmentForForm} key={`${editingAssignmentId ?? "new"}-${assignmentForForm.id}`} mode={editingAssignmentId === null ? "create" : "edit"} state={pilotState} onBack={() => openRoute("list")} onDelete={removeAssignment} onSave={saveAssignment} />;
     }
     if (route === "review") return <TeacherReview state={pilotState} onBack={() => openRoute("list")} onUpdateReview={updateTeacherReviewForSession} />;
-    if (route === "export") return <ExportView fileSync={fileSync} state={pilotState} onStudent={openStudent} />;
     if (route === "accounts") return (
       <AccountManagement
         {...(actor?.role === "teacher" ? { currentTeacherId: actor.accountId } : {})}
@@ -625,11 +629,14 @@ export function App(): ReactElement {
     return null;
   };
 
-  const renderAdminRoute = (): ReactElement => (
-    <AccountManagement
+  const renderAdminRoute = (): ReactElement => {
+    if (route === "export") return <ExportView fileSync={fileSync} state={pilotState} onBack={() => openRoute("admin")} />;
+    return (
+      <AccountManagement
       mode="admin"
       state={pilotState}
       onBack={switchRole}
+      onLogs={() => openRoute("export")}
       onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input))}
       onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input))}
       onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
@@ -638,8 +645,9 @@ export function App(): ReactElement {
       onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
       onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), { deletedTeacherIds: [teacherId] })}
       onUpdateTeacherPassword={(teacherId: string, password: string) => mutateAccountStateAndWait((state) => updateTeacherPasswordInState(state, teacherId, password))}
-    />
-  );
+      />
+    );
+  };
   const renderTeacherRosterLoading = (): ReactElement => (
     <main className="form-page" aria-label="과제 불러오기">
       <section className="assignment-form">

@@ -16,7 +16,7 @@ import {
 import type { ResearchStore } from "./store.js";
 import { createSupabaseResearchStore } from "./supabase-store.js";
 import { loadRoster, upsertRoster } from "./roster-handlers.js";
-import { issueSessionToken, requireSessionAuth, requireTeacherAuth, teacherAuthFromRequest } from "./auth.js";
+import { adminAuthFromRequest, issueSessionToken, requireAdminAuth, requireSessionAuth, requireTeacherAuth, teacherAuthFromRequest } from "./auth.js";
 import { researchDeploymentHealth } from "./health.js";
 import { createChatHandler } from "./chat-handler.js";
 
@@ -82,10 +82,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
 
   deleteTestData: async (payload, request) => {
     const input = deleteTestDataSchema.parse(payload);
-    const auth = teacherAuthFromRequest(request);
-    const teacherId = input.teacherId ?? auth?.teacherId;
-    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
-    requireTeacherAuth(request, teacherId);
+    requireAdminAuth(request);
     return storeFactory().deleteTestData({
       confirmExported: input.confirmExported,
       scope: input.scope,
@@ -94,7 +91,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
       ...(input.reason === undefined ? {} : { reason: input.reason }),
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
       ...(input.studentAnonymousId === undefined ? {} : { studentAnonymousId: input.studentAnonymousId }),
-      teacherId
+      ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
     });
   },
 
@@ -116,16 +113,13 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
 
   exportData: async (payload, request) => {
     const input = exportSchema.parse(payload);
-    const auth = teacherAuthFromRequest(request);
-    const teacherId = input.teacherId ?? auth?.teacherId;
-    if (teacherId === undefined) throw new ApiError(401, "Teacher authorization is required.");
-    requireTeacherAuth(request, teacherId);
+    requireAdminAuth(request);
     return storeFactory().exportData({
       anonymized: input.anonymized,
       completedOnly: input.completedOnly,
       ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
       ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
-      teacherId
+      ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
     });
   },
 
@@ -164,6 +158,15 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
 
   sessionList: async (payload, request) => {
     const input = exportSchema.parse(payload);
+    const adminAuth = adminAuthFromRequest(request);
+    if (adminAuth !== null) {
+      requireAdminAuth(request);
+      return storeFactory().listSessions({
+        ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
+        ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
+        ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
+      });
+    }
     if (input.teacherId !== undefined) requireTeacherAuth(request, input.teacherId);
     const auth = teacherAuthFromRequest(request);
     const teacherId = input.teacherId ?? auth?.teacherId;

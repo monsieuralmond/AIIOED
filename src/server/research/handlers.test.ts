@@ -4,6 +4,7 @@ import {
   emptyRequest,
   isRecord,
   MemoryResearchStore,
+  requestWithAdminToken,
   requestWithSessionToken,
   requestWithTeacherToken,
   sessionIdFrom,
@@ -135,6 +136,32 @@ describe("research API handlers", () => {
     const response = await handlers.sessionList({ teacherId: "teacher-research" }, requestWithTeacherToken("teacher-research"));
     if (!isRecord(response) || !Array.isArray(response["sessions"])) throw new Error("session list response is invalid.");
     expect(response["sessions"]).toHaveLength(1);
+  });
+
+  it("allows admins to list all sessions without a teacher filter", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+
+    const response = await handlers.sessionList({}, requestWithAdminToken());
+
+    if (!isRecord(response) || !Array.isArray(response["sessions"])) throw new Error("session list response is invalid.");
+    expect(response["sessions"]).toHaveLength(1);
+    expect(store.listSessionRequests.at(-1)).toEqual({});
+  });
+
+  it("restricts database export and test-data deletion to admins", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+
+    await expect(handlers.exportData({ anonymized: true, completedOnly: true }, requestWithTeacherToken("teacher-research"))).rejects.toMatchObject({ statusCode: 401 });
+    await expect(handlers.deleteTestData({ confirmExported: true, scope: "all_test_data" }, requestWithTeacherToken("teacher-research"))).rejects.toMatchObject({ statusCode: 401 });
+
+    await handlers.exportData({ anonymized: true, completedOnly: true }, requestWithAdminToken());
+    await handlers.deleteTestData({ confirmExported: true, scope: "all_test_data" }, requestWithAdminToken());
+
+    expect(store.exportRequests).toHaveLength(1);
+    expect(store.deleteRequests).toHaveLength(1);
   });
 
   it("persists client-created chat turns through the chat-turn handler", async () => {

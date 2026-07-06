@@ -259,14 +259,13 @@ export const requestSessionCalibrationChat = async (input: {
   return payload;
 };
 
-export const requestDatabaseExport = async (input: { readonly assignmentId?: string; readonly classGroupId?: string; readonly teacherId?: string } = {}): Promise<DatabaseExportBundle> => {
+export const requestDatabaseExport = async (input: { readonly assignmentId?: string; readonly classGroupId?: string } = {}): Promise<DatabaseExportBundle> => {
   const payload = await postJson("/api/export", {
     anonymized: true,
     completedOnly: true,
     ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
-    ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
-    ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
-  }, rosterHeaders());
+    ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId })
+  }, adminHeaders());
   if (!isDatabaseExportBundle(payload)) throw new Error("DB export 응답 형식이 올바르지 않습니다.");
   return payload;
 };
@@ -283,6 +282,16 @@ export const loadTeacherSessionsFromDatabase = async (input: { readonly assignme
     ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
     ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId })
   }, teacherHeaders());
+  if (!isSessionListResponse(payload)) throw new Error("세션 목록 응답 형식이 올바르지 않습니다.");
+  return payload;
+};
+
+export const loadAdminSessionsFromDatabase = async (input: { readonly assignmentId?: string; readonly classGroupId?: string } = {}): Promise<SessionListResponse> => {
+  const payload = await postJson("/api/session/list", {
+    completedOnly: false,
+    ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
+    ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId })
+  }, adminHeaders());
   if (!isSessionListResponse(payload)) throw new Error("세션 목록 응답 형식이 올바르지 않습니다.");
   return payload;
 };

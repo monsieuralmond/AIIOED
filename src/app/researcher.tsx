@@ -14,7 +14,7 @@ type ResearcherListProps = {
   readonly onReview: () => void;
   readonly onAssign: (assignment: Assignment) => void;
   readonly onStudent: () => void;
-  readonly onExport: () => void;
+  readonly onExport?: () => void;
 };
 
 const normalizeFilterText = (value: string): string => value.trim().toLocaleLowerCase("ko-KR");
@@ -104,7 +104,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
         <Button className="rail-item" variant="ghost" onClick={props.onCreate}>내 과제 만들기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onReview}>학생 현황</Button>
         <Button className="rail-item" disabled={!canOpenStudentPreview} variant="ghost" onClick={props.onStudent}>학생 화면 보기</Button>
-        <Button className="rail-item" variant="ghost" onClick={props.onExport}>로그 보기</Button>
+        {props.onExport === undefined ? null : <Button className="rail-item" variant="ghost" onClick={props.onExport}>로그 보기</Button>}
         <Button className="rail-item" variant="ghost" onClick={props.onAccounts}>계정 관리</Button>
       </aside>
       <section className="researcher-main">

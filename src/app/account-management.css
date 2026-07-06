@@ -17,6 +17,14 @@
   max-width: 560px;
 }
 
+.teacher-page-heading-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
 .account-message {
   background: var(--surface-coach);
   border: 1px solid var(--border-accent-soft);
@@ -255,6 +263,11 @@
   .account-page .teacher-page-heading {
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .teacher-page-heading-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .account-management-layout,

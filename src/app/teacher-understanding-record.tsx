@@ -19,21 +19,10 @@ type TextResponseRow = {
   readonly value: string;
 };
 
-type AiFailureRow = {
-  readonly reason: string;
-  readonly requestId: string;
-  readonly timestamp: string;
-};
-
 type SurveyResponseRows = {
   readonly ratings: readonly RatingRow[];
   readonly texts: readonly TextResponseRow[];
 };
-
-const roleLabels = {
-  assistant: "AI",
-  student: "학생"
-} as const;
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
@@ -88,12 +77,8 @@ const surveyResponsesForMeasure = (session: PilotSession, kind: string, items: r
   texts: textResponsesForMeasure(session, kind, items)
 });
 
-const aiFailureRowsForSession = (session: PilotSession): readonly AiFailureRow[] =>
-  session.events.filter((event) => event.type === "calibration_chat_failed").map((event) => ({
-    reason: payloadString(event.payload, "reason") || "원인을 기록하지 못했습니다.",
-    requestId: payloadString(event.payload, "requestId") || "요청 ID 없음",
-    timestamp: event.timestamp
-  }));
+const aiFailureCountForSession = (session: PilotSession): number =>
+  session.events.filter((event) => event.type === "calibration_chat_failed").length;
 
 export const understandingAnswerCount = (session: PilotSession): number =>
   problemResponsesForSession(session).filter((response) => response.answer.length > 0).length;
@@ -147,7 +132,7 @@ export function TeacherUnderstandingRecord(props: { readonly session: PilotSessi
   const reflectionResponses = surveyResponsesForMeasure(props.session, "reflection_self_report", reflectionSurveyItemsForModule(module));
   const finalReflectionResponses = surveyResponsesForMeasure(props.session, "final_reflection_self_report", finalReflectionSurveyItemsForModule(module));
   const finalReflection = payloadString(artifactPayload(props.session, "final_reflection"), "text");
-  const aiFailures = aiFailureRowsForSession(props.session);
+  const aiFailureCount = aiFailureCountForSession(props.session);
 
   return (
     <>
@@ -178,27 +163,13 @@ export function TeacherUnderstandingRecord(props: { readonly session: PilotSessi
           <SurveyGroup responses={finalReflectionResponses} title="대화 다시 본 뒤" />
         </div>
       </section>
-      <section aria-label="AI 대화 기록" className="understanding-chat-section teacher-chat-log-section">
-        <h3>AI 대화 기록</h3>
-        {props.session.chatTurns.length === 0 ? <p>아직 대화가 없습니다.</p> : (
-          <ol className="turn-list">
-            {props.session.chatTurns.map((turn) => <li key={turn.id}><strong>{roleLabels[turn.role]}</strong><p>{turn.text}</p></li>)}
-          </ol>
-        )}
+      <section aria-label="AI 대화 요약" className="understanding-chat-section teacher-chat-log-section">
+        <h3>AI 대화 요약</h3>
+        <p>{props.session.chatTurns.length === 0 ? "아직 대화가 없습니다." : `학생 질문과 AI 응답이 ${props.session.chatTurns.length}턴 기록되었습니다. 원문 대화는 관리자 로그에서만 확인합니다.`}</p>
       </section>
-      <section aria-label="AI 응답 실패 기록" className="understanding-ai-failure-section">
-        <h3>AI 응답 실패 기록</h3>
-        {aiFailures.length === 0 ? <p>AI 응답 실패 기록이 없습니다.</p> : (
-          <ol className="understanding-text-response-list">
-            {aiFailures.map((failure) => (
-              <li key={`${failure.requestId}-${failure.timestamp}`}>
-                <strong>{failure.requestId}</strong>
-                <p>{failure.reason}</p>
-                <time dateTime={failure.timestamp}>{failure.timestamp}</time>
-              </li>
-            ))}
-          </ol>
-        )}
+      <section aria-label="AI 응답 상태" className="understanding-ai-failure-section">
+        <h3>AI 응답 상태</h3>
+        <p>{aiFailureCount === 0 ? "AI 응답 실패 기록이 없습니다." : `AI 응답 실패가 ${aiFailureCount}회 기록되었습니다. 상세 로그는 관리자 export에서 확인합니다.`}</p>
       </section>
       <section aria-label="마무리 생각" className="understanding-final-reflection">
         <h3>마무리 생각</h3>

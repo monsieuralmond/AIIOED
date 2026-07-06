@@ -6,7 +6,7 @@ import { ResearchModes } from "../shared/research.js";
 import { TeacherUnderstandingRecord } from "./teacher-understanding-record.js";
 
 describe("TeacherUnderstandingRecord", () => {
-  it("surfaces AI response failure events for teacher review", () => {
+  it("summarizes AI response failures without exposing raw log details to teachers", () => {
     const student = sampleStudents[0];
     if (student === undefined) throw new Error("Sample student missing.");
     const session = createSession({
@@ -28,8 +28,9 @@ describe("TeacherUnderstandingRecord", () => {
       }]
     }} />);
 
-    expect(screen.getByRole("heading", { name: "AI 응답 실패 기록" })).toBeInTheDocument();
-    expect(screen.getByText("request-timeout")).toBeInTheDocument();
-    expect(screen.getByText("Gemini request timed out.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "AI 응답 상태" })).toBeInTheDocument();
+    expect(screen.getByText("AI 응답 실패가 1회 기록되었습니다. 상세 로그는 관리자 export에서 확인합니다.")).toBeInTheDocument();
+    expect(screen.queryByText("request-timeout")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gemini request timed out.")).not.toBeInTheDocument();
   });
 });

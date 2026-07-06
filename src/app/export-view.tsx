@@ -49,7 +49,7 @@ const downloadFile = (fileName: keyof DatabaseExportBundle, value: DatabaseExpor
   URL.revokeObjectURL(url);
 };
 
-export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly state: PilotState; readonly onStudent: () => void }): ReactElement {
+export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly state: PilotState; readonly onBack: () => void }): ReactElement {
   const [databaseExportStatus, setDatabaseExportStatus] = useState<DatabaseExportStatus>({ type: "idle" });
   const dataset = stringifyDataset(props.state, props.fileSync);
   const labelingCsv = stringifyLabelingCsv(props.state);
@@ -89,11 +89,10 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
   const platformSessionWideHref = `data:text/csv;charset=utf-8,${encodeURIComponent(platformSessionWideCsv)}`;
   const platformBenchmarkHref = `data:application/x-ndjson;charset=utf-8,${encodeURIComponent(platformBenchmarkJsonl)}`;
   const previewRows = labelingRows.slice(0, 5);
-  const teacherId = props.state.selectedActor?.role === "teacher" ? props.state.selectedActor.accountId : props.state.teacher.id;
   const downloadDatabaseExport = async (): Promise<void> => {
     setDatabaseExportStatus({ type: "exporting" });
     try {
-      const bundle = await requestDatabaseExport({ teacherId });
+      const bundle = await requestDatabaseExport();
       databaseExportFiles.forEach((fileName) => downloadFile(fileName, bundle[fileName]));
       setDatabaseExportStatus({ fileCount: databaseExportFiles.length, type: "done" });
     } catch (error) {
@@ -107,7 +106,7 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
   return (
     <main className="export-page">
       <h1>연구 로그</h1>
-      <p>교사, 학생, 과제, 대화, 생각 정리, 초안, 붙여넣기, 최종 제출을 JSON으로 고정합니다.</p>
+      <p>관리자 계정에서만 원자료 로그와 export 파일을 확인합니다. 교사 화면에는 학생 결과 요약만 표시됩니다.</p>
       <p className="sync-status">파일 저장 상태: {fileSyncLabel(props.fileSync)}</p>
       <section aria-label="라벨링 데이터 요약" className="labeling-export-summary">
         <div>
@@ -132,7 +131,7 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
           <p>필요한 원자료와 코드북만 골라 내려받습니다.</p>
         </header>
         <div className="export-actions">
-          <Button variant="primary" onClick={props.onStudent}>학생 화면 보기</Button>
+          <Button variant="secondary" onClick={props.onBack}>관리자 화면</Button>
           <Button disabled={databaseExportStatus.type === "exporting"} variant="primary" onClick={() => void downloadDatabaseExport()}>
             {databaseExportStatus.type === "exporting" ? "DB export 준비 중" : "DB export 다운로드"}
           </Button>

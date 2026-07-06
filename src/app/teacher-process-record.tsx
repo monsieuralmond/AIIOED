@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { latestOutline } from "../session/session.js";
 import { ResearchModes } from "../shared/research.js";
-import type { ChatRole, PilotEvent, PilotSession, TeacherReviewUpdate } from "../shared/types.js";
+import type { PilotEvent, PilotSession, TeacherReviewUpdate } from "../shared/types.js";
 import { TeacherReviewNoteEditor } from "./teacher-review-note.js";
 import { hasUnderstandingReflection, TeacherUnderstandingRecord, understandingAnswerCount, understandingConfidenceCount } from "./teacher-understanding-record.js";
 
@@ -22,11 +22,6 @@ export type ProcessSignal = {
 };
 
 const latestDraftText = (session: PilotSession): string => session.draftSnapshots.at(-1)?.text ?? "";
-
-const roleLabels: Readonly<Record<ChatRole, string>> = {
-  assistant: "AI 코치",
-  student: "학생"
-};
 
 const stageLabels: Readonly<Record<PilotSession["currentStage"], string>> = {
   calibration_chat: "AI에게 질문하기",
@@ -248,8 +243,8 @@ function WritingProcessDetails(props: { readonly latestDraft: string; readonly o
         <p>{props.session.finalSubmission?.text ?? "아직 제출하지 않았습니다."}</p>
       </section>
       <section className="teacher-chat-log-section">
-        <h3>대화 기록</h3>
-        {props.session.chatTurns.length === 0 ? <p>아직 대화가 없습니다.</p> : <ol className="turn-list">{props.session.chatTurns.map((turn) => <li key={turn.id}><strong>{roleLabels[turn.role]}</strong><p>{turn.text}</p></li>)}</ol>}
+        <h3>AI 대화 요약</h3>
+        <p>{props.session.chatTurns.length === 0 ? "아직 대화가 없습니다." : `학생 질문과 AI 응답이 ${props.session.chatTurns.length}턴 기록되었습니다. 원문 대화는 관리자 로그에서만 확인합니다.`}</p>
       </section>
       <section>
         <h3>생각 정리 기록</h3>

@@ -10,6 +10,7 @@ type AccountManagementProps = {
   readonly mode: "admin" | "teacher";
   readonly state: PilotState;
   readonly onBack: () => void;
+  readonly onLogs?: () => void;
   readonly onCreateClass: (input: CreateClassGroupInput) => Promise<string | null> | string | null;
   readonly onCreateStudent: (input: CreateStudentInput) => Promise<string | null> | string | null;
   readonly onCreateStudents: (inputs: readonly CreateStudentInput[]) => Promise<string | null> | string | null;
@@ -185,7 +186,10 @@ export function AccountManagement(props: AccountManagementProps): ReactElement {
           <h1>계정 관리</h1>
           <p>{props.mode === "admin" ? "관리자만 교사 계정을 만들고 비밀번호를 확인하거나 수정할 수 있습니다." : "반, 번호, 학생 참여자 코드를 파일럿 데이터에 저장합니다."}</p>
         </div>
-        <Button onClick={props.onBack}>{props.mode === "admin" ? "처음으로" : "과제로 돌아가기"}</Button>
+        <div className="teacher-page-heading-actions">
+          {props.mode === "admin" && props.onLogs !== undefined ? <Button variant="secondary" onClick={props.onLogs}>로그 보기</Button> : null}
+          <Button onClick={props.onBack}>{props.mode === "admin" ? "처음으로" : "과제로 돌아가기"}</Button>
+        </div>
       </section>
       {message.length > 0 ? <p className="account-message">{message}</p> : null}
       <div className="account-management-layout">

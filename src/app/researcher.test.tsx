@@ -25,12 +25,12 @@ describe("ResearcherList", () => {
       onAssign: vi.fn(),
       onCreate: vi.fn(),
       onEditAssignment: vi.fn(),
-      onExport: vi.fn(),
       onReview: vi.fn(),
       onStudent: vi.fn()
     }));
 
     expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
+    expect(screen.queryByRole("button", { name: "로그 보기" })).not.toBeInTheDocument();
     expect(screen.getByText("2명")).toBeInTheDocument();
   });
 });

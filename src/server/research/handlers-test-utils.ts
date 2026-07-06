@@ -4,7 +4,7 @@ import { createSession } from "../../session/session.js";
 import { sampleAssignment } from "../../shared/fixtures.js";
 import { ResearchConditions } from "../../shared/research.js";
 import type { PilotSession } from "../../shared/types.js";
-import { issueTeacherToken } from "./auth.js";
+import { issueAdminToken, issueTeacherToken } from "./auth.js";
 import { serverId } from "./store.js";
 import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
 
@@ -41,6 +41,12 @@ export const requestWithTeacherToken = (teacherId: string): IncomingMessage =>
     "x-research-teacher-token": issueTeacherToken(teacherId)
   });
 
+export const requestWithAdminToken = (adminId = "admin-root"): IncomingMessage =>
+  requestWithHeaders({
+    "x-research-admin-id": adminId,
+    "x-research-admin-token": issueAdminToken(adminId)
+  });
+
 const emptyExport = (): ExportBundle => ({
   "artifacts.csv": "",
   "benchmark.jsonl": "",
@@ -62,14 +68,19 @@ export class MemoryResearchStore implements ResearchStore {
   readonly storedChatTurns: StoredChatTurn[] = [];
   readonly storedEvents: EventWrite[] = [];
   readonly storedMeasures: MeasureWrite[] = [];
+  readonly deleteRequests: Parameters<ResearchStore["deleteTestData"]>[0][] = [];
+  readonly exportRequests: Parameters<ResearchStore["exportData"]>[0][] = [];
+  readonly listSessionRequests: Parameters<ResearchStore["listSessions"]>[0][] = [];
   private readonly turnsByRequestRole = new Map<string, StoredChatTurn>();
   chatInsertCount = 0;
 
-  async deleteTestData(): Promise<DeleteResult> {
+  async deleteTestData(input: Parameters<ResearchStore["deleteTestData"]>[0]): Promise<DeleteResult> {
+    this.deleteRequests.push(input);
     return { deleted: {}, logId: "log-memory" };
   }
 
-  async exportData(): Promise<ExportBundle> {
+  async exportData(input: Parameters<ResearchStore["exportData"]>[0]): Promise<ExportBundle> {
+    this.exportRequests.push(input);
     return emptyExport();
   }
 
@@ -116,7 +127,8 @@ export class MemoryResearchStore implements ResearchStore {
     return [];
   }
 
-  async listSessions(): Promise<{ readonly sessions: readonly PilotSession[] }> {
+  async listSessions(input: Parameters<ResearchStore["listSessions"]>[0]): Promise<{ readonly sessions: readonly PilotSession[] }> {
+    this.listSessionRequests.push(input);
     return { sessions: [...this.sessions.values()] };
   }
 
