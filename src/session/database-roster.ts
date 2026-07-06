@@ -58,6 +58,7 @@ const parseRosterStudent = (value: unknown, index: number): StudentAccount => {
   const participantCode = optionalString(value, "participantCode") ?? participantCodeFromStudentId(id, studentAnonymousId);
   const loginId = optionalString(value, "loginId") ?? participantCode.toLowerCase();
   return {
+    anonymousId: studentAnonymousId,
     classGroupId,
     displayName: optionalString(value, "displayLabel") ?? loginId,
     id,

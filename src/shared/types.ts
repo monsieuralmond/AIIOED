@@ -24,6 +24,7 @@ export type PublicTeacherAccount = Omit<TeacherAccount, "password">;
 
 export type StudentAccount = {
   readonly id: string;
+  readonly anonymousId?: string;
   readonly displayName: string;
   readonly classGroupId: string;
   readonly studentNumber: number;

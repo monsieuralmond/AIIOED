@@ -101,6 +101,12 @@ export const studentByCredentials = (state: PilotState, loginId: string, passwor
   return state.students.find((student) => normalizeLoginId(student.loginId) === normalized && student.password === password) ?? null;
 };
 
+const anonymousIdForStudent = (student: StudentAccount): string =>
+  student.anonymousId ?? `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
+
+const sessionIdentifiersForStudent = (student: StudentAccount): ReadonlySet<string> =>
+  new Set([student.id, anonymousIdForStudent(student)]);
+
 export const teacherByCredentials = (state: PilotState, loginId: string, password: string): TeacherAccount | null => {
   const normalized = normalizeLoginId(loginId);
   return state.teachers.find((teacher) => normalizeLoginId(teacher.loginId) === normalized && teacher.password === password) ?? null;
@@ -202,12 +208,22 @@ export const updatePilotSession = (state: PilotState, session: PilotSession): Pi
 };
 
 export const sessionForStudent = (state: PilotState, studentId: string, assignmentId: string): PilotSession | null =>
-  [...state.sessions].reverse().find((session) => session.assignment.id === assignmentId && session.student.accountId === studentId) ?? null;
+  [...state.sessions].reverse().find((session) => {
+    if (session.assignment.id !== assignmentId) return false;
+    if (session.student.accountId === studentId) return true;
+    const student = state.students.find((item) => item.id === studentId);
+    return student === undefined ? session.student.anonymousId === studentId : sessionIdentifiersForStudent(student).has(session.student.anonymousId);
+  }) ?? null;
 
 export const activeSession = (state: PilotState): PilotSession | null => {
   const selected = state.selectedActor;
   if (selected?.role === "student") {
-    return [...state.sessions].reverse().find((session) => session.assignment.id === state.activeAssignmentId && (session.student.accountId === selected.accountId || session.student.anonymousId === selected.accountId)) ?? null;
+    const student = state.students.find((item) => item.id === selected.accountId);
+    return [...state.sessions].reverse().find((session) => {
+      if (session.assignment.id !== state.activeAssignmentId) return false;
+      if (session.student.accountId === selected.accountId || session.student.anonymousId === selected.accountId) return true;
+      return student === undefined ? false : sessionIdentifiersForStudent(student).has(session.student.anonymousId);
+    }) ?? null;
   }
   return [...state.sessions].reverse().find((session) => session.assignment.id === state.activeAssignmentId) ?? null;
 };

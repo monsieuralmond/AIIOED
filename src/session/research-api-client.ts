@@ -209,7 +209,8 @@ const isStudentAuthPayload = (value: unknown): value is {
   typeof value["student"]["id"] === "string" &&
   typeof value["student"]["loginId"] === "string" &&
   typeof value["student"]["participantCode"] === "string" &&
-  typeof value["student"]["studentNumber"] === "number";
+  typeof value["student"]["studentNumber"] === "number" &&
+  (value["student"]["anonymousId"] === undefined || typeof value["student"]["anonymousId"] === "string");
 
 const isSessionListResponse = (value: unknown): value is SessionListResponse =>
   isRecord(value) && Array.isArray(value["sessions"]) && value["sessions"].every(isPilotSession);
@@ -311,7 +312,7 @@ export const authenticateStudentWithDatabase = async (input: {
   };
 };
 
-const anonymousIdForStudent = (student: StudentAccount): string => `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
+const anonymousIdForStudent = (student: StudentAccount): string => student.anonymousId ?? `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
 
 const optionalPasswordField = (password: string): { readonly password: string } | Record<string, never> => {
   const trimmedPassword = password.trim();

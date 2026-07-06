@@ -63,6 +63,7 @@ export const authenticateStudent = async (payload: unknown): Promise<StudentAuth
   return {
     assignments: assignments.map(assignmentFromRow),
     student: {
+      anonymousId: student.student_anonymous_id,
       classGroupId: student.class_group_id,
       displayName: student.display_label ?? loginId,
       id: student.id,

@@ -5,6 +5,7 @@ import { App } from "./App.js";
 import { loadBrowserSessionIdentity, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
 import { createSession, enterStage } from "../session/session.js";
 import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher } from "../shared/fixtures.js";
+import { ResearchModes } from "../shared/research.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -150,7 +151,12 @@ describe("App shell", () => {
   it("opens an existing student session instead of resetting teacher preview to the first stage", async () => {
     const sampleStudent = sampleStudents[0];
     if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
-    const progressedSession = enterStage(createSession(sampleAssignment, sampleStudent), "writing");
+    const canonicalAnonymousId = "anon-restored-from-db-001";
+    const rosterStudent = { ...sampleStudent, anonymousId: canonicalAnonymousId };
+    const progressedSession = enterStage({
+      ...createSession(sampleAssignment),
+      student: { anonymousId: canonicalAnonymousId }
+    }, "writing");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.endsWith("/api/auth/teacher")) {
@@ -164,14 +170,14 @@ describe("App shell", () => {
         return new Response(JSON.stringify({
           assignments: [{ payload: sampleAssignment }],
           classes: sampleClassGroups,
-          students: sampleStudents.map((student) => ({
+          students: [rosterStudent, ...sampleStudents.slice(1)].map((student) => ({
             classGroupId: student.classGroupId,
             displayLabel: student.displayName,
             id: student.id,
             loginId: student.loginId,
             participantCode: student.participantCode,
             password: student.password,
-            studentAnonymousId: student.id,
+            studentAnonymousId: student.anonymousId ?? student.id,
             studentNumber: student.studentNumber
           })),
           teachers: [sampleTeacher]
@@ -200,6 +206,146 @@ describe("App shell", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
     expect(window.localStorage.getItem("reading-coach-lab:browser-session:v1")).toBeNull();
+    expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
+  });
+
+  it("previews the latest progressed student session even when the first assigned student has not started", async () => {
+    const firstStudent = sampleStudents[0];
+    const progressedStudent = sampleStudents[1];
+    if (firstStudent === undefined || progressedStudent === undefined) throw new Error("Missing sample student fixture.");
+    const progressedAnonymousId = "anon-progressed-second-student";
+    const rosterStudents = [firstStudent, { ...progressedStudent, anonymousId: progressedAnonymousId }];
+    const progressedSession = enterStage({
+      ...createSession(sampleAssignment),
+      student: { anonymousId: progressedAnonymousId }
+    }, "writing");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/teacher")) {
+        return new Response(JSON.stringify({
+          displayName: sampleTeacher.displayName,
+          teacherId: sampleTeacher.id,
+          teacherToken: "teacher-token-test"
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/roster")) {
+        return new Response(JSON.stringify({
+          assignments: [{ payload: sampleAssignment }],
+          classes: sampleClassGroups,
+          students: rosterStudents.map((student) => ({
+            classGroupId: student.classGroupId,
+            displayLabel: student.displayName,
+            id: student.id,
+            loginId: student.loginId,
+            participantCode: student.participantCode,
+            password: student.password,
+            studentAnonymousId: student.anonymousId ?? student.id,
+            studentNumber: student.studentNumber
+          })),
+          teachers: [sampleTeacher]
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/list")) {
+        return new Response(JSON.stringify({ sessions: [progressedSession] }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/start")) {
+        return new Response(JSON.stringify({ error: "teacher preview must not start the first assigned student" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
+    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
+    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
+    expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
+  });
+
+  it("keeps local teacher preview stage changes when the session poll returns stale data", async () => {
+    const sampleStudent = sampleStudents[0];
+    if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
+    const guidedAssignment = {
+      ...sampleAssignment,
+      id: "assignment-guided-preview",
+      researchMode: ResearchModes.guidedWriting,
+      title: "IT 글쓰기"
+    };
+    const staleSession = createSession(guidedAssignment, sampleStudent);
+    const staleSessionList = {
+      resolve: undefined as undefined | ((response: Response) => void)
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/teacher")) {
+        return new Response(JSON.stringify({
+          displayName: sampleTeacher.displayName,
+          teacherId: sampleTeacher.id,
+          teacherToken: "teacher-token-test"
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/roster")) {
+        return new Response(JSON.stringify({
+          assignments: [{ payload: guidedAssignment }],
+          classes: sampleClassGroups,
+          students: sampleStudents.map((student) => ({
+            classGroupId: student.classGroupId,
+            displayLabel: student.displayName,
+            id: student.id,
+            loginId: student.loginId,
+            participantCode: student.participantCode,
+            password: student.password,
+            studentAnonymousId: student.id,
+            studentNumber: student.studentNumber
+          })),
+          teachers: [sampleTeacher]
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/list")) {
+        return new Promise<Response>((resolve) => {
+          staleSessionList.resolve = resolve;
+        });
+      }
+      if (url.endsWith("/api/session/start")) {
+        return new Response(JSON.stringify({
+          assignmentId: guidedAssignment.id,
+          classGroupId: sampleStudent.classGroupId,
+          session: staleSession,
+          sessionId: staleSession.sessionId,
+          sessionToken: "preview-token-test",
+          studentAnonymousId: staleSession.student.anonymousId
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
+    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
+    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "소재 정하기" })).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("소재"), { target: { value: "해저케이블" } });
+    fireEvent.click(screen.getByRole("button", { name: "다음 단계" }));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "주제 정하기" })).toBeInTheDocument());
+    staleSessionList.resolve?.(new Response(JSON.stringify({ sessions: [staleSession] }), { status: 200 }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "주제 정하기" })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "소재 정하기" })).not.toBeInTheDocument();
     expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
   });
 

@@ -42,6 +42,7 @@ describe("student authentication", () => {
     const response = await authenticateStudent({ loginId: "1", participantCode: "1", password: "1" });
 
     expect(response.student).toEqual({
+      anonymousId: "anon-class-test-001",
       classGroupId: "class-test",
       displayName: "김민서",
       id: "student-1",

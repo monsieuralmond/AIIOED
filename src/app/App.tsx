@@ -191,7 +191,7 @@ export function App(): ReactElement {
   }, [actor?.accountId, actor?.role]);
 
   useEffect(() => {
-    if (useLocalResearchStorage || actor?.role !== "teacher" || !rosterReady) return;
+    if (useLocalResearchStorage || actor?.role !== "teacher" || !rosterReady || route === "student") return;
     let cancelled = false;
     const refreshSessions = (): void => {
       loadTeacherSessionsFromDatabase({ teacherId: actor.accountId })
@@ -213,7 +213,7 @@ export function App(): ReactElement {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [actor?.accountId, actor?.role, rosterReady]);
+  }, [actor?.accountId, actor?.role, rosterReady, route]);
 
   const saveAssignment = (nextAssignment: Assignment): void => {
     const nextState = saveAssignmentInState(pilotStateRef.current, nextAssignment);
@@ -237,14 +237,32 @@ export function App(): ReactElement {
   const firstStudentForAssignment = (assignment: Assignment): StudentAccount | null =>
     pilotState.students.find((student) => assignmentsForStudent(pilotState, student).some((item) => item.id === assignment.id)) ?? null;
 
-  const anonymousIdForStudent = (student: StudentAccount): string => `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
+  const anonymousIdForStudent = (student: StudentAccount): string => student.anonymousId ?? `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
+
+  const sessionIdentifiersForStudent = (student: StudentAccount): ReadonlySet<string> =>
+    new Set([student.id, anonymousIdForStudent(student)]);
+
+  const sessionMatchesStudent = (item: PilotSession, student: StudentAccount): boolean =>
+    item.student.accountId === student.id || sessionIdentifiersForStudent(student).has(item.student.anonymousId);
 
   const latestSessionForStudent = (assignment: Assignment, student: StudentAccount): PilotSession | null => {
-    const studentIds = new Set([student.id, anonymousIdForStudent(student)]);
     return [...pilotState.sessions].reverse().find((item) =>
       item.assignment.id === assignment.id &&
-      (item.student.accountId === student.id || studentIds.has(item.student.anonymousId))
+      sessionMatchesStudent(item, student)
     ) ?? null;
+  };
+
+  const latestStudentPreviewTarget = (assignment: Assignment): { readonly session: PilotSession | null; readonly student: StudentAccount } | null => {
+    const latestAssignmentSession = [...pilotState.sessions].reverse().find((item) => item.assignment.id === assignment.id) ?? null;
+    if (latestAssignmentSession !== null) {
+      const sessionStudent = pilotState.students.find((student) =>
+        assignmentsForStudent(pilotState, student).some((item) => item.id === assignment.id) &&
+        sessionMatchesStudent(latestAssignmentSession, student)
+      );
+      if (sessionStudent !== undefined) return { session: latestAssignmentSession, student: sessionStudent };
+    }
+    const student = firstStudentForAssignment(assignment);
+    return student === null ? null : { session: latestSessionForStudent(assignment, student), student };
   };
 
   const sessionWithPreviewStudent = (previewSession: PilotSession, student: StudentAccount): PilotSession => ({
@@ -259,12 +277,12 @@ export function App(): ReactElement {
       openRoute("student");
       return;
     }
-    const student = firstStudentForAssignment(activeAssignment);
-    if (student === null) {
+    const previewTarget = latestStudentPreviewTarget(activeAssignment);
+    if (previewTarget === null) {
       console.error("Student preview failed: no assigned student for this assignment.");
       return;
     }
-    const existingSession = latestSessionForStudent(activeAssignment, student);
+    const { session: existingSession, student } = previewTarget;
     if (existingSession !== null) {
       setPilotState((state) => stateWithTeacherPreviewSession(state, sessionWithPreviewStudent(existingSession, student)));
       openRoute("student");

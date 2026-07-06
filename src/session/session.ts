@@ -40,7 +40,7 @@ export const createSession = (assignment: Assignment, student?: StudentAccount):
   const normalizedAssignment = normalizeAssignmentResearchMode(assignment);
   const researchFields = initialResearchSessionFields(normalizedAssignment, createdAt);
   const sessionStudent: PilotSession["student"] =
-    student === undefined ? { anonymousId: makeId("student") } : { anonymousId: student.id, accountId: student.id, displayName: student.displayName };
+    student === undefined ? { anonymousId: makeId("student") } : { anonymousId: student.anonymousId ?? student.id, accountId: student.id, displayName: student.displayName };
   return {
     sessionId: makeId("session"),
     assignment: normalizedAssignment,
