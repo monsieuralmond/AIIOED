@@ -3,6 +3,7 @@ import { ApiError } from "./http.js";
 type QueryValue = boolean | number | string | undefined;
 
 export type SupabaseConfig = {
+  readonly retryLimit?: number;
   readonly serviceRoleKey: string;
   readonly timeoutMs?: number;
   readonly url: string;
@@ -86,11 +87,13 @@ const encodeQuery = (query: Readonly<Record<string, QueryValue>> = {}): string =
 
 export class SupabaseRestClient {
   private readonly restUrl: string;
+  private readonly retryLimit: number;
   private readonly serviceRoleKey: string;
   private readonly timeoutMs: number;
 
   constructor(config: SupabaseConfig) {
     this.restUrl = `${config.url.replace(/\/$/, "")}/rest/v1`;
+    this.retryLimit = config.retryLimit ?? retryLimit;
     this.serviceRoleKey = config.serviceRoleKey;
     this.timeoutMs = config.timeoutMs ?? defaultTimeoutMs;
   }
@@ -106,14 +109,14 @@ export class SupabaseRestClient {
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     let lastError: unknown;
-    for (let attempt = 0; attempt <= retryLimit; attempt += 1) {
+    for (let attempt = 0; attempt <= this.retryLimit; attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
         const response = await fetch(`${this.restUrl}${path}`, { ...init, signal: controller.signal });
         if (!response.ok) {
           const text = await response.text();
-          if (attempt < retryLimit && retryableStatusCodes.has(response.status)) {
+          if (attempt < this.retryLimit && retryableStatusCodes.has(response.status)) {
             await waitBeforeRetry(attempt);
             continue;
           }

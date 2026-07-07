@@ -1,10 +1,9 @@
 import { z } from "zod";
+import { authSupabaseClient } from "./auth-db.js";
 import { credentialHash } from "./credentials.js";
-import { researchServerEnv } from "./env.js";
 import { ApiError } from "./http.js";
 import { issueTeacherToken } from "./auth.js";
 import { encode } from "./supabase-session-rows.js";
-import { SupabaseRestClient } from "./supabase-rest.js";
 
 const teacherLoginSchema = z.object({
   loginId: z.string().min(1),
@@ -24,8 +23,7 @@ export const authenticateTeacher = async (payload: unknown): Promise<{
   readonly teacherToken: string;
 }> => {
   const input = teacherLoginSchema.parse(payload);
-  const env = researchServerEnv();
-  const db = new SupabaseRestClient({ serviceRoleKey: env.supabaseServiceRoleKey, url: env.supabaseUrl });
+  const db = authSupabaseClient();
   const rows = await db.get<readonly TeacherRow[]>("teachers", `select=id,display_name,login_id,password_hash&login_id=eq.${encode(input.loginId)}&limit=1`);
   const teacher = rows[0];
   if (teacher === undefined || teacher.password_hash !== credentialHash(input.password)) throw new ApiError(401, "Teacher login failed.");

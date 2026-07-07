@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { isAssignmentAssignedToStudent } from "../../shared/assignment-access.js";
 import type { Assignment, StudentAccount } from "../../shared/types.js";
+import { authSupabaseClient } from "./auth-db.js";
 import { credentialHash } from "./credentials.js";
-import { researchServerEnv } from "./env.js";
 import { ApiError } from "./http.js";
 import { participantCodeHash } from "./store.js";
 import type { AssignmentRow, StudentRow } from "./supabase-session-rows.js";
 import { encode } from "./supabase-session-rows.js";
-import { SupabaseRestClient } from "./supabase-rest.js";
 
 const studentLoginSchema = z.object({
   loginId: z.string().optional().default(""),
@@ -52,8 +51,7 @@ const participantCodeFromRow = (student: StudentAuthRow, inputCode: string): str
 
 export const authenticateStudent = async (payload: unknown): Promise<StudentAuthResponse> => {
   const input = studentLoginSchema.parse(payload);
-  const env = researchServerEnv();
-  const db = new SupabaseRestClient({ serviceRoleKey: env.supabaseServiceRoleKey, url: env.supabaseUrl });
+  const db = authSupabaseClient();
   const isParticipantCodeLogin = input.participantCode.trim().length > 0;
   const studentQuery = isParticipantCodeLogin
     ? `select=id,class_group_id,display_label,initial_participant_code,login_id,password_hash,student_anonymous_id,student_number&participant_code_hash=eq.${participantCodeHash(input.participantCode)}&limit=1`
