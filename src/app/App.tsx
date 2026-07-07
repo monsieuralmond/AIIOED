@@ -9,7 +9,7 @@ import type { RosterSyncDelta } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
 import { AccountManagement } from "./account-management.js";
-import { currentPath, firstStudent, initialPilotState, initialRoute, routePath, stateWithBrowserActor, stateWithDatabaseRoster, stateWithServerSession } from "./app-bootstrap.js";
+import { currentPath, firstStudent, initialPilotState, initialRoute, routePath, stateForTeacherScope, stateWithBrowserActor, stateWithDatabaseRoster, stateWithServerSession } from "./app-bootstrap.js";
 import type { Route } from "./app-bootstrap.js";
 import { CreateAssignment } from "./create-assignment.js";
 import { ExportView } from "./export-view.js";
@@ -100,9 +100,10 @@ export function App(): ReactElement {
   const rosterSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pilotStateRef = useRef<PilotState>(pilotState);
   const fileSync: FileSyncStatus = unavailableFileSync();
-  const activeAssignment = pilotState.assignments.find((assignment) => assignment.id === pilotState.activeAssignmentId) ?? pilotState.assignments[0] ?? null;
-  const session = activeSession(pilotState);
   const actor = pilotState.selectedActor;
+  const visibleTeacherState = actor?.role === "teacher" ? stateForTeacherScope(pilotState, actor.accountId) : pilotState;
+  const activeAssignment = visibleTeacherState.assignments.find((assignment) => assignment.id === visibleTeacherState.activeAssignmentId) ?? visibleTeacherState.assignments[0] ?? null;
+  const session = activeSession(pilotState);
   const teacherRoute = route === "create" || route === "review" || route === "accounts";
   const adminRoute = route === "admin" || route === "export";
 
@@ -303,7 +304,7 @@ export function App(): ReactElement {
   };
 
   const firstStudentForAssignment = (assignment: Assignment): StudentAccount | null =>
-    pilotState.students.find((student) => assignmentsForStudent(pilotState, student).some((item) => item.id === assignment.id)) ?? null;
+    visibleTeacherState.students.find((student) => assignmentsForStudent(visibleTeacherState, student).some((item) => item.id === assignment.id)) ?? null;
 
   const anonymousIdForStudent = (student: StudentAccount): string => student.anonymousId ?? `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
 
@@ -314,17 +315,17 @@ export function App(): ReactElement {
     item.student.accountId === student.id || sessionIdentifiersForStudent(student).has(item.student.anonymousId);
 
   const latestSessionForStudent = (assignment: Assignment, student: StudentAccount): PilotSession | null => {
-    return [...pilotState.sessions].reverse().find((item) =>
+    return [...visibleTeacherState.sessions].reverse().find((item) =>
       item.assignment.id === assignment.id &&
       sessionMatchesStudent(item, student)
     ) ?? null;
   };
 
   const latestStudentPreviewTarget = (assignment: Assignment): { readonly session: PilotSession | null; readonly student: StudentAccount } | null => {
-    const latestAssignmentSession = [...pilotState.sessions].reverse().find((item) => item.assignment.id === assignment.id) ?? null;
+    const latestAssignmentSession = [...visibleTeacherState.sessions].reverse().find((item) => item.assignment.id === assignment.id) ?? null;
     if (latestAssignmentSession !== null) {
-      const sessionStudent = pilotState.students.find((student) =>
-        assignmentsForStudent(pilotState, student).some((item) => item.id === assignment.id) &&
+      const sessionStudent = visibleTeacherState.students.find((student) =>
+        assignmentsForStudent(visibleTeacherState, student).some((item) => item.id === assignment.id) &&
         sessionMatchesStudent(latestAssignmentSession, student)
       );
       if (sessionStudent !== undefined) return { session: latestAssignmentSession, student: sessionStudent };
@@ -384,7 +385,16 @@ export function App(): ReactElement {
           const teachers = teacherExists
             ? state.teachers.map((teacher) => (teacher.id === auth.teacherId ? { ...teacher, displayName: auth.displayName, loginId, password: "" } : teacher))
             : [...state.teachers, { displayName: auth.displayName, id: auth.teacherId, loginId, password: "" }];
-          return selectActor({ ...state, teachers }, nextActor);
+          const teacherAccount = teachers.find((teacher) => teacher.id === auth.teacherId) ?? { displayName: auth.displayName, id: auth.teacherId, loginId, password: "" };
+          return selectActor({
+            ...state,
+            activeAssignmentId: "",
+            assignments: [],
+            classGroups: [],
+            sessions: [],
+            students: [],
+            teachers: [teacherAccount]
+          }, nextActor);
         });
         openRoute(teacherRoute ? route : "list");
         return true;
@@ -662,7 +672,7 @@ export function App(): ReactElement {
   };
 
   const renderTeacherRoute = (): ReactElement | null => {
-    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={pilotState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} />;
+    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={visibleTeacherState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} />;
     const newAssignmentTemplate = (): Assignment => ({
       assignmentMode: "full_process",
       essayType: "주장 글쓰기",
@@ -678,19 +688,19 @@ export function App(): ReactElement {
       targetLength: "400자",
       title: "",
       ...(actor?.role === "teacher" ? { createdByTeacherId: actor.accountId } : {}),
-      ...(pilotState.classGroups[0]?.id === undefined ? {} : { classGroupId: pilotState.classGroups[0].id })
+      ...(visibleTeacherState.classGroups[0]?.id === undefined ? {} : { classGroupId: visibleTeacherState.classGroups[0].id })
     });
     if (route === "list") return renderTeacherList();
     if (route === "create") {
-      const assignmentForForm = editingAssignmentId === null ? newAssignmentTemplate() : requireAssignment(pilotState, editingAssignmentId);
-      return <CreateAssignment assignment={assignmentForForm} key={`${editingAssignmentId ?? "new"}-${assignmentForForm.id}`} mode={editingAssignmentId === null ? "create" : "edit"} state={pilotState} onBack={() => openRoute("list")} onDelete={removeAssignment} onSave={saveAssignment} />;
+      const assignmentForForm = editingAssignmentId === null ? newAssignmentTemplate() : requireAssignment(visibleTeacherState, editingAssignmentId);
+      return <CreateAssignment assignment={assignmentForForm} key={`${editingAssignmentId ?? "new"}-${assignmentForForm.id}`} mode={editingAssignmentId === null ? "create" : "edit"} state={visibleTeacherState} onBack={() => openRoute("list")} onDelete={removeAssignment} onSave={saveAssignment} />;
     }
-    if (route === "review") return <TeacherReview state={pilotState} onBack={() => openRoute("list")} onUpdateReview={updateTeacherReviewForSession} />;
+    if (route === "review") return <TeacherReview state={visibleTeacherState} onBack={() => openRoute("list")} onUpdateReview={updateTeacherReviewForSession} />;
     if (route === "accounts") return (
       <AccountManagement
         {...(actor?.role === "teacher" ? { currentTeacherId: actor.accountId } : {})}
         mode="teacher"
-        state={pilotState}
+        state={visibleTeacherState}
         onBack={() => openRoute("list")}
         onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input), (previous, next) => ({ classGroups: addedItemsById(previous.classGroups, next.classGroups) }))}
         onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input), (previous, next) => ({ students: addedItemsById(previous.students, next.students) }))}

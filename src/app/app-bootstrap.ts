@@ -126,3 +126,33 @@ export const stateWithDatabaseRoster = (state: PilotState, roster: DatabaseRoste
     teachers: roster.teachers.length === 0 ? state.teachers : roster.teachers
   };
 };
+
+export const stateForTeacherScope = (state: PilotState, teacherId: string): PilotState => {
+  const teachers = state.teachers.filter((teacher) => teacher.id === teacherId);
+  const classGroups = state.classGroups.filter((classGroup) => classGroup.teacherId === teacherId);
+  const classIds = new Set(classGroups.map((classGroup) => classGroup.id));
+  const students = state.students.filter((student) => classIds.has(student.classGroupId));
+  const studentIds = new Set(students.map((student) => student.id));
+  const studentAnonymousIds = new Set(students.map((student) => student.anonymousId ?? `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`));
+  const assignments = state.assignments.filter((assignment) =>
+    assignment.createdByTeacherId === teacherId || (assignment.classGroupId !== undefined && classIds.has(assignment.classGroupId))
+  );
+  const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
+  const sessions = state.sessions.filter((session) => {
+    if (!assignmentIds.has(session.assignment.id)) return false;
+    if (session.student.accountId !== undefined && studentIds.has(session.student.accountId)) return true;
+    return studentAnonymousIds.has(session.student.anonymousId);
+  });
+  const activeAssignmentId = assignments.some((assignment) => assignment.id === state.activeAssignmentId)
+    ? state.activeAssignmentId
+    : assignments[0]?.id ?? "";
+  return {
+    ...state,
+    activeAssignmentId,
+    assignments,
+    classGroups,
+    sessions,
+    students,
+    teachers
+  };
+};
