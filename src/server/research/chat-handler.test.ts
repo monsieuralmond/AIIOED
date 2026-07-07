@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createResearchApiHandlers } from "./handlers.js";
-import { resetChatRequestSlotsForTests } from "./chat-request-slots.js";
 import {
   emptyRequest,
   isRecord,
@@ -22,7 +21,6 @@ describe("research chat handler", () => {
     process.env["READING_COACH_AI_MODE"] = "mock";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
     process.env["SUPABASE_URL"] = "https://example.supabase.co";
-    resetChatRequestSlotsForTests();
   });
 
   it("returns the stored assistant turn for duplicate chat requestIds", async () => {
@@ -127,5 +125,32 @@ describe("research chat handler", () => {
       messageLength: 10,
       requestId: "request-failure"
     }));
+  });
+
+  it("retries the same chat requestId after a recorded AI failure", async () => {
+    process.env["GEMINI_API_KEY"] = "";
+    process.env["READING_COACH_AI_MODE"] = "real";
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const request = requestWithSessionToken(sessionTokenFrom(started));
+
+    await expect(handlers.chat({
+      message: "양자컴퓨터가 뭐야?",
+      requestId: "request-retry-after-failure",
+      sessionId
+    }, request)).rejects.toMatchObject({ statusCode: 503 });
+
+    process.env["READING_COACH_AI_MODE"] = "mock";
+    const response = await handlers.chat({
+      message: "양자컴퓨터가 뭐야?",
+      requestId: "request-retry-after-failure",
+      sessionId
+    }, request);
+
+    expect(requiredStringField(response, "text").length).toBeGreaterThan(0);
+    expect(store.storedChatTurns.filter((turn) => turn.requestId === "request-retry-after-failure" && turn.role === "student")).toHaveLength(1);
+    expect(store.storedChatTurns.filter((turn) => turn.requestId === "request-retry-after-failure" && turn.role === "assistant")).toHaveLength(1);
   });
 });

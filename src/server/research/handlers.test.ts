@@ -44,6 +44,25 @@ describe("research API handlers", () => {
     expect(sessionIdFrom(response)).toMatch(/^session-/);
   });
 
+  it("starts the explicitly selected assignment for student credentials without a participant code", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+
+    const response = await handlers.sessionStart({
+      assignmentId: "assignment-selected",
+      loginId: "student-login",
+      password: "student-password"
+    }, emptyRequest());
+
+    if (!isRecord(response) || !isRecord(response["assignment"])) throw new Error("session start response did not include an assignment.");
+    expect(response["assignment"]["id"]).toBe("assignment-selected");
+    expect(store.startedSessions.at(-1)).toMatchObject({
+      assignmentId: "assignment-selected",
+      loginId: "student-login",
+      password: "student-password"
+    });
+  });
+
   it("passes teacher identity when a teacher starts a student preview session", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);

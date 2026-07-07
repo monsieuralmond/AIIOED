@@ -14,7 +14,6 @@ const teacherLoginSchema = z.object({
 type TeacherRow = {
   readonly display_name: string;
   readonly id: string;
-  readonly initial_password?: string | null;
   readonly login_id: string;
   readonly password_hash: string;
 };
@@ -27,12 +26,9 @@ export const authenticateTeacher = async (payload: unknown): Promise<{
   const input = teacherLoginSchema.parse(payload);
   const env = researchServerEnv();
   const db = new SupabaseRestClient({ serviceRoleKey: env.supabaseServiceRoleKey, url: env.supabaseUrl });
-  const rows = await db.get<readonly TeacherRow[]>("teachers", `select=id,display_name,initial_password,login_id,password_hash&login_id=eq.${encode(input.loginId)}&limit=1`);
+  const rows = await db.get<readonly TeacherRow[]>("teachers", `select=id,display_name,login_id,password_hash&login_id=eq.${encode(input.loginId)}&limit=1`);
   const teacher = rows[0];
   if (teacher === undefined || teacher.password_hash !== credentialHash(input.password)) throw new ApiError(401, "Teacher login failed.");
-  if (teacher.initial_password !== input.password) {
-    await db.patch("teachers", `id=eq.${encode(teacher.id)}`, { initial_password: input.password });
-  }
   return {
     displayName: teacher.display_name,
     teacherId: teacher.id,

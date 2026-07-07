@@ -62,6 +62,7 @@ export type Assignment = {
   readonly minimumWordCount?: string;
   readonly requirements?: readonly string[];
   readonly sourceGuidance?: string;
+  readonly assignedStudentIds?: readonly string[];
   readonly classGroupId?: string;
   readonly createdByTeacherId?: string;
   readonly startDate?: string;

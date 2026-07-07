@@ -4,7 +4,7 @@ import { unavailableFileSync } from "../session/file-sync.js";
 import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
 import { clearBrowserActorIdentity, clearBrowserAdminAuth, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
-import { authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
 import { AccountManagement } from "./account-management.js";
@@ -21,6 +21,7 @@ import { StudentWorkspace } from "./student-workspace.js";
 import { TeacherReview } from "./teacher-review.js";
 import { UnderstandingCalibrationFlow } from "./understanding-calibration-flow.js";
 import { useLocalResearchStorage } from "./storage-mode.js";
+import { Button, Field, TextInput } from "./ui.js";
 
 const initialAppState = (): PilotState => {
   const base = initialPilotState();
@@ -36,6 +37,57 @@ const initialAppState = (): PilotState => {
     teachers: []
   });
 };
+
+function TeacherAccountSettingsMenu(props: {
+  readonly displayName: string;
+  readonly onChangePassword: (password: string) => Promise<string | null>;
+}): ReactElement {
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const submit = async (): Promise<void> => {
+    const nextPassword = password.trim();
+    setMessage("");
+    if (nextPassword.length === 0) {
+      setMessage("새 비밀번호를 입력하세요.");
+      return;
+    }
+    if (nextPassword !== passwordConfirm.trim()) {
+      setMessage("비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
+    setPending(true);
+    try {
+      const error = await props.onChangePassword(nextPassword);
+      if (error !== null) {
+        setMessage(error);
+        return;
+      }
+      setPassword("");
+      setPasswordConfirm("");
+      setMessage("비밀번호를 변경했습니다.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="account-settings-menu" role="menu" aria-label="계정 설정">
+      <p className="account-settings-title">계정 설정</p>
+      <p className="account-settings-name">{props.displayName}</p>
+      <Field label="새 비밀번호">
+        <TextInput autoComplete="new-password" type="password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} />
+      </Field>
+      <Field label="새 비밀번호 확인">
+        <TextInput autoComplete="new-password" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.currentTarget.value)} />
+      </Field>
+      {message.length > 0 ? <p className="account-settings-message">{message}</p> : null}
+      <Button disabled={pending} variant="primary" onClick={() => { void submit(); }}>{pending ? "저장 중" : "비밀번호 변경"}</Button>
+    </div>
+  );
+}
 
 export function App(): ReactElement {
   const [pilotState, setPilotState] = useState<PilotState>(initialAppState);
@@ -79,6 +131,12 @@ export function App(): ReactElement {
     console.error("Session persistence failed.");
   };
 
+  const persistenceErrorMessage = (error: unknown): string => {
+    if (error instanceof ResearchApiClientError && error.status === 409) return "다른 화면에서 먼저 저장되었습니다. 새로고침 후 다시 시도하세요.";
+    if (error instanceof Error) return `저장에 실패했습니다. ${error.message}`;
+    return "저장에 실패했습니다. 다시 시도하세요.";
+  };
+
   const updateRosterRevision = (nextRevision: string | null): void => {
     rosterRevisionRef.current = nextRevision;
     setRosterRevision(nextRevision);
@@ -92,8 +150,9 @@ export function App(): ReactElement {
   } = {}): Promise<void> => {
     if (useLocalResearchStorage) return Promise.resolve();
     if ((actor?.role !== "teacher" && actor?.role !== "admin") || !rosterReady) return Promise.resolve();
+    const authHeaders = currentRosterAuthHeaders();
     const syncRoster = async (): Promise<void> => {
-      const result = await syncRosterToDatabase(nextState, deletedIds, rosterRevisionRef.current);
+      const result = await syncRosterToDatabase(nextState, deletedIds, rosterRevisionRef.current, authHeaders);
       if (result.rosterRevision !== undefined) updateRosterRevision(result.rosterRevision);
     };
     const queuedSync = rosterSyncQueueRef.current.then(syncRoster, syncRoster);
@@ -220,13 +279,21 @@ export function App(): ReactElement {
     };
   }, [actor?.accountId, actor?.role, rosterReady, route]);
 
-  const saveAssignment = (nextAssignment: Assignment): void => {
+  const saveAssignment = async (nextAssignment: Assignment): Promise<string | null> => {
+    const previousState = pilotStateRef.current;
     const nextState = saveAssignmentInState(pilotStateRef.current, nextAssignment);
     pilotStateRef.current = nextState;
     setPilotState(nextState);
-    void persistTeacherRoster(nextState);
+    try {
+      await persistTeacherRoster(nextState);
+    } catch (error) {
+      pilotStateRef.current = previousState;
+      setPilotState(previousState);
+      return persistenceErrorMessage(error);
+    }
     setEditingAssignmentId(null);
     openRoute("list");
+    return null;
   };
 
   const openNewAssignment = (): void => {
@@ -445,10 +512,14 @@ export function App(): ReactElement {
         return false;
       }
     }
-    const studentByLogin = studentByCredentials(pilotState, input.loginId, input.password);
-    const studentByCode = studentByParticipantCode(pilotState, input.participantCode);
-    if (studentByLogin === null || studentByCode === null || studentByLogin.id !== studentByCode.id) return false;
-    return startServerSessionForStudent(studentByLogin);
+    const code = input.participantCode.trim();
+    if (code.length > 0) {
+      const student = studentByParticipantCode(pilotState, code);
+      return student === null ? false : startServerSessionForStudent(student);
+    }
+    if (input.loginId.trim().length === 0 || input.password.trim().length === 0) return false;
+    const student = studentByCredentials(pilotState, input.loginId, input.password);
+    return student === null ? false : startServerSessionForStudent(student);
   };
 
   const switchRole = (): void => {
@@ -504,15 +575,16 @@ export function App(): ReactElement {
     return student;
   };
 
-  const startSelectedStudentAssignment = (assignmentId: string): void => {
+  const startSelectedStudentAssignment = async (assignmentId: string): Promise<boolean> => {
     const student = selectedStudent();
     if (!useLocalResearchStorage) {
-      void startResearchSessionWithParticipantCode({
-        assignmentId,
-        loginId: student.loginId,
-        participantCode: student.participantCode,
-        password: student.password
-      }).then((result) => {
+      try {
+        const result = await startResearchSessionWithParticipantCode({
+          assignmentId,
+          loginId: student.loginId,
+          participantCode: student.participantCode,
+          password: student.password
+        });
         clearBrowserTeacherAuth();
         saveBrowserSessionIdentity({
           assignmentId: result.assignmentId,
@@ -523,29 +595,15 @@ export function App(): ReactElement {
         if (result.sessionToken !== undefined) saveBrowserSessionToken(result.sessionToken);
         setPilotState((state) => stateWithServerSession(state, { ...result.session, student: { ...result.session.student, accountId: student.id, displayName: student.displayName } }));
         openRoute("student");
-      }).catch(reportSessionSyncError);
-      return;
+        return true;
+      } catch (error) {
+        reportSessionSyncError(error);
+        return false;
+      }
     }
     setPilotState((state) => startStudentSession(state, student.id, assignmentId).state);
     openRoute("student");
-  };
-
-  const mutateAccountState = (mutator: (state: PilotState) => PilotState, deletedIds: {
-    readonly deletedAssignmentIds?: readonly string[];
-    readonly deletedClassIds?: readonly string[];
-    readonly deletedStudentIds?: readonly string[];
-    readonly deletedTeacherIds?: readonly string[];
-  } = {}): string | null => {
-    try {
-      const nextState = mutator(pilotStateRef.current);
-      pilotStateRef.current = nextState;
-      setPilotState(nextState);
-      void persistTeacherRoster(nextState, deletedIds);
-      return null;
-    } catch (error) {
-      if (error instanceof PilotStateError) return error.message;
-      throw error;
-    }
+    return true;
   };
 
   const mutateAccountStateAndWait = async (mutator: (state: PilotState) => PilotState, deletedIds: {
@@ -554,6 +612,7 @@ export function App(): ReactElement {
     readonly deletedStudentIds?: readonly string[];
     readonly deletedTeacherIds?: readonly string[];
   } = {}): Promise<string | null> => {
+    const previousState = pilotStateRef.current;
     try {
       const nextState = mutator(pilotStateRef.current);
       pilotStateRef.current = nextState;
@@ -561,23 +620,31 @@ export function App(): ReactElement {
       await persistTeacherRoster(nextState, deletedIds);
       return null;
     } catch (error) {
+      pilotStateRef.current = previousState;
+      setPilotState(previousState);
       if (error instanceof PilotStateError) return error.message;
-      if (error instanceof Error) return `저장에 실패했습니다. ${error.message}`;
-      return "저장에 실패했습니다. 다시 시도하세요.";
+      return persistenceErrorMessage(error);
     }
   };
 
   const updateTeacherPasswordInState = (state: PilotState, teacherId: string, password: string): PilotState => {
+    const nextPassword = password.trim();
+    if (nextPassword.length === 0) throw new PilotStateError("새 교사 비밀번호를 입력하세요.");
     if (!state.teachers.some((teacher) => teacher.id === teacherId)) throw new PilotStateError("수정할 교사 계정을 찾을 수 없습니다.");
     return {
       ...state,
-      teacher: state.teacher.id === teacherId ? { ...state.teacher, password } : state.teacher,
-      teachers: state.teachers.map((teacher) => (teacher.id === teacherId ? { ...teacher, password } : teacher))
+      teacher: state.teacher.id === teacherId ? { ...state.teacher, password: nextPassword } : state.teacher,
+      teachers: state.teachers.map((teacher) => (teacher.id === teacherId ? { ...teacher, password: nextPassword } : teacher))
     };
   };
 
-  const removeAssignment = (assignmentId: string): string | null => {
-    const error = mutateAccountState((state) => deleteAssignment(state, assignmentId), { deletedAssignmentIds: [assignmentId] });
+  const changeCurrentTeacherPassword = async (password: string): Promise<string | null> => {
+    if (actor?.role !== "teacher") return "교사 계정으로 로그인해야 합니다.";
+    return mutateAccountStateAndWait((state) => updateTeacherPasswordInState(state, actor.accountId, password));
+  };
+
+  const removeAssignment = async (assignmentId: string): Promise<string | null> => {
+    const error = await mutateAccountStateAndWait((state) => deleteAssignment(state, assignmentId), { deletedAssignmentIds: [assignmentId] });
     if (error !== null) return error;
     setEditingAssignmentId(null);
     openRoute("list");
@@ -664,7 +731,14 @@ export function App(): ReactElement {
 
   return (
       <div className="app-shell" data-testid="app-shell">
-      <TopBar actorName={actorName(actor)} onHome={() => openRoute("list")} onLogout={actor?.role === "student" ? switchRole : undefined} onSwitchRole={actor !== null && actor.role !== "student" && route !== "student" ? switchRole : undefined} />
+      <TopBar
+        {...(actor?.role === "teacher" ? { accountMenu: <TeacherAccountSettingsMenu displayName={actorName(actor) ?? "교사"} onChangePassword={changeCurrentTeacherPassword} /> } : {})}
+        actorName={actorName(actor)}
+        onAdminEntry={actor === null ? () => openRoute("admin") : undefined}
+        onHome={() => openRoute("list")}
+        onLogout={actor?.role === "student" ? switchRole : undefined}
+        onSwitchRole={actor !== null && actor.role !== "student" && route !== "student" ? switchRole : undefined}
+      />
       {routeRequiresLogin ? <RoleEntry mode={roleEntryMode} onAdmin={chooseAdmin} onTeacher={chooseTeacher} onStudentCredentials={chooseStudentCredentials} /> : null}
       {actor?.role === "teacher" && !rosterReady ? renderTeacherRosterLoading() : null}
       {actor?.role === "teacher" && rosterReady ? renderTeacherRoute() : null}

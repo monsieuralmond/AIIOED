@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ClipboardEvent, ReactElement } from "react";
+import type { ClipboardEvent, FormEvent, ReactElement } from "react";
 import { addAssistantCoachTurn, addChatTurn, updateSessionLlmMetadata } from "../session/session.js";
 import { GuidedWritingStages } from "../shared/research.js";
 import type { ChatTurn, CoachResponseType, LlmMode, PilotSession, ReviewSuggestion } from "../shared/types.js";
@@ -560,6 +560,12 @@ function GuidedSummary(props: { readonly values: GuidedValues }): ReactElement {
 function GuidedCoachPanel(props: { readonly busy: boolean; readonly error: string; readonly input: string; readonly onInput: (value: string) => void; readonly onSend: () => void; readonly turns: readonly ChatTurn[]; readonly values: GuidedValues }): ReactElement {
   const [activeTab, setActiveTab] = useState<GuidedCoachTab>("coach");
   const tabClassName = (tab: GuidedCoachTab): string => (activeTab === tab ? "coach-tab active" : "coach-tab");
+  const canSend = !props.busy && props.input.trim().length > 0;
+  const submitMessage = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    if (!canSend) return;
+    props.onSend();
+  };
   return (
     <aside className="coach-panel guided-coach-panel" data-testid="guided-writing-coach" onCopy={(event) => event.preventDefault()}>
       <div className="coach-tabs" role="tablist" aria-label="글쓰기 도움 메뉴">
@@ -574,10 +580,10 @@ function GuidedCoachPanel(props: { readonly busy: boolean; readonly error: strin
               {props.turns.map((turn) => <GuidedCoachMessage key={turn.id} turn={turn} />)}
             </div>
             {props.error.length > 0 ? <WarningBanner>{props.error}</WarningBanner> : null}
-            <div className="chat-input">
+            <form className="chat-input" onSubmit={submitMessage}>
               <TextInput placeholder="글쓰기에서 막힌 점 질문하기" value={props.input} onChange={(event) => props.onInput(event.currentTarget.value)} />
-              <Button disabled={props.busy || props.input.trim().length === 0} onClick={props.onSend}>{props.busy ? "응답 중" : "보내기"}</Button>
-            </div>
+              <Button disabled={!canSend} type="submit">{props.busy ? "응답 중" : "보내기"}</Button>
+            </form>
           </section>
         ) : (
           <section aria-labelledby="guided-outline-tab" className="guided-outline-tab" id="guided-outline-tabpanel" role="tabpanel">

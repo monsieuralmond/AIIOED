@@ -24,12 +24,13 @@ describe("teacher authentication", () => {
     vi.unstubAllGlobals();
   });
 
-  it("stores the entered teacher password for account-management display after successful login", async () => {
-    const recordedCalls: { readonly body: unknown; readonly method: string; readonly table: string }[] = [];
+  it("does not persist the entered teacher password after successful login", async () => {
+    const recordedCalls: { readonly body: unknown; readonly method: string; readonly table: string; readonly url: string }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
       const method = init?.method ?? "GET";
-      const table = tableFromUrl(String(input));
-      recordedCalls.push({ body: parsedBody(init), method, table });
+      const table = tableFromUrl(url);
+      recordedCalls.push({ body: parsedBody(init), method, table, url });
       if (method === "GET" && table === "teachers") {
         return new Response(JSON.stringify([{
           display_name: "연구 교사",
@@ -44,6 +45,7 @@ describe("teacher authentication", () => {
     await authenticateTeacher({ loginId: "teacher", password: "teacher-pw" });
 
     const teacherPatch = recordedCalls.find((call) => call.method === "PATCH" && call.table === "teachers");
-    expect(teacherPatch?.body).toEqual({ initial_password: "teacher-pw" });
+    expect(teacherPatch).toBeUndefined();
+    expect(recordedCalls.find((call) => call.method === "GET" && call.table === "teachers")?.url).not.toContain("initial_password");
   });
 });

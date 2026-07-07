@@ -71,6 +71,32 @@ const assertStringField = (value, field) => {
   return value[field];
 };
 
+const assertDeploymentHealth = (health) => {
+  if (health?.ok === true) return;
+  if (!Array.isArray(health?.checks)) throw new Error(`Deployment health failed: ${JSON.stringify(health)}`);
+  const failed = health.checks
+    .filter((check) => check?.ok !== true)
+    .map((check) => {
+      const name = typeof check?.name === "string" ? check.name : "unknown_check";
+      const message = typeof check?.message === "string" ? `: ${check.message}` : "";
+      return `${name}${message}`;
+    });
+  throw new Error(`Deployment health failed:\n${failed.map((item) => `- ${item}`).join("\n")}`);
+};
+
+const assertRequiredHealthChecks = (health) => {
+  if (!Array.isArray(health?.checks)) throw new Error("Deployment health response did not include checks.");
+  const checkNames = new Set(health.checks.map((check) => check?.name).filter((name) => typeof name === "string"));
+  for (const requiredCheck of [
+    "supabase_schema_health_rpc",
+    "supabase_plaintext_password_columns_removed",
+    "supabase_apply_roster_mutation_rpc",
+    "supabase_delete_research_test_data_rpc"
+  ]) {
+    if (!checkNames.has(requiredCheck)) throw new Error(`Deployment health check ${requiredCheck} is missing. Apply the latest Supabase migrations first.`);
+  }
+};
+
 const main = async () => {
   const baseUrl = new URL(optional("APP_BASE_URL") ?? "http://127.0.0.1:5173/");
   const teacher = await requestJson(baseUrl, "/api/auth/teacher", {
@@ -85,7 +111,19 @@ const main = async () => {
   };
 
   const health = await requestJson(baseUrl, "/api/admin/health", {}, teacherHeaders);
-  if (health?.ok !== true) throw new Error(`Deployment health failed: ${JSON.stringify(health)}`);
+  assertDeploymentHealth(health);
+  assertRequiredHealthChecks(health);
+
+  const adminLoginId = optional("VERIFY_ADMIN_LOGIN_ID") ?? optional("ADMIN_LOGIN_ID");
+  const adminPassword = optional("VERIFY_ADMIN_PASSWORD") ?? optional("ADMIN_PASSWORD");
+  if (adminLoginId !== undefined && adminPassword !== undefined) {
+    const admin = await requestJson(baseUrl, "/api/auth/admin", {
+      loginId: adminLoginId,
+      password: adminPassword
+    });
+    assertStringField(admin, "adminId");
+    assertStringField(admin, "adminToken");
+  }
 
   const codes = parseParticipantCodes(optional("VERIFY_PARTICIPANT_CODES"));
   if (codes.length > 0) {

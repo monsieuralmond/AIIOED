@@ -9,7 +9,8 @@ const selectedActorAfterDelete = (selectedActor: SelectedActor | null, role: Sel
 
 const unassignClassGroup = (assignment: Assignment, classGroupId: string): Assignment => {
   if (assignment.classGroupId !== classGroupId) return assignment;
-  const { classGroupId: removedClassGroupId, ...unassignedAssignment } = assignment;
+  const { assignedStudentIds: removedAssignedStudentIds, classGroupId: removedClassGroupId, ...unassignedAssignment } = assignment;
+  void removedAssignedStudentIds;
   void removedClassGroupId;
   return unassignedAssignment;
 };
@@ -30,6 +31,10 @@ export const deleteStudentAccount = (state: PilotState, studentId: string): Pilo
   const sessions = state.sessions.filter((session) => session.student.accountId !== studentId);
   return {
     ...state,
+    assignments: state.assignments.map((assignment) => ({
+      ...assignment,
+      assignedStudentIds: assignment.assignedStudentIds?.filter((item) => item !== studentId) ?? []
+    })),
     classGroups: state.classGroups.map((classGroup) =>
       classGroup.studentIds.includes(studentId)
         ? { ...classGroup, studentIds: classGroup.studentIds.filter((item) => item !== studentId) }

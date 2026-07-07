@@ -167,6 +167,33 @@ const topicIdForSession = (sessionId: string, artifacts: readonly ArtifactExport
 const hasKind = (sessionId: string, kind: string, rows: readonly (ArtifactExportRow | MeasureExportRow)[]): boolean =>
   rows.some((row) => row.session_id === sessionId && row.kind === kind);
 
+const isSubmittedOrCompleted = (status: string): boolean => status === "submitted" || status === "completed";
+
+const isCompletedForExport = (row: {
+  readonly completedAt: string | null;
+  readonly completedProblemCount: string;
+  readonly currentStage: string;
+  readonly hasFinalReflection: string;
+  readonly hasFinalSubmission: string;
+  readonly hasReflectionSurvey: string;
+  readonly researchMode: ResearchMode;
+  readonly status: string;
+}): boolean => {
+  if (!isSubmittedOrCompleted(row.status)) return false;
+  switch (row.researchMode) {
+    case ResearchModes.understandingCalibration:
+      return row.currentStage === "completed" &&
+        row.completedProblemCount === "4" &&
+        row.hasReflectionSurvey === "true" &&
+        row.hasFinalReflection === "true";
+    case ResearchModes.guidedWriting:
+    case ResearchModes.writingCoach:
+      return row.hasFinalSubmission === "true" || row.completedAt !== null;
+    default:
+      return row.currentStage === "completed" || row.completedAt !== null;
+  }
+};
+
 const defaultAssignment = (session: SessionExportRow): Assignment => ({
   id: session.assignment_id,
   passage: "",
@@ -270,6 +297,7 @@ const exportBundle = (
       confidenceTrajectory: JSON.stringify(trajectory),
       currentStage: session.current_stage,
       hasFinalReflection: String(hasKind(session.session_id, "final_reflection", artifacts) || hasKind(session.session_id, "final_reflection_self_report", measures)),
+      hasFinalSubmission: String(hasKind(session.session_id, "final_submission", artifacts)),
       hasReflectionSurvey: String(hasKind(session.session_id, "reflection_self_report", measures)),
       problem1_answer: problem1.answer,
       problem1_answerLength: problem1.answerLength,
@@ -295,13 +323,7 @@ const exportBundle = (
       topicId: topicIdForSession(session.session_id, artifacts, measures, events),
       updatedAt: session.updated_at
     };
-  }).filter((row) => !input.completedOnly || (
-    row.status === "submitted" &&
-    row.currentStage === "completed" &&
-    row.completedProblemCount === "4" &&
-    row.hasReflectionSurvey === "true" &&
-    row.hasFinalReflection === "true"
-  ));
+  }).filter((row) => !input.completedOnly || isCompletedForExport(row));
   const includedSessionIds = new Set(sessionWideRows.map((row) => row.sessionId));
   const includedArtifacts = artifacts.filter((row) => includedSessionIds.has(row.session_id));
   const includedMeasures = measures.filter((row) => includedSessionIds.has(row.session_id));
@@ -339,8 +361,16 @@ const exportBundle = (
       }))
     }),
     events: includedEvents,
+    exportSchemaVersion: "research-db-export-v1",
     exportedAt: new Date().toISOString(),
     measures: includedMeasures,
+    rowCounts: {
+      artifacts: includedArtifacts.length,
+      chatTurns: includedChatTurns.length,
+      events: includedEvents.length,
+      measures: includedMeasures.length,
+      sessions: sessionWideRows.length
+    },
     sessions: sessionWideRows
   };
   return {

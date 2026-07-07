@@ -42,6 +42,12 @@ const parsedBody = (init?: RequestInit): unknown => {
   return parsed;
 };
 
+const rosterMutationPayload = (calls: readonly RecordedFetch[]): Record<string, unknown> => {
+  const rpcCall = calls.find((call) => call.method === "POST" && call.table === "apply_roster_mutation");
+  if (rpcCall === undefined || !isRecord(rpcCall.body) || !isRecord(rpcCall.body["payload"])) throw new Error("roster mutation payload was not sent.");
+  return rpcCall.body["payload"];
+};
+
 describe("roster handlers", () => {
   beforeEach(() => {
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
@@ -95,12 +101,15 @@ describe("roster handlers", () => {
       teacherId: "teacher-research"
     }, teacherRequest("teacher-research"));
 
-    expect(calls.some((call) => call.method === "POST" && call.table === "exports")).toBe(true);
-    const assignmentUpsert = calls.find((call) => call.method === "POST" && call.table === "assignments");
-    expect(assignmentUpsert?.body).toEqual([expect.objectContaining({
+    const mutation = rosterMutationPayload(calls);
+    expect(mutation["assignments"]).toEqual([expect.objectContaining({
       class_group_id: null,
       id: sampleAssignment.id
     })]);
+    expect(mutation["snapshot"]).toEqual(expect.objectContaining({
+      export_kind: "app_roster_snapshot",
+      payload: expect.objectContaining({ assignments: expect.any(Array) })
+    }));
   });
 
   it("stores sanitized roster snapshots and deletes only explicitly requested rows", async () => {
@@ -157,28 +166,26 @@ describe("roster handlers", () => {
       }]
     }, adminRequest());
 
-    const exportCall = calls.find((call) => call.method === "POST" && call.table === "exports");
-    if (exportCall === undefined || !isRecord(exportCall.body)) throw new Error("export snapshot was not stored.");
-    const snapshot = exportCall.body["payload"];
+    const mutation = rosterMutationPayload(calls);
+    const snapshot = isRecord(mutation["snapshot"]) ? mutation["snapshot"]["payload"] : undefined;
     expect(JSON.stringify(snapshot)).not.toContain("pw001");
     expect(JSON.stringify(snapshot)).not.toContain("S001");
-    const studentUpsert = calls.find((call) => call.method === "POST" && call.table === "students");
-    expect(studentUpsert?.body).toEqual([expect.objectContaining({
+    expect(mutation["studentsWithPasswords"]).toEqual([expect.objectContaining({
       id: "student-s001",
       initial_participant_code: "S001",
-      initial_password: "pw001",
       password_hash: expect.any(String)
     })]);
-    const teacherUpsert = calls.find((call) => call.method === "POST" && call.table === "teachers");
-    expect(teacherUpsert?.body).toEqual([expect.objectContaining({
+    expect(mutation["teachersWithPasswords"]).toEqual([expect.objectContaining({
       id: "teacher-research",
-      initial_password: "teacher-pw",
       password_hash: expect.any(String)
     })]);
-    const deleteCalls = calls.filter((call) => call.method === "DELETE");
-    expect(deleteCalls.map((call) => call.table).sort()).toEqual(["assignments", "classes", "students", "students", "teachers"]);
-    expect(deleteCalls.some((call) => call.table === "students" && call.url.includes("id=in.(student-old)"))).toBe(true);
-    expect(deleteCalls.some((call) => call.table === "students" && call.url.includes("class_group_id=in.(class-old)"))).toBe(true);
+    expect(JSON.stringify(mutation)).not.toContain("initial_password");
+    expect(mutation).toEqual(expect.objectContaining({
+      deletedAssignmentIds: ["assignment-old"],
+      deletedClassIds: ["class-old"],
+      deletedStudentIds: ["student-old"],
+      deletedTeacherIds: ["teacher-research"]
+    }));
   });
 
   it("rejects the active teacher creating another teacher account", async () => {
@@ -259,15 +266,58 @@ describe("roster handlers", () => {
       ]
     }, adminRequest());
 
-    const teacherUpsert = calls.find((call) => call.method === "POST" && call.table === "teachers");
-    expect(teacherUpsert?.body).toEqual(expect.arrayContaining([
+    const mutation = rosterMutationPayload(calls);
+    expect(mutation["teachersWithPasswords"]).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "teacher-helper",
-        initial_password: "helper-pw",
         login_id: "helper",
         password_hash: expect.any(String)
       })
     ]));
+    expect(JSON.stringify(mutation)).not.toContain("helper-pw");
+  });
+
+  it("allows a teacher to change only their own password", async () => {
+    const calls: RecordedFetch[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const table = tableFromUrl(url);
+      calls.push({ body: parsedBody(init), method, table, url });
+      if (method === "POST" && table === "exports") return new Response(JSON.stringify([{ id: "export-roster" }]), { status: 200 });
+      if (method === "GET" && table === "teachers") {
+        return new Response(JSON.stringify([
+          { id: "teacher-research", updated_at: "2026-07-05T00:00:00.000Z" }
+        ]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertRoster({
+      assignments: [],
+      classes: [],
+      students: [],
+      teacherId: "teacher-research",
+      teachers: [
+        {
+          displayName: "연구 교사",
+          id: "teacher-research",
+          loginId: "teacher",
+          password: "changed-pw"
+        }
+      ]
+    }, teacherRequest("teacher-research"));
+
+    const mutation = rosterMutationPayload(calls);
+    expect(mutation["teachersWithPasswords"]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "teacher-research",
+        login_id: "teacher",
+        password_hash: expect.any(String)
+      })
+    ]));
+    expect(JSON.stringify(mutation)).not.toContain("changed-pw");
   });
 
   it("loads the current roster tables instead of resurrecting a stale roster snapshot", async () => {

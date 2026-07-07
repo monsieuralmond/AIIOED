@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { loadBrowserSessionIdentity, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
@@ -8,6 +8,17 @@ import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher } fr
 import { ResearchModes } from "../shared/research.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+type LoginFormName = "관리자 로그인" | "교사 로그인" | "학생 로그인";
+
+const loginControls = (name: LoginFormName): { readonly form: HTMLElement; readonly loginId: HTMLElement; readonly password: HTMLElement; readonly submit: HTMLElement } => {
+  const form = screen.getByRole("form", { name });
+  return {
+    form,
+    loginId: within(form).getByLabelText("아이디"),
+    password: within(form).getByLabelText("비밀번호"),
+    submit: within(form).getByRole("button", { name: "로그인" })
+  };
+};
 
 describe("App shell", () => {
   beforeEach(() => {
@@ -28,24 +39,29 @@ describe("App shell", () => {
     expect(screen.getByRole("heading", { name: "계정을 선택하세요" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "학생 계정" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "교사 계정" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "관리자 계정" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "관리자 계정" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "관리자" })).toBeInTheDocument();
     expect(screen.queryByLabelText("참여자 코드")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "학생 계정" }));
     expect(screen.getByRole("heading", { name: "학생 로그인" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "계정을 선택하세요" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("참여코드")).toBeInTheDocument();
-    expect(screen.getByLabelText("학생 아이디")).toBeInTheDocument();
-    expect(screen.getByLabelText("학생 비밀번호")).toBeInTheDocument();
+    expect(screen.getByLabelText("참여자 코드")).toBeInTheDocument();
+    expect(loginControls("학생 로그인").loginId).toBeInTheDocument();
+    expect(loginControls("학생 로그인").password).toBeInTheDocument();
     expect(screen.queryByLabelText("교사 아이디")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "역할 다시 선택" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "뒤로가기" }));
     fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
     expect(screen.getByRole("heading", { name: "교사 로그인" })).toBeInTheDocument();
-    expect(screen.getByLabelText("교사 아이디")).toBeInTheDocument();
-    expect(screen.getByLabelText("교사 비밀번호")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "교사로 시작" })).toBeInTheDocument();
+    expect(loginControls("교사 로그인").loginId).toBeInTheDocument();
+    expect(loginControls("교사 로그인").password).toBeInTheDocument();
+    expect(loginControls("교사 로그인").submit).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "관리자" }));
+    expect(screen.getByRole("heading", { name: "관리자 로그인" })).toBeInTheDocument();
+    expect(loginControls("관리자 로그인").submit).toBeInTheDocument();
   });
 
   it("restores the teacher account on refresh without returning to role selection", async () => {
@@ -128,9 +144,9 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
-    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
-    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
-    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.submit(loginControls("교사 로그인").form);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
@@ -143,7 +159,7 @@ describe("App shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "홈" }));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "과제 둘러보기" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(sampleAssignment.title)).toBeInTheDocument());
     expect(screen.getByText(sampleTeacher.displayName)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "과제 시작" })).not.toBeInTheDocument();
   });
@@ -196,9 +212,9 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
-    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
-    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
-    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
@@ -258,9 +274,9 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
-    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
-    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
-    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
@@ -331,9 +347,9 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
-    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
-    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
-    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
@@ -390,7 +406,7 @@ describe("App shell", () => {
 
     render(createElement(App));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "과제 둘러보기" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(sampleAssignment.title)).toBeInTheDocument());
     expect(screen.getByText(sampleTeacher.displayName)).toBeInTheDocument();
     expect(screen.queryByText(sampleStudents[0]?.displayName ?? "")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/resume"), expect.anything());
@@ -431,9 +447,9 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
-    fireEvent.change(screen.getByLabelText("교사 아이디"), { target: { value: sampleTeacher.loginId } });
-    fireEvent.change(screen.getByLabelText("교사 비밀번호"), { target: { value: sampleTeacher.password } });
-    fireEvent.click(screen.getByRole("button", { name: "교사로 시작" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "과제 둘러보기" })).toBeInTheDocument());
     expect(loadBrowserSessionIdentity()).toBeNull();
@@ -467,15 +483,161 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "학생 계정" }));
-    fireEvent.change(screen.getByLabelText("참여코드"), { target: { value: sampleStudent.participantCode } });
-    fireEvent.change(screen.getByLabelText("학생 아이디"), { target: { value: sampleStudent.loginId } });
-    fireEvent.change(screen.getByLabelText("학생 비밀번호"), { target: { value: sampleStudent.password } });
-    fireEvent.click(screen.getByRole("button", { name: "학생으로 시작" }));
+    fireEvent.change(screen.getByLabelText("참여자 코드"), { target: { value: sampleStudent.participantCode } });
+    fireEvent.click(loginControls("학생 로그인").submit);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "과제 시작" })).toBeInTheDocument();
     expect(loadBrowserTeacherAuth()).toBeNull();
     expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"student\"");
+  });
+
+  it("starts the assignment selected by the student instead of the first assigned task", async () => {
+    const sampleStudent = sampleStudents[0];
+    if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
+    const firstAssignment = { ...sampleAssignment, id: "assignment-first", title: "첫 번째 과제" };
+    const secondAssignment = { ...sampleAssignment, id: "assignment-second", title: "두 번째 과제" };
+    let postedStartBody: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/student")) {
+        return new Response(JSON.stringify({
+          assignments: [firstAssignment, secondAssignment],
+          student: {
+            classGroupId: sampleStudent.classGroupId,
+            displayName: sampleStudent.displayName,
+            id: sampleStudent.id,
+            loginId: sampleStudent.loginId,
+            participantCode: sampleStudent.participantCode,
+            studentNumber: sampleStudent.studentNumber
+          }
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/start")) {
+        if (typeof init?.body !== "string") throw new Error("Session start body must be a string.");
+        const parsed: unknown = JSON.parse(init.body);
+        if (!isRecord(parsed)) throw new Error("Session start body must be an object.");
+        postedStartBody = parsed;
+        const selectedAssignment = parsed["assignmentId"] === secondAssignment.id ? secondAssignment : firstAssignment;
+        const startedSession = createSession(selectedAssignment, sampleStudent);
+        return new Response(JSON.stringify({
+          assignmentId: selectedAssignment.id,
+          classGroupId: sampleStudent.classGroupId,
+          session: startedSession,
+          sessionId: startedSession.sessionId,
+          sessionToken: "student-session-token",
+          studentAnonymousId: startedSession.student.anonymousId
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "학생 계정" }));
+    fireEvent.change(loginControls("학생 로그인").loginId, { target: { value: sampleStudent.loginId } });
+    fireEvent.change(loginControls("학생 로그인").password, { target: { value: sampleStudent.password } });
+    fireEvent.click(loginControls("학생 로그인").submit);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    const secondTask = screen.getByRole("article", { name: `${secondAssignment.title} 과제` });
+    fireEvent.click(within(secondTask).getByRole("button", { name: "과제 시작" }));
+
+    await waitFor(() => expect(postedStartBody?.["assignmentId"]).toBe(secondAssignment.id));
+    expect(loadBrowserSessionIdentity()?.assignmentId).toBe(secondAssignment.id);
+  });
+
+  it("shows a visible error when an assigned student task cannot start", async () => {
+    const sampleStudent = sampleStudents[0];
+    if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/student")) {
+        return new Response(JSON.stringify({
+          assignments: [sampleAssignment],
+          student: {
+            classGroupId: sampleStudent.classGroupId,
+            displayName: sampleStudent.displayName,
+            id: sampleStudent.id,
+            loginId: sampleStudent.loginId,
+            participantCode: sampleStudent.participantCode,
+            studentNumber: sampleStudent.studentNumber
+          }
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/start")) {
+        return new Response(JSON.stringify({ error: "start failed" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "학생 계정" }));
+    fireEvent.change(loginControls("학생 로그인").loginId, { target: { value: sampleStudent.loginId } });
+    fireEvent.change(loginControls("학생 로그인").password, { target: { value: sampleStudent.password } });
+    fireEvent.click(loginControls("학생 로그인").submit);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "과제 시작" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("과제를 시작하지 못했습니다"));
+    expect(screen.queryByRole("heading", { name: "시작 전 확인" })).not.toBeInTheDocument();
+  });
+
+  it("lets a teacher change their own password from the top account menu", async () => {
+    const upsertBodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/teacher")) {
+        return new Response(JSON.stringify({
+          displayName: sampleTeacher.displayName,
+          teacherId: sampleTeacher.id,
+          teacherToken: "teacher-token-test"
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/roster")) {
+        return new Response(JSON.stringify({
+          assignments: [],
+          classes: [],
+          rosterRevision: "revision-1",
+          students: [],
+          teachers: [sampleTeacher]
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/list")) {
+        return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/upsert-roster")) {
+        if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
+        const parsed: unknown = JSON.parse(init.body);
+        if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");
+        upsertBodies.push(parsed);
+        return new Response(JSON.stringify({ rosterRevision: "revision-2" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "과제 둘러보기" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: sampleTeacher.displayName }));
+    fireEvent.change(screen.getByLabelText("새 비밀번호"), { target: { value: "changed-pw" } });
+    fireEvent.change(screen.getByLabelText("새 비밀번호 확인"), { target: { value: "changed-pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "비밀번호 변경" }));
+
+    await waitFor(() => expect(screen.getByText("비밀번호를 변경했습니다.")).toBeInTheDocument());
+    expect(upsertBodies).toHaveLength(1);
+    expect(JSON.stringify(upsertBodies[0])).toContain(`"id":"${sampleTeacher.id}"`);
+    expect(JSON.stringify(upsertBodies[0])).toContain("\"password\":\"changed-pw\"");
   });
 
   it("shows the student assignment list instead of failing login when no assignment is assigned", async () => {
@@ -503,14 +665,89 @@ describe("App shell", () => {
     render(createElement(App));
 
     fireEvent.click(screen.getByRole("button", { name: "학생 계정" }));
-    fireEvent.change(screen.getByLabelText("참여코드"), { target: { value: sampleStudent.participantCode } });
-    fireEvent.change(screen.getByLabelText("학생 아이디"), { target: { value: sampleStudent.loginId } });
-    fireEvent.change(screen.getByLabelText("학생 비밀번호"), { target: { value: sampleStudent.password } });
-    fireEvent.click(screen.getByRole("button", { name: "학생으로 시작" }));
+    fireEvent.change(loginControls("학생 로그인").loginId, { target: { value: sampleStudent.loginId } });
+    fireEvent.change(loginControls("학생 로그인").password, { target: { value: sampleStudent.password } });
+    fireEvent.click(loginControls("학생 로그인").submit);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
     expect(screen.getByText("아직 배정된 과제가 없습니다. 교사에게 과제 배정을 확인해 주세요.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "학생 로그인" })).not.toBeInTheDocument();
+  });
+
+  it("persists assignment student selections through the roster save API", async () => {
+    const sampleStudent = sampleStudents[0];
+    if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
+    const assignmentWithoutStudents = { ...sampleAssignment, assignedStudentIds: [] };
+    const upsertBodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/teacher")) {
+        return new Response(JSON.stringify({
+          displayName: sampleTeacher.displayName,
+          teacherId: sampleTeacher.id,
+          teacherToken: "teacher-token-test"
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/roster")) {
+        return new Response(JSON.stringify({
+          assignments: [{
+            classGroupId: assignmentWithoutStudents.classGroupId,
+            createdByTeacherId: assignmentWithoutStudents.createdByTeacherId,
+            id: assignmentWithoutStudents.id,
+            payload: assignmentWithoutStudents,
+            researchCondition: assignmentWithoutStudents.researchCondition,
+            researchMode: assignmentWithoutStudents.researchMode,
+            title: assignmentWithoutStudents.title
+          }],
+          classes: sampleClassGroups,
+          rosterRevision: "revision-1",
+          students: sampleStudents.map((student) => ({
+            classGroupId: student.classGroupId,
+            displayLabel: student.displayName,
+            id: student.id,
+            loginId: student.loginId,
+            participantCode: student.participantCode,
+            password: student.password,
+            studentAnonymousId: student.id,
+            studentNumber: student.studentNumber
+          })),
+          teachers: [sampleTeacher]
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/list")) {
+        return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/upsert-roster")) {
+        if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
+        const parsed: unknown = JSON.parse(init.body);
+        if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");
+        upsertBodies.push(parsed);
+        return new Response(JSON.stringify({ rosterRevision: "revision-2" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
+
+    await waitFor(() => expect(screen.getByText(assignmentWithoutStudents.title)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "배정" }));
+    fireEvent.click(screen.getByLabelText(`${sampleStudent.studentNumber}번 ${sampleStudent.displayName}`));
+    fireEvent.click(screen.getByRole("button", { name: "배정 저장" }));
+
+    await waitFor(() => expect(upsertBodies).toHaveLength(1));
+    const assignments = upsertBodies[0]?.["assignments"];
+    if (!Array.isArray(assignments) || !isRecord(assignments[0])) throw new Error("Roster assignments payload is invalid.");
+    const payload = assignments[0]["payload"];
+    if (!isRecord(payload)) throw new Error("Roster assignment payload is invalid.");
+    expect(payload["assignedStudentIds"]).toEqual([sampleStudent.id]);
+    expect(assignments[0]["classGroupId"]).toBe(sampleStudent.classGroupId);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "과제 배정" })).not.toBeInTheDocument());
   });
 
   it("waits for a roster save before accepting the next account edit", async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { exportDataset } from "../export/export.js";
 import { sampleAssignment } from "../shared/fixtures.js";
 import { GuidedWritingStages, ResearchConditions, ResearchModes } from "../shared/research.js";
-import { activeSession, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session.js";
+import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, teacherByCredentials, createInitialPilotState, saveAssignmentInState, sessionStatus, startStudentSession, studentByCredentials, studentByParticipantCode, submitFinal, updatePilotSession } from "./session.js";
 
 describe("local pilot state", () => {
   it("keeps student sessions distinct for the same assignment", () => {
@@ -121,6 +121,31 @@ describe("local pilot state", () => {
     expect(withAssignment.assignments.find((item) => item.id === assignment.id)?.researchCondition).toBe(ResearchConditions.singleGroupBaseline);
   });
 
+  it("shows only individually assigned tasks to each student", () => {
+    const initial = createInitialPilotState();
+    const firstStudent = initial.students[0];
+    const secondStudent = initial.students[1];
+    if (firstStudent === undefined || secondStudent === undefined) throw new Error("fixture students missing");
+    const firstOnlyAssignment = {
+      ...sampleAssignment,
+      assignedStudentIds: [firstStudent.id],
+      id: "assignment-first-only",
+      title: "첫 번째 학생 과제"
+    };
+    const secondOnlyAssignment = {
+      ...sampleAssignment,
+      assignedStudentIds: [secondStudent.id],
+      id: "assignment-second-only",
+      title: "두 번째 학생 과제"
+    };
+    const state = saveAssignmentInState(saveAssignmentInState(initial, firstOnlyAssignment), secondOnlyAssignment);
+
+    expect(assignmentsForStudent(state, firstStudent).map((assignment) => assignment.id)).toContain("assignment-first-only");
+    expect(assignmentsForStudent(state, firstStudent).map((assignment) => assignment.id)).not.toContain("assignment-second-only");
+    expect(assignmentsForStudent(state, secondStudent).map((assignment) => assignment.id)).toContain("assignment-second-only");
+    expect(() => startStudentSession(state, secondStudent.id, firstOnlyAssignment.id)).toThrow("학생에게 배정되지 않은 과제입니다.");
+  });
+
   it("reports not-started, in-progress, and submitted student statuses", () => {
     const initial = createInitialPilotState();
     const firstStudent = initial.students[0];
@@ -206,6 +231,7 @@ describe("local pilot state", () => {
     expect(deleted.classGroups[0]?.studentIds).not.toContain(student.id);
     expect(deleted.sessions).toHaveLength(0);
     expect(activeSession(deleted)).toBeNull();
+    expect(deleted.assignments[0]?.assignedStudentIds).not.toContain(student.id);
   });
 
   it("deletes a class with its students and unassigns the class assignment", () => {
@@ -217,6 +243,7 @@ describe("local pilot state", () => {
     expect(deleted.classGroups.find((classGroup) => classGroup.id === "class-pilot")).toBeUndefined();
     expect(deleted.students).toHaveLength(0);
     expect(deleted.assignments[0]?.classGroupId).toBeUndefined();
+    expect(deleted.assignments[0]?.assignedStudentIds).toBeUndefined();
     expect(exported.classGroups).toHaveLength(0);
     expect(exported.students).toHaveLength(0);
     expect(exported.assignments[0]?.classGroupId).toBeUndefined();

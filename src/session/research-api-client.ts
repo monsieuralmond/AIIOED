@@ -2,7 +2,7 @@ import type { CalibrationChatRequest, CalibrationChatResponse } from "../shared/
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ResearchArtifact, ResearchMeasure } from "../shared/research.js";
 import type { Assignment, ChatTurn, PilotEvent, PilotState, PilotSession, Stage, StudentAccount } from "../shared/types.js";
-import { loadBrowserAdminAuth, loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
+import { clearBrowserAdminAuth, clearBrowserActorIdentity, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserAdminAuth, loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
 import type { BrowserSessionIdentity } from "./browser-session.js";
 import { parseDatabaseRoster } from "./database-roster.js";
 import type { DatabaseRoster } from "./database-roster.js";
@@ -25,8 +25,27 @@ type StartSessionPayload = {
 type StartParticipantSessionInput = {
   readonly assignmentId?: string;
   readonly loginId?: string;
-  readonly participantCode: string;
+  readonly participantCode?: string;
   readonly password?: string;
+};
+
+const optionalTrimmedField = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length === 0 ? undefined : trimmed;
+};
+
+const participantSessionStartBody = (input: string | StartParticipantSessionInput): StartParticipantSessionInput => {
+  if (typeof input === "string") return { participantCode: input };
+  const assignmentId = optionalTrimmedField(input.assignmentId);
+  const loginId = optionalTrimmedField(input.loginId);
+  const participantCode = optionalTrimmedField(input.participantCode);
+  const password = optionalTrimmedField(input.password);
+  return {
+    ...(assignmentId === undefined ? {} : { assignmentId }),
+    ...(loginId === undefined ? {} : { loginId }),
+    ...(participantCode === undefined ? {} : { participantCode }),
+    ...(password === undefined ? {} : { password })
+  };
 };
 
 export type TeacherAuthResponse = {
@@ -67,6 +86,8 @@ export type RosterSyncResponse = {
   readonly rosterRevision?: string;
 };
 
+export type RosterAuthHeaders = Readonly<Record<string, string>>;
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 export class ResearchApiClientError extends Error {
@@ -98,10 +119,27 @@ const postJson = async (path: string, body: unknown, headers: Readonly<Record<st
   });
   const payload = parseJsonPayload(await response.text(), response.status);
   if (!response.ok) {
+    if (response.status === 401) clearExpiredAuth(headers);
     const message = isRecord(payload) && typeof payload["message"] === "string" ? payload["message"] : "요청에 실패했습니다.";
     throw new ResearchApiClientError(message, response.status, payload);
   }
   return payload;
+};
+
+const clearExpiredAuth = (headers: Readonly<Record<string, string>>): void => {
+  if (typeof headers["x-research-session-token"] === "string") {
+    clearBrowserSessionIdentity();
+    clearBrowserSessionToken();
+    clearBrowserActorIdentity();
+  }
+  if (typeof headers["x-research-teacher-token"] === "string") {
+    clearBrowserTeacherAuth();
+    clearBrowserActorIdentity();
+  }
+  if (typeof headers["x-research-admin-token"] === "string") {
+    clearBrowserAdminAuth();
+    clearBrowserActorIdentity();
+  }
 };
 
 const isPilotSession = (value: unknown): value is PilotSession =>
@@ -175,6 +213,11 @@ const rosterHeaders = (): Readonly<Record<string, string>> => {
   return Object.keys(adminAuth).length > 0 ? adminAuth : teacherHeaders();
 };
 
+export const currentRosterAuthHeaders = (): RosterAuthHeaders => rosterHeaders();
+
+const isAdminRosterAuth = (headers: RosterAuthHeaders): boolean =>
+  typeof headers["x-research-admin-id"] === "string" && typeof headers["x-research-admin-token"] === "string";
+
 const isAdminAuthResponse = (value: unknown): value is AdminAuthResponse =>
   isRecord(value) &&
   typeof value["adminId"] === "string" &&
@@ -223,15 +266,14 @@ export const resumeResearchSession = async (sessionId: string): Promise<StartSes
 };
 
 export const startResearchSessionWithParticipantCode = async (input: string | StartParticipantSessionInput): Promise<StartSessionResponse> => {
-  const body = typeof input === "string" ? { participantCode: input } : input;
-  const payload = await postJson("/api/session/start", body);
+  const payload = await postJson("/api/session/start", participantSessionStartBody(input));
   const parsed = parseStartSessionResponse(payload);
   if (parsed === null) throw new Error("세션 응답 형식이 올바르지 않습니다.");
   return parsed;
 };
 
 export const startTeacherPreviewSession = async (input: StartParticipantSessionInput): Promise<StartSessionResponse> => {
-  const payload = await postJson("/api/session/start", input, teacherHeaders());
+  const payload = await postJson("/api/session/start", participantSessionStartBody(input), teacherHeaders());
   const parsed = parseStartSessionResponse(payload);
   if (parsed === null) throw new Error("세션 응답 형식이 올바르지 않습니다.");
   return parsed;
@@ -333,9 +375,9 @@ export const syncRosterToDatabase = async (state: PilotState, deletedIds: {
   readonly deletedClassIds?: readonly string[];
   readonly deletedStudentIds?: readonly string[];
   readonly deletedTeacherIds?: readonly string[];
-} = {}, expectedRosterRevision?: string | null): Promise<RosterSyncResponse> => {
+} = {}, expectedRosterRevision?: string | null, authHeaders: RosterAuthHeaders = rosterHeaders()): Promise<RosterSyncResponse> => {
   const selectedActor = state.selectedActor;
-  const teacherId = loadBrowserAdminAuth() !== null ? undefined : selectedActor?.role === "teacher" ? selectedActor.accountId : state.teacher.id;
+  const teacherId = isAdminRosterAuth(authHeaders) ? undefined : selectedActor?.role === "teacher" ? selectedActor.accountId : state.teacher.id;
   const payload = await postJson("/api/admin/upsert-roster", {
     assignments: state.assignments.map((assignment) => ({
       createdByTeacherId: assignment.createdByTeacherId ?? teacherId ?? state.teacher.id,
@@ -373,7 +415,7 @@ export const syncRosterToDatabase = async (state: PilotState, deletedIds: {
     ...(deletedIds.deletedTeacherIds === undefined ? {} : { deletedTeacherIds: deletedIds.deletedTeacherIds }),
     ...(expectedRosterRevision === undefined || expectedRosterRevision === null ? {} : { expectedRosterRevision }),
     ...(teacherId === undefined ? {} : { teacherId })
-  }, rosterHeaders());
+  }, authHeaders);
   return isRecord(payload) && typeof payload["rosterRevision"] === "string" ? { rosterRevision: payload["rosterRevision"] } : {};
 };
 

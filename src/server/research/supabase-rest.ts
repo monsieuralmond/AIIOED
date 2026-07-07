@@ -96,6 +96,14 @@ export class SupabaseRestClient {
     });
   }
 
+  async rpc<T>(functionName: string, body: unknown): Promise<T> {
+    return this.request<T>(`/rpc/${functionName}`, {
+      body: JSON.stringify(body),
+      headers: this.headers({ prefer: "return=representation" }),
+      method: "POST"
+    });
+  }
+
   async upsert<T>(table: string, body: unknown, onConflict?: string): Promise<T> {
     return this.request<T>(`/${table}${encodeQuery(onConflict === undefined ? {} : { on_conflict: onConflict })}`, {
       body: JSON.stringify(body),

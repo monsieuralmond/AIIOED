@@ -1,4 +1,5 @@
 import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher, sampleTeachers } from "../shared/fixtures.js";
+import { isAssignmentAssignedToStudent } from "../shared/assignment-access.js";
 import type { Assignment, ClassGroup, PilotSession, PilotState, SelectedActor, StudentAccount, StudentWorkStatus, TeacherAccount } from "../shared/types.js";
 import { normalizeAssignmentResearchMode } from "./research-session.js";
 import { createSession } from "./session.js";
@@ -68,7 +69,7 @@ export const requireAssignment = (state: PilotState, assignmentId: string): Assi
 };
 
 export const assignmentsForStudent = (state: PilotState, student: StudentAccount): readonly Assignment[] =>
-  state.assignments.filter((assignment) => assignment.classGroupId === undefined || assignment.classGroupId === student.classGroupId);
+  state.assignments.filter((assignment) => isAssignmentAssignedToStudent(assignment, student));
 
 const normalizeParticipantCode = (code: string): string => code.trim().toUpperCase();
 const normalizeLoginId = (loginId: string): string => loginId.trim().toLowerCase();
@@ -171,21 +172,25 @@ export const selectActor = (state: PilotState, actor: SelectedActor | null): Pil
 
 export const saveAssignmentInState = (state: PilotState, assignment: Assignment): PilotState => {
   const normalizedAssignment = normalizeAssignmentResearchMode(assignment);
+  const validStudentIds = new Set(state.students.filter((student) => student.classGroupId === normalizedAssignment.classGroupId).map((student) => student.id));
+  const assignedStudentIds = normalizedAssignment.assignedStudentIds?.filter((studentId) => validStudentIds.has(studentId)) ?? [];
+  const assignmentWithRoster = { ...normalizedAssignment, assignedStudentIds };
   const existingIndex = state.assignments.findIndex((item) => item.id === normalizedAssignment.id);
   const assignments =
     existingIndex === -1
-      ? [...state.assignments, normalizedAssignment]
-      : state.assignments.map((item) => (item.id === normalizedAssignment.id ? normalizedAssignment : item));
+      ? [...state.assignments, assignmentWithRoster]
+      : state.assignments.map((item) => (item.id === normalizedAssignment.id ? assignmentWithRoster : item));
   return {
     ...state,
     assignments,
-    activeAssignmentId: normalizedAssignment.id
+    activeAssignmentId: assignmentWithRoster.id
   };
 };
 
 export const startStudentSession = (state: PilotState, studentId: string, assignmentId: string): StartedStudentSession => {
   const student = requireStudent(state, studentId);
   const assignment = requireAssignment(state, assignmentId);
+  if (!assignmentsForStudent(state, student).some((item) => item.id === assignmentId)) throw new PilotStateError("학생에게 배정되지 않은 과제입니다.");
   const session = createSession(assignment, student);
   return {
     session,

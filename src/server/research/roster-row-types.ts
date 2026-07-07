@@ -21,7 +21,6 @@ export type RosterStudentRow = {
   readonly display_label?: string | null;
   readonly initial_participant_code?: string | null;
   readonly id: string;
-  readonly initial_password?: string | null;
   readonly login_id?: string | null;
   readonly student_anonymous_id?: string;
   readonly student_number?: number | null;
@@ -31,7 +30,6 @@ export type RosterStudentRow = {
 export type RosterTeacherRow = {
   readonly display_name?: string;
   readonly id: string;
-  readonly initial_password?: string | null;
   readonly login_id?: string;
   readonly updated_at?: string;
 };

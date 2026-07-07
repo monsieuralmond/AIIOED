@@ -1,12 +1,16 @@
 import { z } from "zod";
 
+const participantSessionStartSchema = z.object({
+  assignmentId: z.string().optional(),
+  loginId: z.string().min(1).optional(),
+  participantCode: z.string().min(1).optional(),
+  password: z.string().min(1).optional()
+}).refine((input) => input.participantCode !== undefined || (input.loginId !== undefined && input.password !== undefined), {
+  message: "Participant code or student credentials are required."
+});
+
 export const sessionStartSchema = z.union([
-  z.object({
-    assignmentId: z.string().optional(),
-    loginId: z.string().min(1).optional(),
-    participantCode: z.string().min(1),
-    password: z.string().min(1).optional()
-  }),
+  participantSessionStartSchema,
   z.object({
     sessionId: z.string().min(1)
   })

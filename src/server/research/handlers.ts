@@ -188,7 +188,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
       ? await store.resumeSession(input.sessionId)
       : await store.startSession({
         ...(input.loginId === undefined ? {} : { loginId: input.loginId }),
-        participantCode: input.participantCode,
+        ...(input.participantCode === undefined ? {} : { participantCode: input.participantCode }),
         ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
         ...(input.password === undefined ? {} : { password: input.password }),
         ...(teacherAuth === null ? {} : { teacherId: teacherAuth.teacherId })

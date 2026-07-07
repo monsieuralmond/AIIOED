@@ -1,4 +1,5 @@
 import { createSession } from "../../session/session.js";
+import { isAssignmentAssignedToStudent } from "../../shared/assignment-access.js";
 import type { ChatTurn, CoachResponseType, PilotSession } from "../../shared/types.js";
 import { ApiError } from "./http.js";
 import { credentialHash } from "./credentials.js";
@@ -9,6 +10,7 @@ import { chatTurnFromRow, contextFromSession, encode, inList, rowToSession, rows
 import type { AssignmentRow, ChildContext, SessionRow, StudentRow } from "./supabase-session-rows.js";
 import { SupabaseRestClient } from "./supabase-rest.js";
 import type { SupabaseConfig } from "./supabase-rest.js";
+import { pruneOldExports } from "./export-retention.js";
 
 type ChatTurnRow = {
   readonly assignment_id: string;
@@ -22,6 +24,24 @@ type ChatTurnRow = {
   readonly stage: string;
   readonly student_anonymous_id: string;
   readonly text: string;
+};
+
+type ChatFailureEventRow = {
+  readonly payload: Record<string, unknown>;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const deleteResultFromRpc = (value: unknown): Pick<DeleteResult, "deleted" | "logId"> => {
+  if (!isRecord(value)) throw new ApiError(500, "Delete result was not returned.");
+  const deleted = value["deleted"];
+  const logId = value["logId"];
+  if (!isRecord(deleted) || typeof logId !== "string") throw new ApiError(500, "Delete result shape is invalid.");
+  const counts: Record<string, number> = {};
+  for (const [key, count] of Object.entries(deleted)) {
+    if (typeof count === "number" && Number.isFinite(count)) counts[key] = count;
+  }
+  return { deleted: counts, logId };
 };
 
 const single = <T>(rows: readonly T[], message: string): T => {
@@ -60,36 +80,25 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         ...(input.teacherId === undefined ? {} : { teacherId: input.teacherId })
       });
       if (!input.confirmExported) return { deleted: {}, exportBeforeDelete, logId: "" };
-      const filters = [
-        ...(input.scope === "current_session" && input.sessionId !== undefined ? [`session_id=eq.${encode(input.sessionId)}`] : []),
-        ...(input.scope === "student" && input.studentAnonymousId !== undefined ? [`student_anonymous_id=eq.${encode(input.studentAnonymousId)}`] : []),
-        ...(input.scope === "assignment" && input.assignmentId !== undefined ? [`assignment_id=eq.${encode(input.assignmentId)}`] : []),
-        ...(input.classGroupId === undefined ? [] : [`class_group_id=eq.${encode(input.classGroupId)}`])
-      ];
-      const query = filters.length === 0 ? "select=*" : `select=*&${filters.join("&")}`;
-      const targetSessions = await db.get<readonly SessionRow[]>("sessions", query);
-      if (targetSessions.some((session) => session.research_locked)) throw new ApiError(409, "잠금 처리된 연구 데이터가 있어 일반 화면에서 삭제할 수 없습니다.");
-      const ids = targetSessions.map((session) => session.session_id);
-      const childQuery = `session_id=${inList(ids)}`;
-      const deleted = ids.length === 0 ? { artifacts: 0, chat_turns: 0, events: 0, measures: 0, sessions: 0 } : {
-        artifacts: (await db.delete<readonly unknown[]>("artifacts", childQuery)).length,
-        chat_turns: (await db.delete<readonly unknown[]>("chat_turns", childQuery)).length,
-        events: (await db.delete<readonly unknown[]>("events", childQuery)).length,
-        measures: (await db.delete<readonly unknown[]>("measures", childQuery)).length,
-        sessions: (await db.delete<readonly unknown[]>("sessions", childQuery)).length
-      };
-      const log = single(await db.insert<readonly { readonly id: string }[]>("deletion_logs", {
-        assignment_id: input.assignmentId ?? null,
-        class_group_id: input.classGroupId ?? null,
-        counts: deleted,
-        deleted_by: input.teacherId ?? null,
-        deletion_scope: input.scope,
-        exported_before_delete: true,
-        reason: input.reason ?? null,
-        session_id: input.sessionId ?? null,
-        student_anonymous_id: input.studentAnonymousId ?? null
-      }), "Deletion log was not created.");
-      return { deleted, exportBeforeDelete, logId: log.id };
+      try {
+        const result = deleteResultFromRpc(await db.rpc("delete_research_test_data", {
+          payload: {
+            assignmentId: input.assignmentId ?? null,
+            classGroupId: input.classGroupId ?? null,
+            reason: input.reason ?? null,
+            scope: input.scope,
+            sessionId: input.sessionId ?? null,
+            studentAnonymousId: input.studentAnonymousId ?? null,
+            teacherId: input.teacherId ?? null
+          }
+        }));
+        return { ...result, exportBeforeDelete };
+      } catch (error) {
+        if (error instanceof ApiError && error.message.includes("locked research data")) {
+          throw new ApiError(409, "잠금 처리된 연구 데이터가 있어 일반 화면에서 삭제할 수 없습니다.");
+        }
+        throw error;
+      }
     },
 
     async exportData(input): Promise<ExportBundle> {
@@ -103,12 +112,21 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         anonymized: input.anonymized,
         payload: bundle["raw-json.json"]
       });
+      await pruneOldExports(db);
       return bundle;
     },
 
     async findAssistantTurnByRequestId(sessionId, requestId): Promise<StoredChatTurn | null> {
       const row = await chatTurnByRequest(sessionId, requestId, "assistant");
       return row === undefined ? null : chatTurnFromRow(row);
+    },
+
+    async hasChatFailureForRequestId(sessionId, requestId): Promise<boolean> {
+      const rows = await db.get<readonly ChatFailureEventRow[]>(
+        "events",
+        `select=payload&session_id=eq.${encode(sessionId)}&type=eq.calibration_chat_failed&order=created_at.desc&limit=20`
+      );
+      return rows.some((row) => row.payload["requestId"] === requestId);
     },
 
     async insertArtifact(input): Promise<void> {
@@ -195,22 +213,38 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async startSession(input): Promise<SessionStartResult> {
-      const student = single(await db.get<readonly StudentRow[]>("students", `participant_code_hash=eq.${participantCodeHash(input.participantCode)}&limit=1`), "Participant code was not found.");
-      if (input.loginId !== undefined && student.login_id !== null && input.loginId.trim().toLowerCase() !== student.login_id.trim().toLowerCase()) {
+      const inputLoginId = input.loginId?.trim() ?? "";
+      const inputPassword = input.password?.trim() ?? "";
+      const isCredentialStart = inputLoginId.length > 0 && inputPassword.length > 0;
+      const studentQuery = isCredentialStart
+        ? `login_id=eq.${encode(inputLoginId)}&limit=1`
+        : input.participantCode === undefined
+          ? null
+          : `participant_code_hash=eq.${participantCodeHash(input.participantCode)}&limit=1`;
+      if (studentQuery === null) throw new ApiError(401, "Student credentials are invalid.");
+      const student = single(
+        await db.get<readonly StudentRow[]>("students", studentQuery),
+        isCredentialStart ? "Student credentials are invalid." : "Participant code was not found."
+      );
+      const isPasswordCredentialStart = inputPassword.length > 0;
+      if (isPasswordCredentialStart && input.loginId !== undefined && student.login_id !== null && input.loginId.trim().toLowerCase() !== student.login_id.trim().toLowerCase()) {
         throw new ApiError(401, "Student credentials are invalid.");
       }
       const assignmentQuery = input.assignmentId === undefined
-        ? `class_group_id=eq.${encode(student.class_group_id)}&order=created_at.desc&limit=1`
+        ? `class_group_id=eq.${encode(student.class_group_id)}&order=created_at.desc`
         : `id=eq.${encode(input.assignmentId)}&class_group_id=eq.${encode(student.class_group_id)}&limit=1`;
-      const assignment = single(await db.get<readonly AssignmentRow[]>("assignments", assignmentQuery), "No assignment is assigned to this participant.");
+      const assignments = await db.get<readonly AssignmentRow[]>("assignments", assignmentQuery);
+      const assignment = assignments.find((row) => isAssignmentAssignedToStudent({ ...row.assignment, assignedStudentIds: row.assignment.assignedStudentIds ?? [], classGroupId: row.class_group_id }, { classGroupId: student.class_group_id, id: student.id }));
+      if (assignment === undefined) throw new ApiError(404, "No assignment is assigned to this participant.");
       const teacherPreviewAuthorized = input.teacherId !== undefined && assignment.created_by_teacher_id === input.teacherId;
-      if (student.password_hash !== null && !teacherPreviewAuthorized) {
-        if (input.password === undefined || credentialHash(input.password) !== student.password_hash) throw new ApiError(401, "Student credentials are invalid.");
+      if (isPasswordCredentialStart && !teacherPreviewAuthorized) {
+        if (student.password_hash === null || credentialHash(inputPassword) !== student.password_hash) throw new ApiError(401, "Student credentials are invalid.");
       }
-      const baseSession = createSession(assignment.assignment);
+      const assignedAssignment = { ...assignment.assignment, assignedStudentIds: assignment.assignment.assignedStudentIds ?? [], classGroupId: assignment.class_group_id };
+      const baseSession = createSession(assignedAssignment);
       const session: PilotSession = {
         ...baseSession,
-        assignment: assignment.assignment,
+        assignment: assignedAssignment,
         researchCondition: assignment.research_condition,
         researchMode: assignment.research_mode,
         sessionId: serverId("session"),
@@ -218,7 +252,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       };
       const row = single(await db.insert<readonly SessionRow[]>("sessions", {
         assignment_id: assignment.id,
-        assignment_snapshot: assignment.assignment,
+        assignment_snapshot: assignedAssignment,
         class_group_id: assignment.class_group_id,
         current_stage: session.currentStage,
         metadata: session.metadata,
@@ -228,7 +262,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         status: session.status,
         student_anonymous_id: student.student_anonymous_id
       }), "Session was not created.");
-      return { assignment: assignment.assignment, context: contextFromSession(row), session: { ...session, createdAt: row.created_at, updatedAt: row.updated_at } };
+      return { assignment: assignedAssignment, context: contextFromSession(row), session: { ...session, createdAt: row.created_at, updatedAt: row.updated_at } };
     },
 
     async updateStage(input): Promise<SessionContext> {

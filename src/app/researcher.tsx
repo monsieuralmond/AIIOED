@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
+import { isAssignmentAssignedToStudent } from "../shared/assignment-access.js";
 import { ResearchModes } from "../shared/research.js";
 import type { Assignment, ClassGroup, PilotState } from "../shared/types.js";
 import { AssignmentAssignDialog, AssignmentPreview } from "./assignment-dialogs.js";
@@ -12,7 +13,7 @@ type ResearcherListProps = {
   readonly onCreate: () => void;
   readonly onEditAssignment: (assignmentId: string) => void;
   readonly onReview: () => void;
-  readonly onAssign: (assignment: Assignment) => void;
+  readonly onAssign: (assignment: Assignment) => Promise<string | null | void> | string | null | void;
   readonly onStudent: () => void;
   readonly onExport?: () => void;
 };
@@ -31,7 +32,7 @@ type AssignmentProgress = {
 };
 
 const studentsForAssignment = (state: PilotState, assignment: Assignment) =>
-  state.students.filter((student) => assignment.classGroupId === undefined || student.classGroupId === assignment.classGroupId);
+  state.students.filter((student) => isAssignmentAssignedToStudent(assignment, student));
 
 const assignmentProgress = (state: PilotState, assignment: Assignment): AssignmentProgress => {
   const sessions = state.sessions.filter((session) => session.assignment.id === assignment.id);
@@ -65,6 +66,8 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<readonly string[]>([]);
   const [selectedGradeLevel, setSelectedGradeLevel] = useState("all");
+  const [savingAssignmentId, setSavingAssignmentId] = useState<string | null>(null);
+  const [assignmentSaveError, setAssignmentSaveError] = useState("");
   const previewAssignment = props.state.assignments.find((item) => item.id === previewAssignmentId) ?? null;
   const assignAssignment = props.state.assignments.find((item) => item.id === assignAssignmentId) ?? null;
   const assignments = props.activeAssignment === null
@@ -93,9 +96,35 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
     setSelectedCategories([]);
     setSelectedGradeLevel("all");
   };
-  const saveAssignment = (assignment: Assignment): void => {
-    props.onAssign(assignment);
-    setAssignAssignmentId(null);
+  const saveAssignment = async (assignment: Assignment): Promise<void> => {
+    setSavingAssignmentId(assignment.id);
+    setAssignmentSaveError("");
+    try {
+      const errorMessage = await props.onAssign(assignment);
+      if (typeof errorMessage === "string" && errorMessage.length > 0) {
+        setAssignmentSaveError(errorMessage);
+        return;
+      }
+      setAssignAssignmentId(null);
+    } finally {
+      setSavingAssignmentId(null);
+    }
+  };
+  const unassign = (assignment: Assignment): void => {
+    setSavingAssignmentId(assignment.id);
+    setAssignmentSaveError("");
+    void Promise.resolve(props.onAssign({ ...assignment, assignedStudentIds: [] }))
+      .then((errorMessage) => {
+        if (typeof errorMessage === "string" && errorMessage.length > 0) {
+          setAssignmentSaveError(errorMessage);
+        }
+      })
+      .catch((error: unknown) => {
+        setAssignmentSaveError(error instanceof Error ? error.message : "배정 취소에 실패했습니다.");
+      })
+      .finally(() => {
+        setSavingAssignmentId(null);
+      });
   };
   return (
     <main className="researcher-layout">
@@ -152,6 +181,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
               </section>
             ) : null}
             <div className="prompt-list" aria-label="활성 과제">
+              {assignmentSaveError.length === 0 ? null : <p className="assignment-save-error">{assignmentSaveError}</p>}
               {filteredAssignments.length === 0 ? <p className="prompt-empty-state">{assignments.length === 0 ? "아직 과제가 없습니다. 직접 만들기를 눌러 새 과제를 만드세요." : "조건에 맞는 과제가 없습니다."}</p> : null}
               {filteredAssignments.map((assignment) => {
                 const isActive = assignment.id === props.activeAssignment?.id;
@@ -162,7 +192,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                     <div>
                       <div className="prompt-row-title">
                         <h2>{assignment.title}</h2>
-                        {isActive ? <span className="assignment-active-badge">학생 화면에 표시 중</span> : null}
+                        {isActive ? <span className="assignment-active-badge">최근 선택</span> : null}
                       </div>
                       <p>{assignment.question}</p>
                       <dl className="assignment-row-progress" aria-label="문제별 진행 요약">
@@ -181,7 +211,8 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                     <div className="prompt-row-actions">
                       <Button variant="ghost" onClick={() => props.onEditAssignment(assignment.id)}>수정</Button>
                       <Button variant="secondary" onClick={() => openPreview(assignment)}>미리보기</Button>
-                      <Button variant="primary" onClick={() => openAssign(assignment)}>배정</Button>
+                      <Button disabled={progress.assignedStudentCount === 0 || savingAssignmentId === assignment.id} variant="secondary" onClick={() => unassign(assignment)}>{savingAssignmentId === assignment.id ? "저장 중" : "배정 취소"}</Button>
+                      <Button disabled={savingAssignmentId === assignment.id} variant="primary" onClick={() => openAssign(assignment)}>배정</Button>
                     </div>
                   </article>
                 );
@@ -204,6 +235,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
           classGroups={props.state.classGroups}
           onAssign={saveAssignment}
           onClose={() => setAssignAssignmentId(null)}
+          students={props.state.students}
         />
       )}
     </main>

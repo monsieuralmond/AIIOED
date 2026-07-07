@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ReactElement } from "react";
+import type { FormEvent, ReactElement } from "react";
 import type { ChatTurn, Outline, ReviewSuggestion, Stage } from "../shared/types.js";
 import { FeedbackPanel } from "./student-feedback-panel.js";
 import type { FeedbackPanelActions, FeedbackPanelModel, SuggestionCheckResult } from "./student-feedback-panel.js";
@@ -100,6 +100,12 @@ export function StudentSupportPanel(props: SupportPanelProps): ReactElement {
 }
 
 function ChatPanel(props: SupportPanelProps): ReactElement {
+  const canSend = !props.coachBusy && hasText(props.chatInput);
+  const submitMessage = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    if (!canSend) return;
+    props.onSend();
+  };
   return (
     <section className="chat-section" aria-label="AI 코치 대화">
       <div className="quick-actions" aria-label="빠른 질문">
@@ -113,10 +119,10 @@ function ChatPanel(props: SupportPanelProps): ReactElement {
         <div className="assistant-message">먼저 과제를 이해하고, 네 주장을 스스로 세워볼까요?</div>
         {props.turns.map((turn) => <CoachMessage key={turn.id} turn={turn} />)}
       </div>
-      <div className="chat-input">
+      <form className="chat-input" onSubmit={submitMessage}>
         <TextInput placeholder="코치에게 물어보기" value={props.chatInput} onChange={(event) => props.onInput(event.currentTarget.value)} />
-        <Button disabled={props.coachBusy} onClick={props.onSend}>{props.coachBusy ? "응답 중" : "보내기"}</Button>
-      </div>
+        <Button disabled={!canSend} type="submit">{props.coachBusy ? "응답 중" : "보내기"}</Button>
+      </form>
     </section>
   );
 }

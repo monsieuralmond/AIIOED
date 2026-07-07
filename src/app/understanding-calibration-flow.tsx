@@ -100,8 +100,16 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
     setChatError("");
     const studentTurn = makeCalibrationChatTurn("student", message);
     setChatInput("");
+    const previewRequest = previewChatRequest(message);
+    chatTurnsRef.current = [...chatTurnsRef.current, studentTurn];
+    props.setSession((session) =>
+      appendCalibrationRecords(session, {
+        chatTurns: [studentTurn],
+        events: [{ type: "student_message", payload: { text: message } }],
+        stage: UnderstandingCalibrationStages.chat
+      })
+    );
     try {
-      const previewRequest = previewChatRequest(message);
       const response = await requestSessionCalibrationChat({
         message,
         ...(previewRequest === undefined ? {} : { previewRequest }),
@@ -109,12 +117,11 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         sessionId: props.session.sessionId
       });
       const assistantTurn = makeCalibrationChatTurn("assistant", response.text, response.type);
-      chatTurnsRef.current = [...chatTurnsRef.current, studentTurn, assistantTurn];
+      chatTurnsRef.current = [...chatTurnsRef.current, assistantTurn];
       props.setSession((session) => {
         const nextSession = appendCalibrationRecords(session, {
-          chatTurns: [studentTurn, assistantTurn],
+          chatTurns: [assistantTurn],
           events: [
-            { type: "student_message", payload: { text: message } },
             { type: "assistant_message", payload: { responseType: response.type, text: response.text } },
             {
               type: "calibration_chat_turn_created",
@@ -136,7 +143,6 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         return response.llmMode === undefined || response.model === undefined ? nextSession : updateSessionLlmMetadata(nextSession, response.llmMode, response.model);
       });
     } catch (error) {
-      setChatInput(message);
       const messageForStudent = error instanceof Error && error.message.trim().length > 0
         ? `AI 응답을 받지 못했습니다. 잠시 후 다시 보내 주세요. (${error.message})`
         : "AI 응답을 받지 못했습니다. 잠시 후 다시 보내 주세요.";

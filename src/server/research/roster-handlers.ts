@@ -9,7 +9,8 @@ import { participantCodeHash } from "./store.js";
 import { encode, inList } from "./supabase-session-rows.js";
 import { SupabaseRestClient } from "./supabase-rest.js";
 import { assertNoLockedResearchDataDeletion } from "./roster-locked-sessions.js";
-import { deleteRosterRows, sanitizedRosterSnapshot } from "./roster-snapshot.js";
+import { sanitizedRosterSnapshot } from "./roster-snapshot.js";
+import { pruneOldExports } from "./export-retention.js";
 import type { RosterAssignmentRow, RosterClassRow, RosterStudentRow, RosterTeacherRow } from "./roster-row-types.js";
 import { adminAuthFromRequest, requireAdminAuth, requireTeacherAuth } from "./auth.js";
 
@@ -58,6 +59,64 @@ const rowsByIds = async <T>(db: SupabaseRestClient, table: string, columns: stri
 const revisionHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+const rosterSnapshotRow = (input: RosterUpsertInput, snapshotTeacherId: string | null): Record<string, unknown> => ({
+  anonymized: false,
+  assignment_id: null,
+  class_group_id: null,
+  completed_only: false,
+  export_kind: "app_roster_snapshot",
+  generated_by_teacher_id: snapshotTeacherId,
+  payload: sanitizedRosterSnapshot(input)
+});
+
+const rosterMutationPayload = (input: RosterUpsertInput, activeTeacherId: string | null, snapshotTeacherId: string | null): Record<string, unknown> => {
+  const teachersWithPasswords = input.teachers.filter(hasProvidedPassword);
+  const teachersWithoutPasswords = input.teachers.filter((item) => !hasProvidedPassword(item));
+  const studentsWithPasswords = input.students.filter(hasProvidedPassword);
+  const studentsWithoutPasswords = input.students.filter((item) => !hasProvidedPassword(item));
+  return {
+    assignments: input.assignments.map((item) => ({
+      assignment: item.payload,
+      class_group_id: item.classGroupId ?? null,
+      created_by_teacher_id: activeTeacherId ?? item.createdByTeacherId,
+      id: item.id,
+      research_condition: item.researchCondition,
+      research_mode: item.researchMode,
+      title: item.title
+    })),
+    classes: input.classes.map((item) => ({
+      id: item.id,
+      name: item.name,
+      teacher_id: activeTeacherId ?? item.teacherId
+    })),
+    deletedAssignmentIds: input.deletedAssignmentIds,
+    deletedClassIds: input.deletedClassIds,
+    deletedStudentIds: input.deletedStudentIds,
+    deletedTeacherIds: input.deletedTeacherIds,
+    snapshot: rosterSnapshotRow(input, snapshotTeacherId),
+    studentsWithPasswords: studentsWithPasswords.map((item) => ({
+      ...studentPatchBody(item),
+      id: item.id,
+      initial_participant_code: item.participantCode,
+      password_hash: credentialHash(item.password)
+    })),
+    studentsWithoutPasswords: studentsWithoutPasswords.map((item) => ({
+      ...studentPatchBody(item),
+      id: item.id,
+      initial_participant_code: item.participantCode
+    })),
+    teachersWithPasswords: teachersWithPasswords.map((item) => ({
+      ...teacherPatchBody(item),
+      id: item.id,
+      password_hash: credentialHash(item.password)
+    })),
+    teachersWithoutPasswords: teachersWithoutPasswords.map((item) => ({
+      ...teacherPatchBody(item),
+      id: item.id
+    }))
+  };
+};
+
 const rosterScopeForTeacher = async (db: SupabaseRestClient, teacherId: string): Promise<RosterScope> => {
   const [classes, assignments, teachers] = await Promise.all([
     db.get<readonly RosterClassRow[]>("classes", `select=id,teacher_id,updated_at&teacher_id=eq.${encode(teacherId)}&order=id.asc`),
@@ -102,8 +161,6 @@ const validateRosterOwnership = async (db: SupabaseRestClient, input: RosterUpse
   if (input.deletedTeacherIds.length > 0) throw new ApiError(403, "Only admins can delete teacher accounts.");
   const foreignTeacher = input.teachers.find((teacher) => teacher.id !== teacherId);
   if (foreignTeacher !== undefined) throw new ApiError(403, `Teacher account does not belong to this teacher: ${foreignTeacher.id}`);
-  const teacherPasswordChange = input.teachers.find(hasProvidedPassword);
-  if (teacherPasswordChange !== undefined) throw new ApiError(403, "Only admins can create or reset teacher passwords.");
 
   const incomingClassIds = input.classes.map((classGroup) => classGroup.id);
   const allowedClassIds = new Set([...scope.classIds, ...incomingClassIds]);
@@ -146,18 +203,17 @@ export const loadRoster: JsonHandler = async (payload, request) => {
   const teacherFilter = input.teacherId === undefined ? "" : `&teacher_id=eq.${encode(input.teacherId)}`;
   const assignmentTeacherFilter = input.teacherId === undefined ? "" : `&created_by_teacher_id=eq.${encode(input.teacherId)}`;
   const teacherAccountFilter = input.teacherId === undefined ? "" : `&id=eq.${encode(input.teacherId)}`;
-  const teacherAccountColumns = isAdminRequest ? "id,display_name,initial_password,login_id" : "id,display_name,login_id";
   const [classes, assignments, teachers] = await Promise.all([
     db.get<readonly RosterClassRow[]>("classes", `select=id,name,teacher_id${teacherFilter}`),
     db.get<readonly RosterAssignmentRow[]>("assignments", `select=id,class_group_id,created_by_teacher_id,title,research_mode,research_condition,assignment${assignmentTeacherFilter}`),
-    db.get<readonly RosterTeacherRow[]>("teachers", `select=${teacherAccountColumns}${teacherAccountFilter}&order=id.asc`)
+    db.get<readonly RosterTeacherRow[]>("teachers", `select=id,display_name,login_id${teacherAccountFilter}&order=id.asc`)
   ]);
   const classIds = classes.map((classGroup) => classGroup.id);
   const students = input.teacherId === undefined
-    ? await db.get<readonly RosterStudentRow[]>("students", "select=id,class_group_id,display_label,initial_participant_code,initial_password,login_id,student_anonymous_id,student_number")
+    ? await db.get<readonly RosterStudentRow[]>("students", "select=id,class_group_id,display_label,initial_participant_code,login_id,student_anonymous_id,student_number")
     : classIds.length === 0
       ? []
-      : await db.get<readonly RosterStudentRow[]>(`students`, `select=id,class_group_id,display_label,initial_participant_code,initial_password,login_id,student_anonymous_id,student_number&class_group_id=${inList(classIds)}`);
+      : await db.get<readonly RosterStudentRow[]>(`students`, `select=id,class_group_id,display_label,initial_participant_code,login_id,student_anonymous_id,student_number&class_group_id=${inList(classIds)}`);
   const roster = rosterUpsertSchema.parse({
     assignments: assignments.map((assignment) => ({
       createdByTeacherId: assignment.created_by_teacher_id,
@@ -179,15 +235,13 @@ export const loadRoster: JsonHandler = async (payload, request) => {
       id: student.id,
       loginId: student.login_id ?? undefined,
       participantCode: student.initial_participant_code ?? (student.id.startsWith("student-") ? student.id.slice("student-".length).toUpperCase() : (student.student_anonymous_id ?? student.id).toUpperCase()),
-      ...(student.initial_password === undefined || student.initial_password === null ? {} : { password: student.initial_password }),
       studentAnonymousId: student.student_anonymous_id ?? student.id,
       studentNumber: student.student_number ?? undefined
     })),
     teachers: teachers.map((teacher) => ({
       displayName: teacher.display_name ?? teacher.id,
       id: teacher.id,
-      loginId: teacher.login_id ?? teacher.id,
-      ...(isAdminRequest && teacher.initial_password !== undefined && teacher.initial_password !== null ? { password: teacher.initial_password } : {})
+      loginId: teacher.login_id ?? teacher.id
     }))
   });
   const scope = input.teacherId === undefined ? await rosterScopeForAdmin(db) : await rosterScopeForTeacher(db, input.teacherId);
@@ -215,65 +269,8 @@ export const upsertRoster: JsonHandler = async (payload, request) => {
     await validateRosterOwnership(db, input, teacherId, scope);
   }
   const snapshotTeacherId = teacherId ?? input.teachers[0]?.id ?? input.classes[0]?.teacherId ?? input.assignments[0]?.createdByTeacherId ?? null;
-  await db.insert("exports", {
-    anonymized: false,
-    assignment_id: null,
-    class_group_id: null,
-    completed_only: false,
-    export_kind: "app_roster_snapshot",
-    generated_by_teacher_id: snapshotTeacherId,
-    payload: sanitizedRosterSnapshot(input)
-  });
-  await deleteRosterRows(db, input);
-  const teachersWithPasswords = input.teachers.filter(hasProvidedPassword);
-  const teachersWithoutPasswords = input.teachers.filter((item) => !hasProvidedPassword(item));
-  if (teachersWithPasswords.length > 0) {
-    await db.upsert("teachers", teachersWithPasswords.map((item) => ({
-      ...teacherPatchBody(item),
-      id: item.id,
-      initial_password: item.password,
-      password_hash: credentialHash(item.password)
-    })), "id");
-  }
-  if (teachersWithoutPasswords.length > 0) {
-    await Promise.all(teachersWithoutPasswords.map((item) =>
-      db.patch("teachers", `id=eq.${encode(item.id)}`, teacherPatchBody(item))
-    ));
-  }
-  if (input.classes.length > 0) {
-    await db.upsert("classes", input.classes.map((item) => ({
-      id: item.id,
-      name: item.name,
-      teacher_id: teacherId ?? item.teacherId
-    })), "id");
-  }
-  if (input.assignments.length > 0) {
-    await db.upsert("assignments", input.assignments.map((item) => ({
-      assignment: item.payload,
-      class_group_id: item.classGroupId ?? null,
-      created_by_teacher_id: teacherId ?? item.createdByTeacherId,
-      id: item.id,
-      research_condition: item.researchCondition,
-      research_mode: item.researchMode,
-      title: item.title
-    })), "id");
-  }
-  const studentsWithPasswords = input.students.filter(hasProvidedPassword);
-  const studentsWithoutPasswords = input.students.filter((item) => !hasProvidedPassword(item));
-  if (studentsWithPasswords.length > 0) {
-    await db.upsert("students", studentsWithPasswords.map((item) => ({
-      ...studentPatchBody(item),
-      id: item.id,
-      initial_participant_code: item.participantCode,
-      initial_password: item.password,
-      password_hash: credentialHash(item.password)
-    })), "id");
-  }
-  if (studentsWithoutPasswords.length > 0) {
-    await Promise.all(studentsWithoutPasswords.map((item) =>
-      db.patch("students", `id=eq.${encode(item.id)}`, studentPatchBody(item))
-    ));
-  }
+  await db.rpc("apply_roster_mutation", { payload: rosterMutationPayload(input, teacherId, snapshotTeacherId) });
+  await pruneOldExports(db);
   return {
     counts: { assignments: input.assignments.length, classes: input.classes.length, students: input.students.length },
     ok: true,

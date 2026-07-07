@@ -90,33 +90,55 @@ const geminiTimeoutMs = (): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 45_000;
 };
 
+const transientStatusCodes = [408, 429, 500, 502, 503, 504] as const;
+
+const isTransientStatus = (status: number): boolean => transientStatusCodes.some((item) => item === status);
+
+const geminiRetryDelayMs = (attempt: number): number => {
+  const raw = process.env["GEMINI_RETRY_DELAY_MS"];
+  if (raw !== undefined) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return 500 * attempt;
+};
+
+const sleep = async (ms: number): Promise<void> => {
+  if (ms <= 0) return;
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+};
+
 export const callGeminiText = async (config: AiServerConfig, request: GeminiTextRequest): Promise<string> => {
   if (config.apiKey === undefined || config.apiKey.trim().length === 0) {
     throw new AiRouteError("GEMINI_API_KEY가 설정되지 않았습니다. 프로젝트 루트의 .env.local에 GEMINI_API_KEY를 넣고 dev server를 다시 시작하세요.");
   }
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(normalizeGeminiModel(config.model))}:generateContent`);
   url.searchParams.set("key", config.apiKey.trim());
-  const response = await ky.post(url, {
-    json: {
-      contents: request.contents,
-      generationConfig: {
-        maxOutputTokens: request.maxOutputTokens,
-        responseMimeType: request.responseMimeType,
-        temperature: request.temperature
+  const maxAttempts = 4;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await ky.post(url, {
+      json: {
+        contents: request.contents,
+        generationConfig: {
+          maxOutputTokens: request.maxOutputTokens,
+          responseMimeType: request.responseMimeType,
+          temperature: request.temperature
+        },
+        systemInstruction: request.systemInstruction === undefined ? undefined : { parts: [{ text: request.systemInstruction }] }
       },
-      systemInstruction: request.systemInstruction === undefined ? undefined : { parts: [{ text: request.systemInstruction }] }
-    },
-    retry: {
-      limit: 1,
-      methods: ["post"],
-      statusCodes: [408, 429, 500, 502, 503, 504]
-    },
-    throwHttpErrors: false,
-    timeout: geminiTimeoutMs()
-  });
-  const payload = parseGeminiHttpPayload(await response.text());
-  if (!response.ok) throw new AiRouteError(geminiErrorMessage(payload));
-  return geminiOutputText(payload);
+      retry: { limit: 0 },
+      throwHttpErrors: false,
+      timeout: geminiTimeoutMs()
+    });
+    const payload = parseGeminiHttpPayload(await response.text());
+    if (response.ok) return geminiOutputText(payload);
+    const error = new AiRouteError(geminiErrorMessage(payload));
+    if (!isTransientStatus(response.status) || attempt === maxAttempts) throw error;
+    await sleep(geminiRetryDelayMs(attempt));
+  }
+  throw new AiRouteError("Gemini API request failed.");
 };
 
 export const callGeminiJson = async (config: AiServerConfig, prompt: string): Promise<Record<string, unknown>> =>

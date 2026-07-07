@@ -1,4 +1,5 @@
-import type { FormEvent, ReactElement, ReactNode } from "react";
+import { useEffect, useRef } from "react";
+import type { FormEvent, KeyboardEvent, ReactElement, ReactNode } from "react";
 import type { ChatTurn } from "../shared/types.js";
 import type { UnderstandingCalibrationStage } from "../shared/research.js";
 import { Button, Surface } from "./ui.js";
@@ -27,7 +28,7 @@ export function StageFrame(props: StageFrameProps): ReactElement {
   const stageIndex = calibrationStageOrder.findIndex((stage) => stage === props.stage) + 1;
   const isSplitLayout = props.layout === "split";
   return (
-    <main className="student-page understanding-flow" data-testid="understanding-calibration-flow">
+    <main className="student-page understanding-flow" data-stage={props.stage} data-testid="understanding-calibration-flow">
       <div className="student-session-bar">
         <strong>{props.sessionTitle}</strong>
       </div>
@@ -171,9 +172,16 @@ export function ChoiceGroup(props: ChoiceGroupProps): ReactElement {
 }
 
 export function ChatLog(props: { readonly turns: readonly ChatTurn[]; readonly readonlyMode?: boolean }): ReactElement {
+  const listRef = useRef<HTMLOListElement | null>(null);
+  useEffect(() => {
+    if (props.readonlyMode === true) return;
+    const list = listRef.current;
+    if (list === null) return;
+    list.scrollTop = list.scrollHeight;
+  }, [props.readonlyMode, props.turns.length]);
   if (props.turns.length === 0) return <p className="understanding-empty">아직 대화가 없습니다.</p>;
   return (
-    <ol className={props.readonlyMode === true ? "calibration-chat-log readonly" : "calibration-chat-log"}>
+    <ol className={props.readonlyMode === true ? "calibration-chat-log readonly" : "calibration-chat-log"} ref={listRef}>
       {props.turns.map((turn) => (
         <li className={turn.role} key={turn.id}>
           <strong>{turn.role === "student" ? "나" : "AI"}</strong>
@@ -185,16 +193,22 @@ export function ChatLog(props: { readonly turns: readonly ChatTurn[]; readonly r
 }
 
 export function ChatInput(props: { readonly disabled?: boolean; readonly value: string; readonly onChange: (value: string) => void; readonly onSubmit: () => void }): ReactElement {
+  const canSubmit = props.disabled !== true && props.value.trim().length > 0;
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (props.disabled === true) return;
+    if (!canSubmit) return;
+    props.onSubmit();
+  };
+  const submitOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    if (!canSubmit) return;
     props.onSubmit();
   };
   return (
     <form className="calibration-chat-input" onSubmit={submit}>
-      <label htmlFor="calibration-chat-message">질문</label>
-      <textarea disabled={props.disabled === true} id="calibration-chat-message" placeholder="궁금한 점을 한 문장으로 적어 보세요." value={props.value} onChange={(event) => props.onChange(event.currentTarget.value)} />
-      <Button disabled={props.disabled === true || props.value.trim().length === 0} type="submit" variant="secondary">{props.disabled === true ? "보내는 중" : "보내기"}</Button>
+      <textarea aria-label="질문" disabled={props.disabled === true} id="calibration-chat-message" placeholder="궁금한 점을 적어보세요" value={props.value} onChange={(event) => props.onChange(event.currentTarget.value)} onKeyDown={submitOnEnter} />
+      <Button disabled={!canSubmit} type="submit" variant="secondary">{props.disabled === true ? "보내는 중" : "보내기"}</Button>
     </form>
   );
 }

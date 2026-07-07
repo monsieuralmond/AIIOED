@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { ResearchModes } from "../shared/research.js";
-import type { Assignment, ClassGroup } from "../shared/types.js";
+import type { Assignment, ClassGroup, StudentAccount } from "../shared/types.js";
 import { defaultRequirements } from "./assignment-requirements.js";
 import { Button, Field } from "./ui.js";
 
@@ -41,32 +41,87 @@ export function AssignmentPreview(props: { readonly assignment: Assignment; read
 export function AssignmentAssignDialog(props: {
   readonly assignment: Assignment;
   readonly classGroups: readonly ClassGroup[];
-  readonly onAssign: (assignment: Assignment) => void;
+  readonly onAssign: (assignment: Assignment) => Promise<string | null | void> | string | null | void;
   readonly onClose: () => void;
+  readonly students: readonly StudentAccount[];
 }): ReactElement {
   const [classGroupId, setClassGroupId] = useState(props.assignment.classGroupId ?? props.classGroups[0]?.id ?? "");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<readonly string[]>(props.assignment.assignedStudentIds ?? []);
+  const [saveError, setSaveError] = useState("");
+  const [savePending, setSavePending] = useState(false);
   const selectedClassGroup = props.classGroups.find((classGroup) => classGroup.id === classGroupId);
-  const saveAssignment = (): void => {
+  const classStudents = props.students.filter((student) => student.classGroupId === classGroupId);
+  const saveAssignment = async (): Promise<void> => {
     if (selectedClassGroup === undefined) return;
-    props.onAssign({ ...props.assignment, classGroupId: selectedClassGroup.id });
+    setSaveError("");
+    setSavePending(true);
+    try {
+      const errorMessage = await props.onAssign({ ...props.assignment, assignedStudentIds: selectedStudentIds.filter((studentId) => classStudents.some((student) => student.id === studentId)), classGroupId: selectedClassGroup.id });
+      if (typeof errorMessage === "string" && errorMessage.length > 0) {
+        setSaveError(errorMessage);
+        setSavePending(false);
+        return;
+      }
+      props.onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "배정 저장에 실패했습니다.");
+      setSavePending(false);
+    }
+  };
+  const toggleStudent = (studentId: string): void => {
+    setSelectedStudentIds((current) => (
+      current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]
+    ));
+  };
+  const selectEveryClassStudent = (): void => {
+    setSelectedStudentIds(classStudents.map((student) => student.id));
+  };
+  const clearClassStudents = (): void => {
+    const classStudentIds = new Set(classStudents.map((student) => student.id));
+    setSelectedStudentIds((current) => current.filter((studentId) => !classStudentIds.has(studentId)));
   };
 
   return (
     <div aria-label="과제 배정" className="preview-dialog" role="dialog">
       <button aria-label="닫기" className="preview-close" type="button" onClick={props.onClose}>x</button>
       <h1>{props.assignment.title}</h1>
-      <p>이 과제를 어떤 반에 보여줄지 선택하세요.</p>
+      <p>이 과제를 보여줄 반과 학생을 선택하세요. 체크를 해제하고 저장하면 배정이 취소됩니다.</p>
       <section className="preview-requirements" aria-label="배정 대상">
         <Field label="배정할 반">
-          <select className="ui-control" value={classGroupId} onChange={(event) => setClassGroupId(event.currentTarget.value)}>
+          <select className="ui-control" value={classGroupId} onChange={(event) => {
+            const nextClassId = event.currentTarget.value;
+            setClassGroupId(nextClassId);
+            const nextClassStudentIds = props.students.filter((student) => student.classGroupId === nextClassId).map((student) => student.id);
+            setSelectedStudentIds((current) => current.filter((studentId) => nextClassStudentIds.includes(studentId)));
+          }}>
             {props.classGroups.map((classGroup) => <option key={classGroup.id} value={classGroup.id}>{classGroup.name}</option>)}
           </select>
         </Field>
-        <p>{selectedClassGroup === undefined ? "계정 관리에서 반을 먼저 만들어야 배정할 수 있습니다." : `${selectedClassGroup.name} 학생 ${selectedClassGroup.studentIds.length}명에게 보입니다.`}</p>
+        {selectedClassGroup === undefined ? <p>계정 관리에서 반을 먼저 만들어야 배정할 수 있습니다.</p> : null}
+        {selectedClassGroup === undefined ? null : (
+          <>
+            <div className="assignment-student-actions">
+              <span>{selectedStudentIds.filter((studentId) => classStudents.some((student) => student.id === studentId)).length}명 선택됨</span>
+              <Button disabled={classStudents.length === 0} variant="ghost" onClick={selectEveryClassStudent}>전체 선택</Button>
+              <Button disabled={classStudents.length === 0} variant="ghost" onClick={clearClassStudents}>배정 취소</Button>
+            </div>
+            <div className="assignment-student-list" aria-label={`${selectedClassGroup.name} 학생 목록`}>
+              {classStudents.length === 0 ? <p>이 반에 등록된 학생이 없습니다.</p> : null}
+              {classStudents.map((student) => (
+                <label key={student.id}>
+                  <input aria-label={`${student.studentNumber}번 ${student.displayName}`} checked={selectedStudentIds.includes(student.id)} type="checkbox" onChange={() => toggleStudent(student.id)} />
+                  <span>{student.studentNumber}번 {student.displayName}</span>
+                  <small>{student.loginId}</small>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
       </section>
       <div className="preview-actions">
-        <Button onClick={props.onClose}>취소</Button>
-        <Button disabled={selectedClassGroup === undefined} variant="primary" onClick={saveAssignment}>배정 저장</Button>
+        {saveError.length === 0 ? null : <p className="assignment-save-error">{saveError}</p>}
+        <Button disabled={savePending} onClick={props.onClose}>취소</Button>
+        <Button disabled={selectedClassGroup === undefined || savePending} variant="primary" onClick={() => { void saveAssignment(); }}>{savePending ? "저장 중" : "배정 저장"}</Button>
       </div>
     </div>
   );

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInitialPilotState, createSession, deleteClassGroup } from "./session.js";
-import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
+import { sampleAssignment, sampleStudents, sampleTeacher } from "../shared/fixtures.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ChatTurn, PilotEvent } from "../shared/types.js";
-import { authenticateStudentWithDatabase, loadRosterFromDatabase, requestSessionCalibrationChat, startResearchSessionWithParticipantCode, syncRosterToDatabase, syncSessionDelta } from "./research-api-client.js";
-import { clearBrowserSessionToken, clearBrowserTeacherAuth, saveBrowserSessionToken, saveBrowserTeacherAuth } from "./browser-session.js";
+import { authenticateStudentWithDatabase, currentRosterAuthHeaders, loadRosterFromDatabase, requestSessionCalibrationChat, startResearchSessionWithParticipantCode, syncRosterToDatabase, syncSessionDelta } from "./research-api-client.js";
+import { clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, loadBrowserSessionToken, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "./browser-session.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -39,6 +39,8 @@ const headerValue = (init: RequestInit, key: string): string | null => {
 
 describe("research API client", () => {
   afterEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     clearBrowserSessionToken();
     clearBrowserTeacherAuth();
     vi.unstubAllGlobals();
@@ -114,6 +116,41 @@ describe("research API client", () => {
     expect(headerValue(firstRequestInit(fetchMock), "x-research-session-token")).toBe("session-token-test");
   });
 
+  it("clears expired session credentials when the server rejects a session token", async () => {
+    saveBrowserActorIdentity({ accountId: "student-s001", role: "student" });
+    saveBrowserSessionIdentity({
+      assignmentId: sampleAssignment.id,
+      classGroupId: "class-pilot",
+      sessionId: "session-expired",
+      studentAnonymousId: "anon-expired"
+    });
+    saveBrowserSessionToken("expired-session-token");
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ message: "Session authorization is required." }), { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestSessionCalibrationChat({
+      message: "핵심을 설명해줘",
+      requestId: "chat-request-expired",
+      sessionId: "session-expired"
+    })).rejects.toMatchObject({ status: 401 });
+
+    expect(loadBrowserSessionToken()).toBeNull();
+    expect(loadBrowserSessionIdentity()).toBeNull();
+    expect(loadBrowserActorIdentity()).toBeNull();
+  });
+
+  it("clears expired teacher credentials when roster access is rejected", async () => {
+    saveBrowserActorIdentity({ accountId: sampleTeacher.id, role: "teacher" });
+    saveBrowserTeacherAuth({ teacherId: sampleTeacher.id, teacherToken: "expired-teacher-token" });
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ message: "Teacher authorization is required." }), { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(loadRosterFromDatabase(sampleTeacher.id)).rejects.toMatchObject({ status: 401 });
+
+    expect(loadBrowserTeacherAuth()).toBeNull();
+    expect(loadBrowserActorIdentity()).toBeNull();
+  });
+
   it("derives the assignment id from session start responses that omit assignmentId", async () => {
     const student = sampleStudents[0];
     if (student === undefined) throw new Error("sample student fixture is missing.");
@@ -133,6 +170,38 @@ describe("research API client", () => {
     expect(response.assignmentId).toBe("assignment-from-session");
     expect(response.session.sessionId).toBe(session.sessionId);
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/session/start", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("omits blank student credential fields when starting from a participant-code login", async () => {
+    const student = sampleStudents[0];
+    if (student === undefined) throw new Error("sample student fixture is missing.");
+    const session = createSession(sampleAssignment, student);
+    let postedBody: string | null = null;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      postedBody = typeof init?.body === "string" ? init.body : null;
+      return new Response(JSON.stringify({
+        assignment: sampleAssignment,
+        classGroupId: student.classGroupId,
+        session,
+        sessionId: session.sessionId,
+        studentAnonymousId: session.student.anonymousId
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startResearchSessionWithParticipantCode({
+      assignmentId: sampleAssignment.id,
+      loginId: student.loginId,
+      participantCode: student.participantCode,
+      password: ""
+    });
+
+    const body = parsePostedBody(postedBody);
+    expect(body).toEqual({
+      assignmentId: sampleAssignment.id,
+      loginId: student.loginId,
+      participantCode: student.participantCode
+    });
   });
 
   it("authenticates a student account before starting an assignment session", async () => {
@@ -207,6 +276,20 @@ describe("research API client", () => {
 
     const init = firstRequestInit(fetchMock);
     expect(headerValue(init, "x-research-teacher-id")).toBe("teacher-token-owner");
+    expect(headerValue(init, "x-research-teacher-token")).toBe("teacher-token-test");
+  });
+
+  it("keeps captured teacher auth headers when a queued roster sync runs after logout", async () => {
+    saveBrowserTeacherAuth({ teacherId: sampleTeacher.id, teacherToken: "teacher-token-test" });
+    const capturedHeaders = currentRosterAuthHeaders();
+    clearBrowserTeacherAuth();
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ rosterRevision: "revision-saved" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await syncRosterToDatabase(createInitialPilotState(), {}, undefined, capturedHeaders);
+
+    const init = firstRequestInit(fetchMock);
+    expect(headerValue(init, "x-research-teacher-id")).toBe(sampleTeacher.id);
     expect(headerValue(init, "x-research-teacher-token")).toBe("teacher-token-test");
   });
 

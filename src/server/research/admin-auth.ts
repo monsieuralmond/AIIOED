@@ -8,11 +8,18 @@ const adminLoginSchema = z.object({
   password: z.string().min(1)
 });
 
+const requiredCredential = (key: string, localFallback: string): string => {
+  const configured = process.env[key]?.trim();
+  if (configured !== undefined && configured.length > 0) return configured;
+  if (process.env["NODE_ENV"] === "production") throw new ApiError(500, `${key} is required on the server.`);
+  return localFallback;
+};
+
 const adminCredentials = (): { readonly adminId: string; readonly displayName: string; readonly loginId: string; readonly password: string } => ({
-  adminId: process.env["ADMIN_ID"]?.trim() || "admin-root",
+  adminId: requiredCredential("ADMIN_ID", "admin-root"),
   displayName: process.env["ADMIN_DISPLAY_NAME"]?.trim() || "관리자",
-  loginId: process.env["ADMIN_LOGIN_ID"]?.trim() || "admin",
-  password: process.env["ADMIN_PASSWORD"]?.trim() || "test"
+  loginId: requiredCredential("ADMIN_LOGIN_ID", "admin"),
+  password: requiredCredential("ADMIN_PASSWORD", "test")
 });
 
 export const authenticateAdmin = async (payload: unknown): Promise<{

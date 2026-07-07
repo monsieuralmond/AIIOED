@@ -67,6 +67,7 @@ export type ResearchStore = {
     readonly teacherId?: string;
   }) => Promise<ExportBundle>;
   readonly findAssistantTurnByRequestId: (sessionId: string, requestId: string) => Promise<StoredChatTurn | null>;
+  readonly hasChatFailureForRequestId: (sessionId: string, requestId: string) => Promise<boolean>;
   readonly insertArtifact: (input: {
     readonly id: string;
     readonly kind: string;
@@ -112,7 +113,7 @@ export type ResearchStore = {
   readonly startSession: (input: {
     readonly assignmentId?: string;
     readonly loginId?: string;
-    readonly participantCode: string;
+    readonly participantCode?: string;
     readonly password?: string;
     readonly teacherId?: string;
   }) => Promise<SessionStartResult>;

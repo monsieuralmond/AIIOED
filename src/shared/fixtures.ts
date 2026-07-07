@@ -58,6 +58,7 @@ export const sampleAssignment: Assignment = {
     "지문에서 근거 두 가지를 찾아 내 말로 설명하기",
     "반대 의견을 생각하고 내 주장을 다시 확인하기"
   ],
+  assignedStudentIds: sampleStudents.map((student) => student.id),
   sourceGuidance: "지문 근거를 먼저 사용하고, 외부 자료가 필요하면 출처를 적어둡니다.",
   classGroupId: "class-pilot",
   createdByTeacherId: sampleTeacher.id

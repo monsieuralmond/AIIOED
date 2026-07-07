@@ -1,0 +1,42 @@
+import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { createInitialPilotState } from "../session/session.js";
+import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
+import { StudentAssignments } from "./student-assignments.js";
+
+const sampleStudent = () => {
+  const student = sampleStudents[0];
+  if (student === undefined) throw new Error("Missing sample student.");
+  return student;
+};
+
+const longPassage =
+  "양자컴퓨터는 일반 컴퓨터와 다른 방식으로 정보를 다룹니다. ".repeat(24);
+
+describe("StudentAssignments", () => {
+  it("keeps the handoff screen compact without empty target or output cards", () => {
+    const assignment = {
+      ...sampleAssignment,
+      passage: longPassage,
+      targetLength: ""
+    };
+
+    render(
+      <StudentAssignments
+        assignments={[assignment]}
+        state={{ ...createInitialPilotState(), assignments: [assignment] }}
+        student={sampleStudent()}
+        onStart={vi.fn()}
+      />
+    );
+
+    const assignedTask = screen.getByRole("article", { name: `${assignment.title} 과제` });
+    expect(within(assignedTask).queryByText("목표")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("내가 제출할 글")).not.toBeInTheDocument();
+
+    const passagePreview = screen.getByLabelText("지문 미리보기");
+    const previewParagraphs = passagePreview.querySelectorAll("p");
+    const previewText = previewParagraphs[1]?.textContent ?? "";
+    expect(previewText.endsWith("...")).toBe(true);
+  });
+});

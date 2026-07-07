@@ -41,8 +41,12 @@ Vercel Project Settings에 다음 값을 서버 환경 변수로 등록한다.
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
+SERVER_AUTH_SECRET=replace-with-a-long-random-server-secret
 GEMINI_API_KEY=your-server-only-gemini-api-key
 GEMINI_MODEL=gemini-2.5-flash-lite
+ADMIN_ID=admin-root
+ADMIN_LOGIN_ID=admin
+ADMIN_PASSWORD=replace-with-admin-password
 MAX_CHAT_TURNS=20
 ```
 
@@ -51,7 +55,9 @@ MAX_CHAT_TURNS=20
 ## Supabase 준비
 
 1. Supabase 프로젝트를 만든다.
-2. `supabase/migrations/001_research_platform.sql`을 SQL editor나 migration 도구로 적용한다.
+2. `supabase/migrations/001_research_platform.sql`부터 최신 번호까지 순서대로 적용한다.
+   - 현재 최신 필수 migration은 `007_remove_plaintext_roster_passwords.sql`이다.
+   - `007`은 학생·교사 평문 초기 비밀번호 컬럼을 제거하고 `research_schema_health()` 검증 RPC를 추가한다.
 3. 생성되는 주요 테이블은 다음과 같다.
    - `classes`
    - `assignments`
@@ -65,6 +71,8 @@ MAX_CHAT_TURNS=20
    - `deletion_logs`
 4. 모든 하위 원자료 테이블은 `session_id`, `class_group_id`, `assignment_id`, `student_anonymous_id`, `created_at`, `stage`를 포함한다.
 5. RLS는 migration에서 활성화되어 있다. 서버 API는 service role key로 DB에 접근하고, 해당 키는 Vercel Function에서만 사용한다.
+6. 배포 전 `npm run verify:worktree`를 실행해 커밋·배포에 포함할 변경만 남아 있는지 확인한다.
+7. 배포 후 `npm run verify:deployment`를 실행해 `research_schema_health`, 평문 비밀번호 컬럼 제거, roster mutation RPC, 삭제 RPC가 모두 적용되었는지 확인한다.
 
 ## 학생 접속 흐름
 

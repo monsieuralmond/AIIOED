@@ -88,6 +88,14 @@ export class MemoryResearchStore implements ResearchStore {
     return this.assistantTurnsByRequest.get(`${sessionId}:${requestId}`) ?? null;
   }
 
+  async hasChatFailureForRequestId(sessionId: string, requestId: string): Promise<boolean> {
+    return this.storedEvents.some((event) =>
+      event.sessionId === sessionId &&
+      event.type === "calibration_chat_failed" &&
+      event.payload["requestId"] === requestId
+    );
+  }
+
   async insertArtifact(input: ArtifactWrite): Promise<void> {
     this.storedArtifacts.push(input);
   }
@@ -135,17 +143,22 @@ export class MemoryResearchStore implements ResearchStore {
   async resumeSession(sessionId: string): Promise<SessionStartResult> {
     const session = this.sessions.get(sessionId);
     if (session === undefined) throw new Error("missing test session");
-    return { assignment: session.assignment, context: this.context(session), session };
+    const sessionWithTurns = {
+      ...session,
+      chatTurns: this.storedChatTurns.filter((turn) => turn.sessionId === sessionId)
+    };
+    return { assignment: sessionWithTurns.assignment, context: this.context(sessionWithTurns), session: sessionWithTurns };
   }
 
   async startSession(input: Parameters<ResearchStore["startSession"]>[0]): Promise<SessionStartResult> {
     this.startedSessions.push(input);
     const assignment = input.assignmentId === undefined ? sampleAssignment : { ...sampleAssignment, id: input.assignmentId };
+    const studentKey = input.participantCode ?? input.loginId ?? "student";
     const session = {
       ...createSession(assignment),
       researchCondition: ResearchConditions.singleGroupBaseline,
       sessionId: serverId("session"),
-      student: { anonymousId: `anon-${input.participantCode}` }
+      student: { anonymousId: `anon-${studentKey}` }
     };
     this.sessions.set(session.sessionId, session);
     return { assignment: session.assignment, context: this.context(session), session };

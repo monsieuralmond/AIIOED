@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactElement } from "react";
 import type { Stage } from "../shared/types.js";
 
@@ -8,7 +9,16 @@ const stageLabels: readonly { readonly stage: Stage; readonly label: string; rea
   { stage: "review", label: "고쳐쓰기", shortLabel: "수정" }
 ];
 
-export function TopBar(props: { readonly actorName: string | undefined; readonly onHome: () => void; readonly onLogout: (() => void) | undefined; readonly onSwitchRole: (() => void) | undefined }): ReactElement {
+export function TopBar(props: {
+  readonly accountMenu?: ReactElement;
+  readonly onAdminEntry?: (() => void) | undefined;
+  readonly actorName: string | undefined;
+  readonly onHome: () => void;
+  readonly onLogout: (() => void) | undefined;
+  readonly onSwitchRole: (() => void) | undefined;
+}): ReactElement {
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const actorLabel = props.actorName === undefined ? "관리자" : props.actorName;
   return (
     <header className="top-bar">
       <button className="brand-button" type="button" onClick={props.onHome} aria-label="홈">
@@ -16,7 +26,28 @@ export function TopBar(props: { readonly actorName: string | undefined; readonly
         <span className="brand-name">Reading Coach Lab</span>
       </button>
       <nav className="top-links" aria-label="상단 메뉴">
-        <span className="actor-pill">{props.actorName === undefined ? "v1" : props.actorName}</span>
+        {props.accountMenu === undefined ? (
+          props.actorName === undefined && props.onAdminEntry !== undefined ? (
+            <button className="actor-pill actor-pill-button" type="button" onClick={props.onAdminEntry}>
+              {actorLabel}
+            </button>
+          ) : (
+            <span className="actor-pill">{actorLabel}</span>
+          )
+        ) : (
+          <div className="account-menu-anchor">
+            <button
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              className="actor-pill actor-pill-button"
+              type="button"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              {actorLabel}
+            </button>
+            {accountMenuOpen ? props.accountMenu : null}
+          </div>
+        )}
         {props.onLogout === undefined ? null : <button className="switch-role-button" type="button" onClick={props.onLogout}>로그아웃</button>}
         {props.onSwitchRole === undefined ? null : <button className="switch-role-button" type="button" onClick={props.onSwitchRole}>역할 바꾸기</button>}
       </nav>

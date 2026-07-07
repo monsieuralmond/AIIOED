@@ -12,8 +12,8 @@ type CreateAssignmentProps = {
   readonly mode: "create" | "edit";
   readonly state: PilotState;
   readonly onBack: () => void;
-  readonly onDelete: (assignmentId: string) => string | null;
-  readonly onSave: (assignment: Assignment) => void;
+  readonly onDelete: (assignmentId: string) => Promise<string | null | void> | string | null | void;
+  readonly onSave: (assignment: Assignment) => Promise<string | null | void> | string | null | void;
 };
 
 const newAssignmentId = (): string => `assignment-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
@@ -63,7 +63,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
   const isGuidedWritingMode = researchMode === ResearchModes.guidedWriting;
   const isWritingCoachMode = researchMode === ResearchModes.writingCoach;
 
-  const save = (): void => {
+  const save = async (): Promise<void> => {
     if (title.trim().length === 0) { setError("과제 제목을 입력하세요"); return; }
     if (passage.trim().length === 0) { setError(isGuidedWritingMode ? "활동 안내 또는 참고 자료를 입력하세요" : "비문학 지문을 입력하세요"); return; }
     const parsedRequirements = parseRequirements(requirements);
@@ -81,7 +81,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
     if (isWritingCoachMode && parsedRequirements.length === 0) { setError("학생에게 보일 요구사항을 하나 이상 입력하세요"); return; }
     const createdByTeacherId = props.state.selectedActor?.role === "teacher" ? props.state.selectedActor.accountId : props.assignment.createdByTeacherId;
     const guidedQuestion = question.trim().length > 0 ? question.trim() : assignmentExamples.guidedQuestion;
-    props.onSave({
+    const saveError = await props.onSave({
       assignmentMode: "full_process",
       id: assignmentId,
       essayType: isCalibrationMode ? "이해 보정 연구" : isGuidedWritingMode ? "단계형 글쓰기" : essayType,
@@ -91,6 +91,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
       question: isCalibrationMode ? (question.trim().length > 0 ? question.trim() : defaultCalibrationQuestion(trimmedTopic)) : isGuidedWritingMode ? guidedQuestion : question,
       researchMode,
       requirements: isCalibrationMode ? [] : isGuidedWritingMode ? ["소재 정하기", "주제 정하기", "자료 찾기", "개요 짜기", "AI 도움을 받아 글쓰기"] : parsedRequirements,
+      assignedStudentIds: props.mode === "edit" ? props.assignment.assignedStudentIds ?? [] : [],
       sourceGuidance: isCalibrationMode ? "" : sourceGuidance,
       targetLength,
       ...(classGroupId.trim().length > 0 ? { classGroupId } : {}),
@@ -117,11 +118,12 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
       ...(startDate.trim().length > 0 ? { startDate } : {}),
       ...(startTime.trim().length > 0 ? { startTime } : {})
     });
+    if (saveError !== undefined && saveError !== null) setError(saveError);
   };
 
-  const confirmDeleteAssignment = (): void => {
-    const deleteError = props.onDelete(assignmentId);
-    if (deleteError === null) return;
+  const confirmDeleteAssignment = async (): Promise<void> => {
+    const deleteError = await props.onDelete(assignmentId);
+    if (deleteError === undefined || deleteError === null) return;
     setDeleteConfirmOpen(false);
     setError(deleteError);
   };
@@ -200,7 +202,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
           {error.length > 0 ? <p className="error-text">{error}</p> : null}
           <div className="assignment-form-footer">
             <Button variant="ghost" onClick={props.onBack}>취소</Button>
-            <Button className="form-submit" variant="primary" onClick={save}>{props.mode === "edit" ? "수정 저장" : "과제 저장"}</Button>
+            <Button className="form-submit" variant="primary" onClick={() => { void save(); }}>{props.mode === "edit" ? "수정 저장" : "과제 저장"}</Button>
             {props.mode === "edit" ? <Button className="assignment-delete-button" variant="ghost" onClick={() => setDeleteConfirmOpen(true)}>과제 삭제</Button> : null}
           </div>
         </div>
@@ -212,7 +214,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
             <p>정말 삭제하시겠습니까?</p>
             <div className="confirm-actions">
               <Button onClick={() => setDeleteConfirmOpen(false)}>아니오</Button>
-              <Button className="assignment-delete-button" variant="ghost" onClick={confirmDeleteAssignment}>예</Button>
+              <Button className="assignment-delete-button" variant="ghost" onClick={() => { void confirmDeleteAssignment(); }}>예</Button>
             </div>
           </section>
         </div>

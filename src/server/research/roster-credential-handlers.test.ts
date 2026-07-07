@@ -42,6 +42,12 @@ const parsedBody = (init?: RequestInit): unknown => {
   return parsed;
 };
 
+const rosterMutationPayload = (calls: readonly RecordedFetch[]): Record<string, unknown> => {
+  const rpcCall = calls.find((call) => call.method === "POST" && call.table === "apply_roster_mutation");
+  if (rpcCall === undefined || !isRecord(rpcCall.body) || !isRecord(rpcCall.body["payload"])) throw new Error("roster mutation payload was not sent.");
+  return rpcCall.body["payload"];
+};
+
 describe("roster credential persistence", () => {
   beforeEach(() => {
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
@@ -52,7 +58,7 @@ describe("roster credential persistence", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads stored initial student passwords for teacher account management", async () => {
+  it("does not expose stored initial student passwords during roster reads", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -82,7 +88,11 @@ describe("roster credential persistence", () => {
     const roster = await loadRoster({ teacherId: "teacher-research" }, teacherRequest("teacher-research"));
 
     if (!isRecord(roster) || !Array.isArray(roster["students"]) || !isRecord(roster["students"][0])) throw new Error("loaded roster students are invalid.");
-    expect(roster["students"][0]["password"]).toBe("pw-001");
+    expect(roster["students"][0]).not.toHaveProperty("password");
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("initial_password"),
+      expect.anything()
+    );
   });
 
   it("loads original participant codes but does not expose teacher passwords to teachers", async () => {
@@ -133,7 +143,7 @@ describe("roster credential persistence", () => {
     expect(teacher).not.toHaveProperty("password");
   });
 
-  it("loads stored teacher passwords for admin account management", async () => {
+  it("does not expose stored teacher passwords during admin roster reads", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -155,9 +165,13 @@ describe("roster credential persistence", () => {
     const roster = await loadRoster({}, adminRequest());
 
     if (!isRecord(roster) || !Array.isArray(roster["teachers"]) || !isRecord(roster["teachers"][0])) throw new Error("loaded roster teachers are invalid.");
-    expect(roster["teachers"][0]["password"]).toBe("teacher-pw");
+    expect(roster["teachers"][0]).not.toHaveProperty("password");
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("select=id,display_name,initial_password,login_id"),
+      expect.stringContaining("select=id,display_name,login_id"),
+      expect.anything()
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("initial_password"),
       expect.anything()
     );
   });
@@ -247,21 +261,21 @@ describe("roster credential persistence", () => {
       teachers: [{ displayName: "연구 교사", id: "teacher-research", loginId: "teacher" }]
     }, teacherRequest("teacher-research"));
 
-    const teacherPatch = calls.find((call) => call.method === "PATCH" && call.table === "teachers");
-    const studentPatch = calls.find((call) => call.method === "PATCH" && call.table === "students");
+    const mutation = rosterMutationPayload(calls);
+    const teachersWithoutPasswords = mutation["teachersWithoutPasswords"];
+    const studentsWithoutPasswords = mutation["studentsWithoutPasswords"];
     expect(calls.some((call) => call.method === "POST" && call.table === "teachers")).toBe(false);
     expect(calls.some((call) => call.method === "POST" && call.table === "students")).toBe(false);
-    expect(teacherPatch?.body).toEqual({ display_name: "연구 교사", login_id: "teacher" });
-    expect(studentPatch?.body).toEqual({
+    expect(teachersWithoutPasswords).toEqual([expect.objectContaining({ display_name: "연구 교사", login_id: "teacher" })]);
+    expect(studentsWithoutPasswords).toEqual([expect.objectContaining({
       class_group_id: "class-pilot",
       display_label: "민서",
       login_id: "s001",
       participant_code_hash: expect.any(String),
       student_anonymous_id: "anon-class-pilot-001",
       student_number: 1
-    });
-    expect(JSON.stringify(teacherPatch?.body)).not.toContain("password_hash");
-    expect(JSON.stringify(studentPatch?.body)).not.toContain("password_hash");
+    })]);
+    expect(JSON.stringify(mutation)).not.toContain("password_hash");
   });
 
   it("rejects deleting roster rows that belong to another teacher", async () => {
