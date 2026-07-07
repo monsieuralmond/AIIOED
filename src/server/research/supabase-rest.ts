@@ -10,9 +10,11 @@ export type SupabaseConfig = {
 
 const defaultTimeoutMs = 20_000;
 const retryLimit = 1;
+const retryDelayMs = 150;
 const retryableStatusCodes = new Set([408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
 const cloudflareGatewayStatusCodes = new Set([520, 521, 522, 523, 524]);
 const htmlLikePattern = /<\s*(?:!doctype|html)\b/iu;
+const upstreamTimeoutPattern = /(?:upstream connect error|disconnect\/reset before headers|reset reason:\s*connection timeout)/iu;
 const maxSupabaseErrorExcerptLength = 240;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,7 +45,10 @@ const extractSupabaseJsonMessage = (text: string): string | null => {
 const isHtmlErrorBody = (text: string, contentType: string | null): boolean =>
   contentType?.toLowerCase().includes("text/html") === true || htmlLikePattern.test(text);
 
-const statusForSupabaseFailure = (status: number): number => {
+const isUpstreamTimeoutBody = (text: string): boolean => upstreamTimeoutPattern.test(text);
+
+const statusForSupabaseFailure = (status: number, text: string): number => {
+  if (isUpstreamTimeoutBody(text)) return 504;
   if (status === 522 || status === 524) return 504;
   if (cloudflareGatewayStatusCodes.has(status)) return 503;
   return status;
@@ -51,6 +56,9 @@ const statusForSupabaseFailure = (status: number): number => {
 
 const messageForSupabaseFailure = (status: number, text: string, contentType: string | null): string => {
   if (text.trim().length === 0) return "Supabase request failed.";
+  if (isUpstreamTimeoutBody(text)) {
+    return "Supabase 데이터베이스 연결이 일시적으로 지연되고 있습니다. 잠시 후 다시 저장하거나 Supabase 프로젝트 상태를 확인해 주세요.";
+  }
   if (isHtmlErrorBody(text, contentType)) {
     if (cloudflareGatewayStatusCodes.has(status)) {
       return "Supabase 데이터베이스가 일시적으로 응답하지 않습니다. 잠시 후 다시 저장하거나 Supabase 프로젝트 상태를 확인해 주세요.";
@@ -61,6 +69,11 @@ const messageForSupabaseFailure = (status: number, text: string, contentType: st
   if (jsonMessage !== null) return `Supabase request failed: ${jsonMessage}`;
   return `Supabase request failed: ${sanitizeExcerpt(text)}`;
 };
+
+const waitBeforeRetry = async (attempt: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, retryDelayMs * (attempt + 1));
+  });
 
 const encodeQuery = (query: Readonly<Record<string, QueryValue>> = {}): string => {
   const params = new URLSearchParams();
@@ -100,9 +113,12 @@ export class SupabaseRestClient {
         const response = await fetch(`${this.restUrl}${path}`, { ...init, signal: controller.signal });
         if (!response.ok) {
           const text = await response.text();
-          if (attempt < retryLimit && retryableStatusCodes.has(response.status)) continue;
+          if (attempt < retryLimit && retryableStatusCodes.has(response.status)) {
+            await waitBeforeRetry(attempt);
+            continue;
+          }
           throw new ApiError(
-            statusForSupabaseFailure(response.status),
+            statusForSupabaseFailure(response.status, text),
             messageForSupabaseFailure(response.status, text, response.headers.get("content-type"))
           );
         }
@@ -111,6 +127,7 @@ export class SupabaseRestClient {
       } catch (error) {
         lastError = error;
         if (error instanceof ApiError || attempt >= retryLimit) break;
+        await waitBeforeRetry(attempt);
       } finally {
         clearTimeout(timeout);
       }

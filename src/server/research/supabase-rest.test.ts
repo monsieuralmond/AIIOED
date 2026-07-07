@@ -7,6 +7,7 @@ const cloudflareTimeoutHtml = `<!DOCTYPE html>
 <head><title>supabase.co | 522: Connection timed out</title></head>
 <body><h1>Connection timed out</h1><span class="code-label">Error code 522</span></body>
 </html>`;
+const upstreamTimeoutText = "upstream connect error or disconnect/reset before headers. reset reason: connection timeout";
 
 describe("SupabaseRestClient", () => {
   afterEach(() => {
@@ -37,6 +38,33 @@ describe("SupabaseRestClient", () => {
       expect(error.message).toContain("Supabase");
       expect(error.message).not.toContain("<!DOCTYPE html>");
       expect(error.message).not.toContain("<html");
+    }
+  });
+
+  it("does not expose upstream proxy timeout text when Supabase disconnects before headers", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> =>
+      new Response(upstreamTimeoutText, {
+        headers: { "content-type": "text/plain; charset=utf-8" },
+        status: 503
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new SupabaseRestClient({
+      serviceRoleKey: "service-role-test",
+      timeoutMs: 1_000,
+      url: "https://project.supabase.co"
+    });
+
+    try {
+      await client.insert("classes", { id: "class-timeout" });
+      throw new Error("Expected SupabaseRestClient to reject.");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(ApiError);
+      if (!(error instanceof ApiError)) throw error;
+      expect(error.statusCode).toBe(504);
+      expect(error.message).toContain("Supabase");
+      expect(error.message).not.toContain("upstream connect error");
+      expect(error.message).not.toContain("reset reason");
     }
   });
 });
