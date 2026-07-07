@@ -15,7 +15,7 @@ import {
 } from "./schemas.js";
 import type { ResearchStore } from "./store.js";
 import { createSupabaseResearchStore } from "./supabase-store.js";
-import { loadRoster, upsertRoster } from "./roster-handlers.js";
+import { loadRoster, upsertRoster, upsertRosterDelta } from "./roster-handlers.js";
 import { adminAuthFromRequest, issueSessionToken, requireAdminAuth, requireSessionAuth, requireTeacherAuth, teacherAuthFromRequest } from "./auth.js";
 import { researchDeploymentHealth } from "./health.js";
 import { createChatHandler } from "./chat-handler.js";
@@ -38,6 +38,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   readonly health: JsonHandler;
   readonly measure: JsonHandler;
   readonly rosterLoad: JsonHandler;
+  readonly rosterUpsertDelta: JsonHandler;
   readonly rosterUpsert: JsonHandler;
   readonly sessionList: JsonHandler;
   readonly sessionStart: JsonHandler;
@@ -154,6 +155,11 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   rosterUpsert: async (payload, request) => {
     rosterUpsertSchema.parse(payload);
     return upsertRoster(payload, request);
+  },
+
+  rosterUpsertDelta: async (payload, request) => {
+    rosterUpsertSchema.parse(payload);
+    return upsertRosterDelta(payload, request);
   },
 
   sessionList: async (payload, request) => {

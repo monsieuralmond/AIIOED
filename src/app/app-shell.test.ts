@@ -610,7 +610,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
       }
-      if (url.endsWith("/api/admin/upsert-roster")) {
+      if (url.endsWith("/api/admin/upsert-roster-delta")) {
         if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
         const parsed: unknown = JSON.parse(init.body);
         if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");
@@ -717,7 +717,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
       }
-      if (url.endsWith("/api/admin/upsert-roster")) {
+      if (url.endsWith("/api/admin/upsert-roster-delta")) {
         if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
         const parsed: unknown = JSON.parse(init.body);
         if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");
@@ -780,7 +780,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
       }
-      if (url.endsWith("/api/admin/upsert-roster")) {
+      if (url.endsWith("/api/admin/upsert-roster-delta")) {
         if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
         const parsed: unknown = JSON.parse(init.body);
         if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");
@@ -840,7 +840,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
       }
-      if (url.endsWith("/api/admin/upsert-roster")) {
+      if (url.endsWith("/api/admin/upsert-roster-delta")) {
         if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
         const parsed: unknown = JSON.parse(init.body);
         if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");
@@ -906,7 +906,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
       }
-      if (url.endsWith("/api/admin/upsert-roster")) {
+      if (url.endsWith("/api/admin/upsert-roster-delta")) {
         if (typeof init?.body !== "string") throw new Error("Roster upsert body must be a string.");
         const parsed: unknown = JSON.parse(init.body);
         if (!isRecord(parsed)) throw new Error("Roster upsert body must be an object.");

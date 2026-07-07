@@ -3,7 +3,7 @@ import { createInitialPilotState, createSession, deleteClassGroup } from "./sess
 import { sampleAssignment, sampleStudents, sampleTeacher } from "../shared/fixtures.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ChatTurn, PilotEvent } from "../shared/types.js";
-import { authenticateStudentWithDatabase, currentRosterAuthHeaders, loadRosterFromDatabase, requestSessionCalibrationChat, startResearchSessionWithParticipantCode, syncRosterToDatabase, syncSessionDelta } from "./research-api-client.js";
+import { authenticateStudentWithDatabase, currentRosterAuthHeaders, loadRosterFromDatabase, requestSessionCalibrationChat, startResearchSessionWithParticipantCode, syncRosterDeltaToDatabase, syncRosterToDatabase, syncSessionDelta } from "./research-api-client.js";
 import { clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, loadBrowserSessionToken, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "./browser-session.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -343,6 +343,39 @@ describe("research API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(syncRosterToDatabase(createInitialPilotState())).resolves.toEqual({});
+  });
+
+  it("posts only changed roster rows when syncing a roster delta", async () => {
+    saveBrowserTeacherAuth({ teacherId: sampleTeacher.id, teacherToken: "teacher-token-test" });
+    let postedBody: string | null = null;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      postedBody = typeof init?.body === "string" ? init.body : null;
+      return new Response(JSON.stringify({ rosterRevision: "revision-delta" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const state = createInitialPilotState();
+    const classGroup = state.classGroups[0];
+    const student = state.students[0];
+    const teacher = state.teachers[0];
+    if (classGroup === undefined || student === undefined || teacher === undefined) throw new Error("roster fixture is incomplete.");
+
+    await syncRosterDeltaToDatabase(state, {
+      assignments: [sampleAssignment],
+      classGroups: [classGroup],
+      deletedStudentIds: ["student-old"],
+      students: [student],
+      teachers: [teacher]
+    }, "revision-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/admin/upsert-roster-delta", expect.objectContaining({ method: "POST" }));
+    const body = parsePostedBody(postedBody);
+    expect(body["expectedRosterRevision"]).toBe("revision-1");
+    expect(body["teacherId"]).toBe(sampleTeacher.id);
+    expect(body["assignments"]).toEqual([expect.objectContaining({ id: sampleAssignment.id })]);
+    expect(body["classes"]).toEqual([expect.objectContaining({ id: classGroup.id })]);
+    expect(body["students"]).toEqual([expect.objectContaining({ id: student.id })]);
+    expect(body["teachers"]).toEqual([expect.objectContaining({ id: teacher.id })]);
+    expect(body["deletedStudentIds"]).toEqual(["student-old"]);
   });
 
   it("syncs session delta records by id and persists local writing chat turns", async () => {

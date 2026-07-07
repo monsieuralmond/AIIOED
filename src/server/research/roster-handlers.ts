@@ -30,6 +30,10 @@ type RosterScope = {
 
 type RosterTeacherInput = RosterUpsertInput["teachers"][number];
 type RosterStudentInput = RosterUpsertInput["students"][number];
+type AuthorizedRosterMutation = {
+  readonly db: SupabaseRestClient;
+  readonly teacherId: string | null;
+};
 
 const unique = (values: readonly string[]): readonly string[] => [...new Set(values.filter((value) => value.length > 0))];
 
@@ -48,6 +52,11 @@ const studentPatchBody = (item: RosterStudentInput): Record<string, number | str
   participant_code_hash: participantCodeHash(item.participantCode),
   student_anonymous_id: item.studentAnonymousId,
   student_number: item.studentNumber ?? null
+});
+
+const timestamped = <T extends Record<string, unknown>>(item: T, timestamp: string): T & { readonly updated_at: string } => ({
+  ...item,
+  updated_at: timestamp
 });
 
 const rowsByIds = async <T>(db: SupabaseRestClient, table: string, columns: string, ids: readonly string[]): Promise<readonly T[]> => {
@@ -189,6 +198,92 @@ const validateRosterOwnership = async (db: SupabaseRestClient, input: RosterUpse
   await assertNoLockedResearchDataDeletion(db, input, existingStudents);
 };
 
+const authorizeRosterMutation = async (input: RosterUpsertInput, request: Parameters<JsonHandler>[1]): Promise<AuthorizedRosterMutation> => {
+  const db = rosterDb();
+  const isAdminRequest = adminAuthFromRequest(request) !== null;
+  const teacherId = isAdminRequest ? null : teacherIdForRoster(input);
+  const scope = isAdminRequest ? await rosterScopeForAdmin(db) : teacherId === null ? null : await rosterScopeForTeacher(db, teacherId);
+  if (isAdminRequest) {
+    requireAdminAuth(request);
+    if (scope === null) throw new ApiError(401, "Admin authorization is required.");
+    if (input.expectedRosterRevision !== undefined && input.expectedRosterRevision !== scope.revision) {
+      throw new ApiError(409, "Roster changed on the server. Reload before saving again.");
+    }
+  } else {
+    if (teacherId === null || scope === null) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, teacherId);
+    await validateRosterOwnership(db, input, teacherId, scope);
+  }
+  return { db, teacherId };
+};
+
+const deleteRowsByIds = async (db: SupabaseRestClient, table: string, column: string, ids: readonly string[]): Promise<void> => {
+  const uniqueIds = unique(ids);
+  if (uniqueIds.length === 0) return;
+  await db.delete<unknown>(table, `${column}=${inList(uniqueIds)}`);
+};
+
+const upsertRows = async (db: SupabaseRestClient, table: string, rows: readonly Record<string, unknown>[]): Promise<void> => {
+  if (rows.length === 0) return;
+  await db.upsert<unknown>(table, rows, "id");
+};
+
+const patchRowsById = async (db: SupabaseRestClient, table: string, rows: readonly (Record<string, unknown> & { readonly id: string })[]): Promise<void> => {
+  await Promise.all(rows.map((row) => {
+    const { id, ...body } = row;
+    return db.patch<unknown>(table, `id=eq.${encode(id)}`, body);
+  }));
+};
+
+const applyRosterDeltaRows = async (db: SupabaseRestClient, input: RosterUpsertInput, activeTeacherId: string | null): Promise<void> => {
+  const updatedAt = new Date().toISOString();
+  const teachersWithPasswords = input.teachers.filter(hasProvidedPassword);
+  const teachersWithoutPasswords = input.teachers.filter((item) => !hasProvidedPassword(item));
+  const studentsWithPasswords = input.students.filter(hasProvidedPassword);
+  const studentsWithoutPasswords = input.students.filter((item) => !hasProvidedPassword(item));
+
+  await deleteRowsByIds(db, "students", "id", input.deletedStudentIds);
+  await deleteRowsByIds(db, "students", "class_group_id", input.deletedClassIds);
+  await deleteRowsByIds(db, "assignments", "id", input.deletedAssignmentIds);
+  await deleteRowsByIds(db, "classes", "id", input.deletedClassIds);
+  await deleteRowsByIds(db, "teachers", "id", input.deletedTeacherIds);
+
+  await upsertRows(db, "teachers", teachersWithPasswords.map((item) => timestamped({
+    ...teacherPatchBody(item),
+    id: item.id,
+    password_hash: credentialHash(item.password)
+  }, updatedAt)));
+  await patchRowsById(db, "teachers", teachersWithoutPasswords.map((item) => timestamped({
+    ...teacherPatchBody(item),
+    id: item.id
+  }, updatedAt)));
+  await upsertRows(db, "classes", input.classes.map((item) => timestamped({
+    id: item.id,
+    name: item.name,
+    teacher_id: activeTeacherId ?? item.teacherId
+  }, updatedAt)));
+  await upsertRows(db, "assignments", input.assignments.map((item) => timestamped({
+    assignment: item.payload,
+    class_group_id: item.classGroupId ?? null,
+    created_by_teacher_id: activeTeacherId ?? item.createdByTeacherId,
+    id: item.id,
+    research_condition: item.researchCondition,
+    research_mode: item.researchMode,
+    title: item.title
+  }, updatedAt)));
+  await upsertRows(db, "students", studentsWithPasswords.map((item) => timestamped({
+    ...studentPatchBody(item),
+    id: item.id,
+    initial_participant_code: item.participantCode,
+    password_hash: credentialHash(item.password)
+  }, updatedAt)));
+  await patchRowsById(db, "students", studentsWithoutPasswords.map((item) => timestamped({
+    ...studentPatchBody(item),
+    id: item.id,
+    initial_participant_code: item.participantCode
+  }, updatedAt)));
+};
+
 export const loadRoster: JsonHandler = async (payload, request) => {
   const input = rosterLoadSchema.parse(payload);
   const db = rosterDb();
@@ -253,24 +348,21 @@ export const loadRoster: JsonHandler = async (payload, request) => {
 
 export const upsertRoster: JsonHandler = async (payload, request) => {
   const input = rosterUpsertSchema.parse(payload);
-  const db = rosterDb();
-  const isAdminRequest = adminAuthFromRequest(request) !== null;
-  const teacherId = isAdminRequest ? null : teacherIdForRoster(input);
-  const scope = isAdminRequest ? await rosterScopeForAdmin(db) : teacherId === null ? null : await rosterScopeForTeacher(db, teacherId);
-  if (isAdminRequest) {
-    requireAdminAuth(request);
-    if (scope === null) throw new ApiError(401, "Admin authorization is required.");
-    if (input.expectedRosterRevision !== undefined && input.expectedRosterRevision !== scope.revision) {
-      throw new ApiError(409, "Roster changed on the server. Reload before saving again.");
-    }
-  } else {
-    if (teacherId === null || scope === null) throw new ApiError(401, "Teacher authorization is required.");
-    requireTeacherAuth(request, teacherId);
-    await validateRosterOwnership(db, input, teacherId, scope);
-  }
+  const { db, teacherId } = await authorizeRosterMutation(input, request);
   const snapshotTeacherId = teacherId ?? input.teachers[0]?.id ?? input.classes[0]?.teacherId ?? input.assignments[0]?.createdByTeacherId ?? null;
   await db.rpc("apply_roster_mutation", { payload: rosterMutationPayload(input, teacherId, snapshotTeacherId) });
   await pruneOldExports(db);
+  return {
+    counts: { assignments: input.assignments.length, classes: input.classes.length, students: input.students.length },
+    ok: true,
+    rosterRevision: (teacherId === null ? await rosterScopeForAdmin(db) : await rosterScopeForTeacher(db, teacherId)).revision
+  };
+};
+
+export const upsertRosterDelta: JsonHandler = async (payload, request) => {
+  const input = rosterUpsertSchema.parse(payload);
+  const { db, teacherId } = await authorizeRosterMutation(input, request);
+  await applyRosterDeltaRows(db, input, teacherId);
   return {
     counts: { assignments: input.assignments.length, classes: input.classes.length, students: input.students.length },
     ok: true,

@@ -6,6 +6,7 @@ describe("Vercel API router", () => {
     expect(apiRoutePathFromUrl("/api?path=chat")).toBe("chat");
     expect(apiRoutePathFromUrl("/api?path=session/start")).toBe("session/start");
     expect(apiRoutePathFromUrl("/api?path=admin/upsert-roster")).toBe("admin/upsert-roster");
+    expect(apiRoutePathFromUrl("/api?path=admin/upsert-roster-delta")).toBe("admin/upsert-roster-delta");
   });
 
   it("keeps direct API paths routable in local and preview environments", () => {
@@ -18,6 +19,7 @@ describe("Vercel API router", () => {
     expect(isApiRoutePath("session/list")).toBe(true);
     expect(isApiRoutePath("auth/student")).toBe(true);
     expect(isApiRoutePath("admin/delete-test-data")).toBe(true);
+    expect(isApiRoutePath("admin/upsert-roster-delta")).toBe(true);
     expect(isApiRoutePath("missing/route")).toBe(false);
   });
 });

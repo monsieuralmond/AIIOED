@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sampleAssignment } from "../../shared/fixtures.js";
 import { ResearchConditions, ResearchModes } from "../../shared/research.js";
 import { issueAdminToken, issueTeacherToken } from "./auth.js";
-import { loadRoster, upsertRoster } from "./roster-handlers.js";
+import { loadRoster, upsertRoster, upsertRosterDelta } from "./roster-handlers.js";
 
 type RecordedFetch = {
   readonly body: unknown;
@@ -318,6 +318,53 @@ describe("roster handlers", () => {
       })
     ]));
     expect(JSON.stringify(mutation)).not.toContain("changed-pw");
+  });
+
+  it("applies a roster delta without writing a roster snapshot export", async () => {
+    const calls: RecordedFetch[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const table = tableFromUrl(url);
+      calls.push({ body: parsedBody(init), method, table, url });
+      if (method === "GET" && table === "classes") {
+        return new Response(JSON.stringify([
+          { id: "class-pilot", teacher_id: "teacher-research", updated_at: "2026-07-05T00:00:00.000Z" }
+        ]), { status: 200 });
+      }
+      if (method === "GET" && table === "assignments") {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && table === "teachers") {
+        return new Response(JSON.stringify([
+          { id: "teacher-research", updated_at: "2026-07-05T00:00:00.000Z" }
+        ]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertRosterDelta({
+      assignments: [{
+        classGroupId: "class-pilot",
+        createdByTeacherId: "teacher-research",
+        id: sampleAssignment.id,
+        payload: { ...sampleAssignment, classGroupId: "class-pilot" },
+        researchCondition: ResearchConditions.singleGroupBaseline,
+        researchMode: ResearchModes.writingCoach,
+        title: sampleAssignment.title
+      }],
+      teacherId: "teacher-research"
+    }, teacherRequest("teacher-research"));
+
+    const assignmentWrite = calls.find((call) => call.method === "POST" && call.table === "assignments");
+    expect(calls.some((call) => call.table === "exports")).toBe(false);
+    expect(calls.some((call) => call.table === "apply_roster_mutation")).toBe(false);
+    expect(assignmentWrite?.body).toEqual([expect.objectContaining({
+      class_group_id: "class-pilot",
+      created_by_teacher_id: "teacher-research",
+      id: sampleAssignment.id
+    })]);
   });
 
   it("loads the current roster tables instead of resurrecting a stale roster snapshot", async () => {

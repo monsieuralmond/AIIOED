@@ -4,7 +4,8 @@ import { unavailableFileSync } from "../session/file-sync.js";
 import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
 import { clearBrowserActorIdentity, clearBrowserAdminAuth, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
-import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterDeltaToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import type { RosterSyncDelta } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
 import { AccountManagement } from "./account-management.js";
@@ -142,17 +143,12 @@ export function App(): ReactElement {
     setRosterRevision(nextRevision);
   };
 
-  const persistTeacherRoster = (nextState: PilotState, deletedIds: {
-    readonly deletedAssignmentIds?: readonly string[];
-    readonly deletedClassIds?: readonly string[];
-    readonly deletedStudentIds?: readonly string[];
-    readonly deletedTeacherIds?: readonly string[];
-  } = {}): Promise<void> => {
+  const persistTeacherRosterDelta = (nextState: PilotState, delta: RosterSyncDelta): Promise<void> => {
     if (useLocalResearchStorage) return Promise.resolve();
     if ((actor?.role !== "teacher" && actor?.role !== "admin") || !rosterReady) return Promise.resolve();
     const authHeaders = currentRosterAuthHeaders();
     const syncRoster = async (): Promise<void> => {
-      const result = await syncRosterToDatabase(nextState, deletedIds, rosterRevisionRef.current, authHeaders);
+      const result = await syncRosterDeltaToDatabase(nextState, delta, rosterRevisionRef.current, authHeaders);
       if (result.rosterRevision !== undefined) updateRosterRevision(result.rosterRevision);
     };
     const queuedSync = rosterSyncQueueRef.current.then(syncRoster, syncRoster);
@@ -285,7 +281,7 @@ export function App(): ReactElement {
     pilotStateRef.current = nextState;
     setPilotState(nextState);
     try {
-      await persistTeacherRoster(nextState);
+      await persistTeacherRosterDelta(nextState, { assignments: [nextAssignment] });
     } catch (error) {
       pilotStateRef.current = previousState;
       setPilotState(previousState);
@@ -606,18 +602,26 @@ export function App(): ReactElement {
     return true;
   };
 
-  const mutateAccountStateAndWait = async (mutator: (state: PilotState) => PilotState, deletedIds: {
-    readonly deletedAssignmentIds?: readonly string[];
-    readonly deletedClassIds?: readonly string[];
-    readonly deletedStudentIds?: readonly string[];
-    readonly deletedTeacherIds?: readonly string[];
-  } = {}): Promise<string | null> => {
+  const addedItemsById = <T extends { readonly id: string }>(previousItems: readonly T[], nextItems: readonly T[]): readonly T[] => {
+    const previousIds = new Set(previousItems.map((item) => item.id));
+    return nextItems.filter((item) => !previousIds.has(item.id));
+  };
+
+  const changedItemsById = <T extends { readonly id: string }>(previousItems: readonly T[], nextItems: readonly T[]): readonly T[] => {
+    const previousById = new Map(previousItems.map((item) => [item.id, JSON.stringify(item)]));
+    return nextItems.filter((item) => previousById.get(item.id) !== JSON.stringify(item));
+  };
+
+  const itemById = <T extends { readonly id: string }>(items: readonly T[], id: string): T | undefined =>
+    items.find((item) => item.id === id);
+
+  const mutateAccountStateAndWait = async (mutator: (state: PilotState) => PilotState, deltaFromStates: (previous: PilotState, next: PilotState) => RosterSyncDelta): Promise<string | null> => {
     const previousState = pilotStateRef.current;
     try {
       const nextState = mutator(pilotStateRef.current);
       pilotStateRef.current = nextState;
       setPilotState(nextState);
-      await persistTeacherRoster(nextState, deletedIds);
+      await persistTeacherRosterDelta(nextState, deltaFromStates(previousState, nextState));
       return null;
     } catch (error) {
       pilotStateRef.current = previousState;
@@ -640,11 +644,17 @@ export function App(): ReactElement {
 
   const changeCurrentTeacherPassword = async (password: string): Promise<string | null> => {
     if (actor?.role !== "teacher") return "교사 계정으로 로그인해야 합니다.";
-    return mutateAccountStateAndWait((state) => updateTeacherPasswordInState(state, actor.accountId, password));
+    return mutateAccountStateAndWait(
+      (state) => updateTeacherPasswordInState(state, actor.accountId, password),
+      (_previous, next) => {
+        const teacher = itemById(next.teachers, actor.accountId);
+        return teacher === undefined ? {} : { teachers: [teacher] };
+      }
+    );
   };
 
   const removeAssignment = async (assignmentId: string): Promise<string | null> => {
-    const error = await mutateAccountStateAndWait((state) => deleteAssignment(state, assignmentId), { deletedAssignmentIds: [assignmentId] });
+    const error = await mutateAccountStateAndWait((state) => deleteAssignment(state, assignmentId), () => ({ deletedAssignmentIds: [assignmentId] }));
     if (error !== null) return error;
     setEditingAssignmentId(null);
     openRoute("list");
@@ -682,12 +692,12 @@ export function App(): ReactElement {
         mode="teacher"
         state={pilotState}
         onBack={() => openRoute("list")}
-        onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input))}
-        onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input))}
-        onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
+        onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input), (previous, next) => ({ classGroups: addedItemsById(previous.classGroups, next.classGroups) }))}
+        onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input), (previous, next) => ({ students: addedItemsById(previous.students, next.students) }))}
+        onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state), (previous, next) => ({ students: addedItemsById(previous.students, next.students) }))}
         onCreateTeacher={() => "교사 계정은 관리자 화면에서만 만들 수 있습니다."}
-        onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
-        onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
+        onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), (previous, next) => ({ assignments: changedItemsById(previous.assignments, next.assignments), deletedClassIds: [classGroupId] }))}
+        onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), (previous, next) => ({ assignments: changedItemsById(previous.assignments, next.assignments), deletedStudentIds: [studentId] }))}
         onDeleteTeacher={() => "교사 계정은 관리자 화면에서만 삭제할 수 있습니다."}
         onUpdateTeacherPassword={() => "교사 비밀번호는 관리자 화면에서만 수정할 수 있습니다."}
       />
@@ -704,14 +714,17 @@ export function App(): ReactElement {
       state={pilotState}
       onBack={switchRole}
       onLogs={() => openRoute("export")}
-      onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input))}
-      onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input))}
-      onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state))}
-      onCreateTeacher={(input: CreateTeacherInput) => mutateAccountStateAndWait((state) => createTeacherAccount(state, input))}
-      onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), { deletedClassIds: [classGroupId] })}
-      onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), { deletedStudentIds: [studentId] })}
-      onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), { deletedTeacherIds: [teacherId] })}
-      onUpdateTeacherPassword={(teacherId: string, password: string) => mutateAccountStateAndWait((state) => updateTeacherPasswordInState(state, teacherId, password))}
+      onCreateClass={(input: CreateClassGroupInput) => mutateAccountStateAndWait((state) => createClassGroup(state, input), (previous, next) => ({ classGroups: addedItemsById(previous.classGroups, next.classGroups) }))}
+      onCreateStudent={(input: CreateStudentInput) => mutateAccountStateAndWait((state) => createStudentAccount(state, input), (previous, next) => ({ students: addedItemsById(previous.students, next.students) }))}
+      onCreateStudents={(inputs: readonly CreateStudentInput[]) => mutateAccountStateAndWait((state) => inputs.reduce((nextState, input) => createStudentAccount(nextState, input), state), (previous, next) => ({ students: addedItemsById(previous.students, next.students) }))}
+      onCreateTeacher={(input: CreateTeacherInput) => mutateAccountStateAndWait((state) => createTeacherAccount(state, input), (previous, next) => ({ teachers: addedItemsById(previous.teachers, next.teachers) }))}
+      onDeleteClass={(classGroupId: string) => mutateAccountStateAndWait((state) => deleteClassGroup(state, classGroupId), (previous, next) => ({ assignments: changedItemsById(previous.assignments, next.assignments), deletedClassIds: [classGroupId] }))}
+      onDeleteStudent={(studentId: string) => mutateAccountStateAndWait((state) => deleteStudentAccount(state, studentId), (previous, next) => ({ assignments: changedItemsById(previous.assignments, next.assignments), deletedStudentIds: [studentId] }))}
+      onDeleteTeacher={(teacherId: string) => mutateAccountStateAndWait((state) => deleteTeacherAccount(state, teacherId), (previous, next) => ({ classGroups: changedItemsById(previous.classGroups, next.classGroups), deletedTeacherIds: [teacherId] }))}
+      onUpdateTeacherPassword={(teacherId: string, password: string) => mutateAccountStateAndWait((state) => updateTeacherPasswordInState(state, teacherId, password), (_previous, next) => {
+        const teacher = itemById(next.teachers, teacherId);
+        return teacher === undefined ? {} : { teachers: [teacher] };
+      })}
       />
     );
   };

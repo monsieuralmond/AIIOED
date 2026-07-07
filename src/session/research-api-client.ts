@@ -1,7 +1,7 @@
 import type { CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ResearchArtifact, ResearchMeasure } from "../shared/research.js";
-import type { Assignment, ChatTurn, PilotEvent, PilotState, PilotSession, Stage, StudentAccount } from "../shared/types.js";
+import type { Assignment, ChatTurn, ClassGroup, PilotEvent, PilotState, PilotSession, Stage, StudentAccount, TeacherAccount } from "../shared/types.js";
 import { clearBrowserAdminAuth, clearBrowserActorIdentity, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserAdminAuth, loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
 import type { BrowserSessionIdentity } from "./browser-session.js";
 import { parseDatabaseRoster } from "./database-roster.js";
@@ -87,6 +87,20 @@ export type RosterSyncResponse = {
 };
 
 export type RosterAuthHeaders = Readonly<Record<string, string>>;
+
+export type RosterSyncDeletedIds = {
+  readonly deletedAssignmentIds?: readonly string[];
+  readonly deletedClassIds?: readonly string[];
+  readonly deletedStudentIds?: readonly string[];
+  readonly deletedTeacherIds?: readonly string[];
+};
+
+export type RosterSyncDelta = RosterSyncDeletedIds & {
+  readonly assignments?: readonly Assignment[];
+  readonly classGroups?: readonly ClassGroup[];
+  readonly students?: readonly StudentAccount[];
+  readonly teachers?: readonly TeacherAccount[];
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -370,52 +384,89 @@ const optionalPasswordField = (password: string): { readonly password: string } 
   return trimmedPassword.length === 0 ? {} : { password: trimmedPassword };
 };
 
-export const syncRosterToDatabase = async (state: PilotState, deletedIds: {
-  readonly deletedAssignmentIds?: readonly string[];
-  readonly deletedClassIds?: readonly string[];
-  readonly deletedStudentIds?: readonly string[];
-  readonly deletedTeacherIds?: readonly string[];
-} = {}, expectedRosterRevision?: string | null, authHeaders: RosterAuthHeaders = rosterHeaders()): Promise<RosterSyncResponse> => {
+const teacherIdForRosterPayload = (state: PilotState, authHeaders: RosterAuthHeaders): string | undefined => {
   const selectedActor = state.selectedActor;
-  const teacherId = isAdminRosterAuth(authHeaders) ? undefined : selectedActor?.role === "teacher" ? selectedActor.accountId : state.teacher.id;
-  const payload = await postJson("/api/admin/upsert-roster", {
-    assignments: state.assignments.map((assignment) => ({
-      createdByTeacherId: assignment.createdByTeacherId ?? teacherId ?? state.teacher.id,
-      id: assignment.id,
-      payload: assignment,
-      researchCondition: assignment.researchCondition ?? ResearchConditions.singleGroupBaseline,
-      researchMode: assignment.researchMode ?? ResearchModes.writingCoach,
-      title: assignment.title,
-      ...(assignment.classGroupId === undefined ? {} : { classGroupId: assignment.classGroupId })
-    })),
-    classes: state.classGroups.map((classGroup) => ({
-      id: classGroup.id,
-      name: classGroup.name,
-      teacherId: classGroup.teacherId
-    })),
-    students: state.students.map((student) => ({
-      classGroupId: student.classGroupId,
-      displayLabel: student.displayName,
-      id: student.id,
-      loginId: student.loginId,
-      participantCode: student.participantCode,
-      ...optionalPasswordField(student.password),
-      studentAnonymousId: anonymousIdForStudent(student),
-      studentNumber: student.studentNumber
-    })),
-    teachers: state.teachers.map((teacher) => ({
-      displayName: teacher.displayName,
-      id: teacher.id,
-      loginId: teacher.loginId,
-      ...optionalPasswordField(teacher.password)
-    })),
-    ...(deletedIds.deletedAssignmentIds === undefined ? {} : { deletedAssignmentIds: deletedIds.deletedAssignmentIds }),
-    ...(deletedIds.deletedClassIds === undefined ? {} : { deletedClassIds: deletedIds.deletedClassIds }),
-    ...(deletedIds.deletedStudentIds === undefined ? {} : { deletedStudentIds: deletedIds.deletedStudentIds }),
-    ...(deletedIds.deletedTeacherIds === undefined ? {} : { deletedTeacherIds: deletedIds.deletedTeacherIds }),
-    ...(expectedRosterRevision === undefined || expectedRosterRevision === null ? {} : { expectedRosterRevision }),
+  return isAdminRosterAuth(authHeaders) ? undefined : selectedActor?.role === "teacher" ? selectedActor.accountId : state.teacher.id;
+};
+
+const assignmentPayload = (assignment: Assignment, teacherId: string | undefined, fallbackTeacherId: string): Record<string, unknown> => ({
+  createdByTeacherId: assignment.createdByTeacherId ?? teacherId ?? fallbackTeacherId,
+  id: assignment.id,
+  payload: assignment,
+  researchCondition: assignment.researchCondition ?? ResearchConditions.singleGroupBaseline,
+  researchMode: assignment.researchMode ?? ResearchModes.writingCoach,
+  title: assignment.title,
+  ...(assignment.classGroupId === undefined ? {} : { classGroupId: assignment.classGroupId })
+});
+
+const classPayload = (classGroup: ClassGroup): Record<string, unknown> => ({
+  id: classGroup.id,
+  name: classGroup.name,
+  teacherId: classGroup.teacherId
+});
+
+const studentPayload = (student: StudentAccount): Record<string, unknown> => ({
+  classGroupId: student.classGroupId,
+  displayLabel: student.displayName,
+  id: student.id,
+  loginId: student.loginId,
+  participantCode: student.participantCode,
+  ...optionalPasswordField(student.password),
+  studentAnonymousId: anonymousIdForStudent(student),
+  studentNumber: student.studentNumber
+});
+
+const teacherPayload = (teacher: TeacherAccount): Record<string, unknown> => ({
+  displayName: teacher.displayName,
+  id: teacher.id,
+  loginId: teacher.loginId,
+  ...optionalPasswordField(teacher.password)
+});
+
+const rosterPayload = (state: PilotState, input: {
+  readonly assignments: readonly Assignment[];
+  readonly classGroups: readonly ClassGroup[];
+  readonly deletedIds: RosterSyncDeletedIds;
+  readonly expectedRosterRevision?: string | null;
+  readonly students: readonly StudentAccount[];
+  readonly teachers: readonly TeacherAccount[];
+}, authHeaders: RosterAuthHeaders): Record<string, unknown> => {
+  const teacherId = teacherIdForRosterPayload(state, authHeaders);
+  return {
+    assignments: input.assignments.map((assignment) => assignmentPayload(assignment, teacherId, state.teacher.id)),
+    classes: input.classGroups.map(classPayload),
+    students: input.students.map(studentPayload),
+    teachers: input.teachers.map(teacherPayload),
+    ...(input.deletedIds.deletedAssignmentIds === undefined ? {} : { deletedAssignmentIds: input.deletedIds.deletedAssignmentIds }),
+    ...(input.deletedIds.deletedClassIds === undefined ? {} : { deletedClassIds: input.deletedIds.deletedClassIds }),
+    ...(input.deletedIds.deletedStudentIds === undefined ? {} : { deletedStudentIds: input.deletedIds.deletedStudentIds }),
+    ...(input.deletedIds.deletedTeacherIds === undefined ? {} : { deletedTeacherIds: input.deletedIds.deletedTeacherIds }),
+    ...(input.expectedRosterRevision === undefined || input.expectedRosterRevision === null ? {} : { expectedRosterRevision: input.expectedRosterRevision }),
     ...(teacherId === undefined ? {} : { teacherId })
-  }, authHeaders);
+  };
+};
+
+export const syncRosterToDatabase = async (state: PilotState, deletedIds: RosterSyncDeletedIds = {}, expectedRosterRevision?: string | null, authHeaders: RosterAuthHeaders = rosterHeaders()): Promise<RosterSyncResponse> => {
+  const payload = await postJson("/api/admin/upsert-roster", rosterPayload(state, {
+    assignments: state.assignments,
+    classGroups: state.classGroups,
+    deletedIds,
+    ...(expectedRosterRevision === undefined ? {} : { expectedRosterRevision }),
+    students: state.students,
+    teachers: state.teachers
+  }, authHeaders), authHeaders);
+  return isRecord(payload) && typeof payload["rosterRevision"] === "string" ? { rosterRevision: payload["rosterRevision"] } : {};
+};
+
+export const syncRosterDeltaToDatabase = async (state: PilotState, delta: RosterSyncDelta, expectedRosterRevision?: string | null, authHeaders: RosterAuthHeaders = rosterHeaders()): Promise<RosterSyncResponse> => {
+  const payload = await postJson("/api/admin/upsert-roster-delta", rosterPayload(state, {
+    assignments: delta.assignments ?? [],
+    classGroups: delta.classGroups ?? [],
+    deletedIds: delta,
+    ...(expectedRosterRevision === undefined ? {} : { expectedRosterRevision }),
+    students: delta.students ?? [],
+    teachers: delta.teachers ?? []
+  }, authHeaders), authHeaders);
   return isRecord(payload) && typeof payload["rosterRevision"] === "string" ? { rosterRevision: payload["rosterRevision"] } : {};
 };
 
