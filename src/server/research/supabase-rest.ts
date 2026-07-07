@@ -9,8 +9,8 @@ export type SupabaseConfig = {
   readonly url: string;
 };
 
-const defaultTimeoutMs = 20_000;
-const retryLimit = 1;
+const defaultTimeoutMs = 6_000;
+const retryLimit = 0;
 const retryDelayMs = 150;
 const retryableStatusCodes = new Set([408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
 const cloudflareGatewayStatusCodes = new Set([520, 521, 522, 523, 524]);
@@ -129,7 +129,7 @@ export class SupabaseRestClient {
         return (await response.json()) as T;
       } catch (error) {
         lastError = error;
-        if (error instanceof ApiError || attempt >= retryLimit) break;
+        if (error instanceof ApiError || attempt >= this.retryLimit) break;
         await waitBeforeRetry(attempt);
       } finally {
         clearTimeout(timeout);
