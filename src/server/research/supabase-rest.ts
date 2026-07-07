@@ -10,7 +10,57 @@ export type SupabaseConfig = {
 
 const defaultTimeoutMs = 20_000;
 const retryLimit = 1;
-const retryableStatusCodes = new Set([408, 429, 500, 502, 503, 504]);
+const retryableStatusCodes = new Set([408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+const cloudflareGatewayStatusCodes = new Set([520, 521, 522, 523, 524]);
+const htmlLikePattern = /<\s*(?:!doctype|html)\b/iu;
+const maxSupabaseErrorExcerptLength = 240;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const compactWhitespace = (value: string): string => value.replace(/\s+/gu, " ").trim();
+
+const sanitizeExcerpt = (text: string): string => {
+  const compacted = compactWhitespace(text);
+  return compacted.length > maxSupabaseErrorExcerptLength
+    ? `${compacted.slice(0, maxSupabaseErrorExcerptLength)}...`
+    : compacted;
+};
+
+const extractSupabaseJsonMessage = (text: string): string | null => {
+  try {
+    const payload: unknown = JSON.parse(text);
+    if (!isRecord(payload)) return null;
+    for (const field of ["message", "error", "hint", "details"]) {
+      const value = payload[field];
+      if (typeof value === "string" && value.trim().length > 0) return sanitizeExcerpt(value);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const isHtmlErrorBody = (text: string, contentType: string | null): boolean =>
+  contentType?.toLowerCase().includes("text/html") === true || htmlLikePattern.test(text);
+
+const statusForSupabaseFailure = (status: number): number => {
+  if (status === 522 || status === 524) return 504;
+  if (cloudflareGatewayStatusCodes.has(status)) return 503;
+  return status;
+};
+
+const messageForSupabaseFailure = (status: number, text: string, contentType: string | null): string => {
+  if (text.trim().length === 0) return "Supabase request failed.";
+  if (isHtmlErrorBody(text, contentType)) {
+    if (cloudflareGatewayStatusCodes.has(status)) {
+      return "Supabase 데이터베이스가 일시적으로 응답하지 않습니다. 잠시 후 다시 저장하거나 Supabase 프로젝트 상태를 확인해 주세요.";
+    }
+    return "Supabase가 HTML 오류 페이지를 반환했습니다. 배포 환경변수의 SUPABASE_URL과 프로젝트 상태를 확인해 주세요.";
+  }
+  const jsonMessage = extractSupabaseJsonMessage(text);
+  if (jsonMessage !== null) return `Supabase request failed: ${jsonMessage}`;
+  return `Supabase request failed: ${sanitizeExcerpt(text)}`;
+};
 
 const encodeQuery = (query: Readonly<Record<string, QueryValue>> = {}): string => {
   const params = new URLSearchParams();
@@ -51,7 +101,10 @@ export class SupabaseRestClient {
         if (!response.ok) {
           const text = await response.text();
           if (attempt < retryLimit && retryableStatusCodes.has(response.status)) continue;
-          throw new ApiError(response.status, text.length === 0 ? "Supabase request failed." : text);
+          throw new ApiError(
+            statusForSupabaseFailure(response.status),
+            messageForSupabaseFailure(response.status, text, response.headers.get("content-type"))
+          );
         }
         if (response.status === 204) return undefined as T;
         return (await response.json()) as T;
