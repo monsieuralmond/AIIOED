@@ -62,6 +62,7 @@ export type AdminAuthResponse = {
 
 export type StudentAuthResponse = {
   readonly assignments: readonly Assignment[];
+  readonly sessions: readonly PilotSession[];
   readonly student: StudentAccount;
 };
 
@@ -255,11 +256,13 @@ const isAssignmentResponse = (value: unknown): value is Assignment =>
 
 const isStudentAuthPayload = (value: unknown): value is {
   readonly assignments: readonly Assignment[];
+  readonly sessions?: readonly PilotSession[];
   readonly student: Omit<StudentAccount, "password">;
 } =>
   isRecord(value) &&
   Array.isArray(value["assignments"]) &&
   value["assignments"].every(isAssignmentResponse) &&
+  (value["sessions"] === undefined || (Array.isArray(value["sessions"]) && value["sessions"].every(isPilotSession))) &&
   isRecord(value["student"]) &&
   typeof value["student"]["classGroupId"] === "string" &&
   typeof value["student"]["displayName"] === "string" &&
@@ -373,6 +376,7 @@ export const authenticateStudentWithDatabase = async (input: {
   if (!isStudentAuthPayload(payload)) throw new Error("학생 인증 응답 형식이 올바르지 않습니다.");
   return {
     assignments: payload.assignments,
+    sessions: payload.sessions ?? [],
     student: { ...payload.student, password: input.password }
   };
 };

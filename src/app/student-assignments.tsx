@@ -36,6 +36,8 @@ type AssignedTaskProps = {
 
 function AssignedTask(props: AssignedTaskProps): ReactElement {
   const status = sessionStatus(props.state, props.student.id, props.assignment.id);
+  const submitted = status === "submitted";
+  const startDisabled = props.pending || submitted;
   return (
     <>
       <article className="assigned-task-row" aria-label={`${props.assignment.title} 과제`}>
@@ -49,8 +51,8 @@ function AssignedTask(props: AssignedTaskProps): ReactElement {
           {props.assignment.dueDate === undefined ? null : <p className="student-due-note">마감: {props.assignment.dueDate}{props.assignment.dueTime === undefined ? "" : ` ${props.assignment.dueTime}`}</p>}
         </div>
         <div className="assigned-task-actions">
-          <Button disabled={props.pending} variant="primary" onClick={() => { void props.onStart(props.assignment.id); }}>
-            {props.pending ? "시작 중" : "과제 시작"}
+          <Button disabled={startDisabled} variant="primary" onClick={() => { if (!startDisabled) void props.onStart(props.assignment.id); }}>
+            {submitted ? "제출 완료" : props.pending ? "시작 중" : "과제 시작"}
           </Button>
           {props.startError.length > 0 ? <p className="student-start-error" role="alert">{props.startError}</p> : null}
         </div>

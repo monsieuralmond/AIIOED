@@ -205,8 +205,10 @@ describe("research API client", () => {
   });
 
   it("authenticates a student account before starting an assignment session", async () => {
+    const session = createSession(sampleAssignment);
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       assignments: [{ ...sampleAssignment, id: "assignment-login", title: "로그인 뒤 보이는 과제" }],
+      sessions: [{ ...session, sessionId: "session-login", status: "submitted" }],
       student: {
         classGroupId: "class-pilot",
         displayName: "김민서",
@@ -222,6 +224,8 @@ describe("research API client", () => {
 
     expect(response.student.password).toBe("1");
     expect(response.assignments[0]?.id).toBe("assignment-login");
+    expect(response.sessions[0]?.sessionId).toBe("session-login");
+    expect(response.sessions[0]?.status).toBe("submitted");
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/auth/student", expect.objectContaining({ method: "POST" }));
   });
 

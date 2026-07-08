@@ -35,6 +35,17 @@ describe("local pilot state", () => {
     expect(activeSession(secondStarted.state)?.sessionId).toBe(secondStarted.session.sessionId);
   });
 
+  it("prevents the same student from restarting a submitted assignment", () => {
+    const initial = createInitialPilotState();
+    const student = initial.students[0];
+    if (student === undefined) throw new Error("fixture student missing");
+
+    const firstStarted = startStudentSession(initial, student.id, sampleAssignment.id);
+    const submittedState = updatePilotSession(firstStarted.state, submitFinal(firstStarted.session, "이미 제출한 글입니다."));
+
+    expect(() => startStudentSession(submittedState, student.id, sampleAssignment.id)).toThrow("이미 제출한 과제입니다.");
+  });
+
   it("defaults legacy assignments to writing-coach research sessions", () => {
     const initial = createInitialPilotState();
     const student = initial.students[0];

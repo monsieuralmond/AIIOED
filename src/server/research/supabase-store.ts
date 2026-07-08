@@ -30,7 +30,12 @@ type ChatFailureEventRow = {
   readonly payload: Record<string, unknown>;
 };
 
+type SessionCompletionRow = Pick<SessionRow, "completed_at" | "session_id" | "status">;
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isSubmittedSessionRow = (row: SessionCompletionRow): boolean =>
+  row.completed_at !== null || row.status === "submitted" || row.status === "completed";
 
 const deleteResultFromRpc = (value: unknown): Pick<DeleteResult, "deleted" | "logId"> => {
   if (!isRecord(value)) throw new ApiError(500, "Delete result was not returned.");
@@ -241,6 +246,11 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         if (student.password_hash === null || credentialHash(inputPassword) !== student.password_hash) throw new ApiError(401, "Student credentials are invalid.");
       }
       const assignedAssignment = { ...assignment.assignment, assignedStudentIds: assignment.assignment.assignedStudentIds ?? [], classGroupId: assignment.class_group_id };
+      const previousSessions = await db.get<readonly SessionCompletionRow[]>(
+        "sessions",
+        `select=session_id,status,completed_at&assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}`
+      );
+      if (previousSessions.some(isSubmittedSessionRow)) throw new ApiError(409, "이미 제출한 과제입니다.");
       const baseSession = createSession(assignedAssignment);
       const session: PilotSession = {
         ...baseSession,

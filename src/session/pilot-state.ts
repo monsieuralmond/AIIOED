@@ -191,6 +191,7 @@ export const startStudentSession = (state: PilotState, studentId: string, assign
   const student = requireStudent(state, studentId);
   const assignment = requireAssignment(state, assignmentId);
   if (!assignmentsForStudent(state, student).some((item) => item.id === assignmentId)) throw new PilotStateError("학생에게 배정되지 않은 과제입니다.");
+  if (sessionStatus(state, student.id, assignmentId) === "submitted") throw new PilotStateError("이미 제출한 과제입니다.");
   const session = createSession(assignment, student);
   return {
     session,

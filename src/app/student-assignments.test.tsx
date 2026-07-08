@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { createInitialPilotState } from "../session/session.js";
+import { createInitialPilotState, createSession, submitFinal } from "../session/session.js";
 import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
 import { StudentAssignments } from "./student-assignments.js";
 
@@ -38,5 +38,23 @@ describe("StudentAssignments", () => {
     const previewParagraphs = passagePreview.querySelectorAll("p");
     const previewText = previewParagraphs[1]?.textContent ?? "";
     expect(previewText.endsWith("...")).toBe(true);
+  });
+
+  it("disables the start button when the assigned task has already been submitted", () => {
+    const student = sampleStudent();
+    const submittedSession = submitFinal(createSession(sampleAssignment, student), "제출한 글입니다.");
+    const onStart = vi.fn();
+
+    render(
+      <StudentAssignments
+        assignments={[sampleAssignment]}
+        state={{ ...createInitialPilotState(), sessions: [submittedSession] }}
+        student={student}
+        onStart={onStart}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "제출 완료" })).toBeDisabled();
+    expect(onStart).not.toHaveBeenCalled();
   });
 });

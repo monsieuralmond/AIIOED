@@ -508,7 +508,7 @@ export function App(): ReactElement {
           ...state,
           activeAssignmentId: result.assignments[0]?.id ?? "",
           assignments: result.assignments,
-          sessions: [],
+          sessions: result.sessions.map((item) => sessionWithPreviewStudent(item, result.student)),
           students: [result.student]
         }, nextActor));
         openRoute("list");
@@ -604,6 +604,7 @@ export function App(): ReactElement {
         return true;
       } catch (error) {
         reportSessionSyncError(error);
+        if (error instanceof ResearchApiClientError && error.status === 409) throw error;
         return false;
       }
     }

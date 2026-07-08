@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { isAssignmentAssignedToStudent } from "../../shared/assignment-access.js";
-import type { Assignment, StudentAccount } from "../../shared/types.js";
+import type { Assignment, PilotSession, StudentAccount } from "../../shared/types.js";
 import { authSupabaseClient } from "./auth-db.js";
 import { credentialHash } from "./credentials.js";
 import { ApiError } from "./http.js";
 import { participantCodeHash } from "./store.js";
-import type { AssignmentRow, StudentRow } from "./supabase-session-rows.js";
-import { encode } from "./supabase-session-rows.js";
+import type { AssignmentRow, SessionRow, StudentRow } from "./supabase-session-rows.js";
+import { encode, inList, rowToSession } from "./supabase-session-rows.js";
 
 const studentLoginSchema = z.object({
   loginId: z.string().optional().default(""),
@@ -22,6 +22,7 @@ type StudentAuthRow = StudentRow & {
 
 type StudentAuthResponse = {
   readonly assignments: readonly Assignment[];
+  readonly sessions: readonly PilotSession[];
   readonly student: Omit<StudentAccount, "password">;
 };
 
@@ -84,8 +85,16 @@ export const authenticateStudent = async (payload: unknown): Promise<StudentAuth
     participantCode: participantCodeFromRow(student, input.participantCode),
     studentNumber: studentNumberFromRow(student)
   };
+  const assignedAssignments = assignments.map(assignmentFromRow).filter((assignment) => isAssignmentAssignedToStudent(assignment, studentAccount));
+  const sessionRows = assignedAssignments.length === 0
+    ? []
+    : await db.get<readonly SessionRow[]>(
+      "sessions",
+      `select=*&class_group_id=eq.${encode(student.class_group_id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&assignment_id=${inList(assignedAssignments.map((assignment) => assignment.id))}&order=updated_at.desc`
+    );
   return {
-    assignments: assignments.map(assignmentFromRow).filter((assignment) => isAssignmentAssignedToStudent(assignment, studentAccount)),
+    assignments: assignedAssignments,
+    sessions: await Promise.all(sessionRows.map((row) => rowToSession(db, row))),
     student: studentAccount
   };
 };

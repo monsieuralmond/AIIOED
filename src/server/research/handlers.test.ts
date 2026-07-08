@@ -13,8 +13,9 @@ import {
 
 describe("research API handlers", () => {
   beforeEach(() => {
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_MODEL"] = "gpt-5-nano";
     process.env["READING_COACH_AI_MODE"] = "mock";
-    process.env["GEMINI_MODEL"] = "gemini-2.5-flash-lite";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
     process.env["SUPABASE_URL"] = "https://example.supabase.co";
   });
@@ -60,6 +61,23 @@ describe("research API handlers", () => {
       assignmentId: "assignment-selected",
       loginId: "student-login",
       password: "student-password"
+    });
+  });
+
+  it("rejects restarting an assignment after the same participant has submitted it", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+
+    await handlers.updateStage({
+      completedAt: "2026-07-08T00:00:00.000Z",
+      currentStage: "submitted",
+      sessionId: sessionIdFrom(started),
+      status: "submitted"
+    }, requestWithSessionToken(sessionTokenFrom(started)));
+
+    await expect(handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest())).rejects.toMatchObject({
+      statusCode: 409
     });
   });
 

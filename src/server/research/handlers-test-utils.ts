@@ -5,6 +5,7 @@ import { sampleAssignment } from "../../shared/fixtures.js";
 import { ResearchConditions } from "../../shared/research.js";
 import type { PilotSession } from "../../shared/types.js";
 import { issueAdminToken, issueTeacherToken } from "./auth.js";
+import { ApiError } from "./http.js";
 import { serverId } from "./store.js";
 import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
 
@@ -154,11 +155,18 @@ export class MemoryResearchStore implements ResearchStore {
     this.startedSessions.push(input);
     const assignment = input.assignmentId === undefined ? sampleAssignment : { ...sampleAssignment, id: input.assignmentId };
     const studentKey = input.participantCode ?? input.loginId ?? "student";
+    const studentAnonymousId = `anon-${studentKey}`;
+    const alreadySubmitted = [...this.sessions.values()].some((session) =>
+      session.assignment.id === assignment.id &&
+      session.student.anonymousId === studentAnonymousId &&
+      (session.completedAt !== undefined || session.status === "submitted" || session.status === "completed")
+    );
+    if (alreadySubmitted) throw new ApiError(409, "이미 제출한 과제입니다.");
     const session = {
       ...createSession(assignment),
       researchCondition: ResearchConditions.singleGroupBaseline,
       sessionId: serverId("session"),
-      student: { anonymousId: `anon-${studentKey}` }
+      student: { anonymousId: studentAnonymousId }
     };
     this.sessions.set(session.sessionId, session);
     return { assignment: session.assignment, context: this.context(session), session };
@@ -167,7 +175,7 @@ export class MemoryResearchStore implements ResearchStore {
   async updateStage(input: Parameters<ResearchStore["updateStage"]>[0]): Promise<SessionContext> {
     const session = this.sessions.get(input.sessionId);
     if (session === undefined) throw new Error("missing test session");
-    const next = { ...session, status: input.status ?? session.status };
+    const next = { ...session, ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }), status: input.status ?? session.status };
     this.sessions.set(input.sessionId, next);
     return this.context(next);
   }
