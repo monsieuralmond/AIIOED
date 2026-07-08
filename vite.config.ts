@@ -2,16 +2,14 @@ import react from "@vitejs/plugin-react";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 import { createUnifiedAiJsonHandler } from "./src/server/ai-unified-route";
+import { createAiServerConfig } from "./src/server/ai-server-config";
 import { createResearchApiHandlers } from "./src/server/research/handlers";
 import { connectJsonRoute } from "./src/server/research/http";
 import { authenticateAdmin } from "./src/server/research/admin-auth";
 import { authenticateStudent } from "./src/server/research/student-auth";
 import { authenticateTeacher } from "./src/server/research/teacher-auth";
-import type { LlmMode } from "./src/shared/types";
 
-const aiMode = (value: string | undefined): LlmMode => (value === "mock" ? "mock" : "real");
-
-const serverEnvKeys = ["ADMIN_DISPLAY_NAME", "ADMIN_ID", "ADMIN_LOGIN_ID", "ADMIN_PASSWORD", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_TIMEOUT_MS", "READING_COACH_AI_MODE", "SERVER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL", "EXPORT_SESSION_LIMIT", "MAX_CHAT_TURNS", "MAX_CHAT_TURNS_PER_MINUTE"] as const;
+const serverEnvKeys = ["ADMIN_DISPLAY_NAME", "ADMIN_ID", "ADMIN_LOGIN_ID", "ADMIN_PASSWORD", "AI_PROVIDER", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_RETRY_DELAY_MS", "GEMINI_TIMEOUT_MS", "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_RETRY_DELAY_MS", "OPENAI_TIMEOUT_MS", "READING_COACH_AI_MODE", "SERVER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL", "EXPORT_SESSION_LIMIT", "MAX_CHAT_TURNS", "MAX_CHAT_TURNS_PER_MINUTE"] as const;
 
 const installServerEnv = (env: Record<string, string>): void => {
   for (const key of serverEnvKeys) {
@@ -23,11 +21,7 @@ const installServerEnv = (env: Record<string, string>): void => {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   installServerEnv(env);
-  const aiHandler = createUnifiedAiJsonHandler({
-    apiKey: env["GEMINI_API_KEY"],
-    mode: aiMode(env["READING_COACH_AI_MODE"]),
-    model: env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite"
-  });
+  const aiHandler = createUnifiedAiJsonHandler(createAiServerConfig(env));
   const researchHandlers = createResearchApiHandlers();
   return {
     plugins: [

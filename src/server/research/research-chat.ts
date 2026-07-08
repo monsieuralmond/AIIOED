@@ -3,7 +3,7 @@ import type { CalibrationChatResponse } from "../../shared/calibration-ai.js";
 import type { ResearchCondition } from "../../shared/research.js";
 import type { Assignment, ChatTurn, LlmMode } from "../../shared/types.js";
 import { callGeminiText } from "../gemini-client.js";
-import type { GeminiContent } from "../gemini-client.js";
+import type { AiProvider, GeminiContent } from "../gemini-client.js";
 
 type ResearchChatInput = {
   readonly aiContext?: string;
@@ -13,6 +13,7 @@ type ResearchChatInput = {
   readonly message: string;
   readonly mode: LlmMode;
   readonly model: string;
+  readonly provider: AiProvider;
   readonly researchCondition: ResearchCondition;
 };
 
@@ -61,7 +62,8 @@ export const completeResearchChat = async (input: ResearchChatInput): Promise<Ca
     {
       apiKey: input.apiKey,
       mode: input.mode,
-      model: input.model
+      model: input.model,
+      provider: input.provider
     },
     {
       contents: [

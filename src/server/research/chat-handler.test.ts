@@ -16,7 +16,8 @@ const requiredStringField = (value: unknown, field: string): string => {
 
 describe("research chat handler", () => {
   beforeEach(() => {
-    process.env["GEMINI_MODEL"] = "gemini-2.5-flash-lite";
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_MODEL"] = "gpt-5-nano";
     process.env["MAX_CHAT_TURNS_PER_MINUTE"] = "6";
     process.env["READING_COACH_AI_MODE"] = "mock";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
@@ -79,8 +80,8 @@ describe("research chat handler", () => {
     }, request)).rejects.toMatchObject({ statusCode: 429 });
   });
 
-  it("reports the Gemini model for duplicate real chat requestIds", async () => {
-    process.env["GEMINI_MODEL"] = "gemini-test-model";
+  it("reports the configured OpenAI model for duplicate real chat requestIds", async () => {
+    process.env["OPENAI_MODEL"] = "gpt-5-nano-test";
     process.env["READING_COACH_AI_MODE"] = "real";
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
@@ -99,11 +100,11 @@ describe("research chat handler", () => {
 
     const response = await handlers.chat({ message: "아까 말한 내용 이어서 설명해줘", requestId: "request-2", sessionId }, requestWithSessionToken(sessionTokenFrom(started)));
 
-    expect(requiredStringField(response, "model")).toBe("gemini-test-model");
+    expect(requiredStringField(response, "model")).toBe("gpt-5-nano-test");
   });
 
   it("records an AI failure event when real chat cannot answer", async () => {
-    process.env["GEMINI_API_KEY"] = "";
+    process.env["OPENAI_API_KEY"] = "";
     process.env["READING_COACH_AI_MODE"] = "real";
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
@@ -128,7 +129,7 @@ describe("research chat handler", () => {
   });
 
   it("retries the same chat requestId after a recorded AI failure", async () => {
-    process.env["GEMINI_API_KEY"] = "";
+    process.env["OPENAI_API_KEY"] = "";
     process.env["READING_COACH_AI_MODE"] = "real";
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);

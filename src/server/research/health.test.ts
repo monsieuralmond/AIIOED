@@ -18,7 +18,8 @@ describe("deployment health", () => {
     process.env["ADMIN_ID"] = "admin-root";
     process.env["ADMIN_LOGIN_ID"] = "admin";
     process.env["ADMIN_PASSWORD"] = "admin-password-test";
-    process.env["GEMINI_API_KEY"] = "gemini-test";
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_API_KEY"] = "openai-test";
     process.env["READING_COACH_AI_MODE"] = "real";
     process.env["SERVER_AUTH_SECRET"] = "server-auth-test";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
@@ -62,7 +63,8 @@ describe("deployment health", () => {
     delete process.env["ADMIN_ID"];
     delete process.env["ADMIN_LOGIN_ID"];
     delete process.env["ADMIN_PASSWORD"];
-    process.env["GEMINI_API_KEY"] = "gemini-test";
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_API_KEY"] = "openai-test";
     process.env["READING_COACH_AI_MODE"] = "real";
     process.env["SERVER_AUTH_SECRET"] = "server-auth-test";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";

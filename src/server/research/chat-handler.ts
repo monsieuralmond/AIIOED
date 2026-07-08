@@ -20,7 +20,7 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
   if (existing !== null) {
     return {
       llmMode: env.aiMode,
-      model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.geminiModel,
+      model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.aiModel,
       requestTags: [],
       text: existing.text,
       type: "clarify"
@@ -44,7 +44,7 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
     if (completedDuplicate !== null) {
       return {
         llmMode: env.aiMode,
-        model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.geminiModel,
+        model: env.aiMode === "mock" ? "mock-understanding-calibration-v0" : env.aiModel,
         requestTags: [],
         text: completedDuplicate.text,
         type: "clarify"
@@ -82,12 +82,13 @@ const completeAndPersistResearchChat = async (input: CompleteAndPersistResearchC
   try {
     const response = await completeResearchChat({
       ...(input.session.assignment.calibrationConfig?.aiContext === undefined ? {} : { aiContext: input.session.assignment.calibrationConfig.aiContext }),
-      apiKey: input.env.geminiApiKey,
+      apiKey: input.env.aiApiKey,
       assignment: input.session.assignment,
       history: input.session.chatTurns,
       message: input.message,
       mode: input.env.aiMode,
-      model: input.env.geminiModel,
+      model: input.env.aiModel,
+      provider: input.env.aiProvider,
       researchCondition: input.session.researchCondition
     });
     await input.store.insertChatTurn({

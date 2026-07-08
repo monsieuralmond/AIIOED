@@ -883,21 +883,24 @@ AI가 만든 비기본 제안은 Gemini API를 사용할 수 있다.
 
 환경 변수 `READING_COACH_AI_MODE`가 `mock`이면 로컬 규칙 기반 응답을 사용한다.
 
-그 외에는 Gemini API를 사용한다.
+그 외에는 OpenAI Responses API를 기본으로 사용한다.
 
-### 12.3 Gemini 설정
+### 12.3 AI 제공자 설정
 
 현재 기본 모델은 다음과 같다.
 
-- `gemini-2.5-flash-lite`
+- `gpt-5-nano`
 
-환경 변수 `GEMINI_MODEL`이 있으면 그 값을 사용한다.
+환경 변수 `OPENAI_MODEL`이 있으면 그 값을 사용한다.
 
-환경 변수 `GEMINI_API_KEY`가 없으면 실제 Gemini 호출은 실패한다.
+환경 변수 `OPENAI_API_KEY`가 없으면 실제 OpenAI 호출은 실패한다.
+
+환경 변수 `AI_PROVIDER=gemini`를 설정하면 기존 Gemini 경로를 사용할 수 있다.
+이 경우 `GEMINI_MODEL`, `GEMINI_API_KEY`를 사용한다.
 
 ### 12.4 로컬 정책 선차단
 
-Gemini 호출 전에도 로컬 정책이 먼저 작동한다.
+AI 호출 전에도 로컬 정책이 먼저 작동한다.
 
 다음과 같은 과제 밖 질문은 `redirect`로 처리된다.
 

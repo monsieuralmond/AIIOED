@@ -1,3 +1,4 @@
+import { AiProviders } from "../gemini-client.js";
 import { ApiError } from "./http.js";
 import { researchServerEnv } from "./env.js";
 import { SupabaseRestClient } from "./supabase-rest.js";
@@ -114,9 +115,11 @@ export const researchDeploymentHealth = async (): Promise<DeploymentHealth> => {
     requiredProductionSecretCheck("ADMIN_LOGIN_ID"),
     requiredProductionSecretCheck("ADMIN_PASSWORD"),
     check(
-      "gemini_api_key",
-      env.aiMode === "mock" || env.geminiApiKey !== undefined,
-      env.aiMode === "real" && env.geminiApiKey === undefined ? "GEMINI_API_KEY is required when READING_COACH_AI_MODE is real." : undefined
+      env.aiProvider === AiProviders.openai ? "openai_api_key" : "gemini_api_key",
+      env.aiMode === "mock" || env.aiApiKey !== undefined,
+      env.aiMode === "real" && env.aiApiKey === undefined
+        ? `${env.aiProvider === AiProviders.openai ? "OPENAI_API_KEY" : "GEMINI_API_KEY"} is required when READING_COACH_AI_MODE is real.`
+        : undefined
     )
   ];
 

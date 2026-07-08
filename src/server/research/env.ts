@@ -1,9 +1,12 @@
+import { createAiServerConfig } from "../ai-server-config.js";
+import type { AiProvider } from "../gemini-client.js";
 import { ApiError } from "./http.js";
 
 export type ResearchServerEnv = {
+  readonly aiApiKey: string | undefined;
   readonly aiMode: "mock" | "real";
-  readonly geminiApiKey: string | undefined;
-  readonly geminiModel: string;
+  readonly aiModel: string;
+  readonly aiProvider: AiProvider;
   readonly serverAuthSecret: string | undefined;
   readonly supabaseServiceRoleKey: string;
   readonly supabaseUrl: string;
@@ -22,11 +25,12 @@ const requiredEnv = (key: string): string => {
 };
 
 export const researchServerEnv = (): ResearchServerEnv => {
-  const aiMode = readEnv("READING_COACH_AI_MODE") === "mock" ? "mock" : "real";
+  const aiConfig = createAiServerConfig(process.env);
   return {
-    aiMode,
-    geminiApiKey: readEnv("GEMINI_API_KEY"),
-    geminiModel: readEnv("GEMINI_MODEL") ?? "gemini-2.5-flash-lite",
+    aiApiKey: aiConfig.apiKey,
+    aiMode: aiConfig.mode,
+    aiModel: aiConfig.model,
+    aiProvider: aiConfig.provider,
     serverAuthSecret: readEnv("SERVER_AUTH_SECRET"),
     supabaseServiceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
     supabaseUrl: requiredEnv("SUPABASE_URL")

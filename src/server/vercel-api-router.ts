@@ -1,11 +1,11 @@
 import { createUnifiedAiJsonHandler } from "./ai-unified-route.js";
+import { createAiServerConfig } from "./ai-server-config.js";
 import type { JsonHandler } from "./research/http.js";
 import { ApiError } from "./research/http.js";
 import { createResearchApiHandlers } from "./research/handlers.js";
 import { authenticateAdmin } from "./research/admin-auth.js";
 import { authenticateStudent } from "./research/student-auth.js";
 import { authenticateTeacher } from "./research/teacher-auth.js";
-import type { LlmMode } from "../shared/types.js";
 
 const apiRoutePaths = [
   "admin/delete-test-data",
@@ -30,8 +30,6 @@ const apiRoutePaths = [
 
 type ApiRoutePath = (typeof apiRoutePaths)[number];
 
-const aiMode = (value: string | undefined): LlmMode => (value === "mock" ? "mock" : "real");
-
 export const isApiRoutePath = (value: string): value is ApiRoutePath =>
   apiRoutePaths.some((routePath) => routePath === value);
 
@@ -45,11 +43,7 @@ export const apiRoutePathFromUrl = (requestUrl: string | undefined): string => {
 };
 
 export const createVercelApiJsonHandler = (): JsonHandler => {
-  const aiHandler = createUnifiedAiJsonHandler({
-    apiKey: process.env["GEMINI_API_KEY"],
-    mode: aiMode(process.env["READING_COACH_AI_MODE"]),
-    model: process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite"
-  });
+  const aiHandler = createUnifiedAiJsonHandler(createAiServerConfig(process.env));
   const researchHandlers = createResearchApiHandlers();
   const routeHandlers = {
     "admin/delete-test-data": researchHandlers.deleteTestData,
