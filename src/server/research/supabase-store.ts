@@ -6,7 +6,7 @@ import { credentialHash } from "./credentials.js";
 import { participantCodeHash, serverId } from "./store.js";
 import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
 import { buildSupabaseExport } from "./supabase-export.js";
-import { chatTurnFromRow, contextFromSession, encode, inList, rowToSession, rowsForSessionIds } from "./supabase-session-rows.js";
+import { chatTurnFromRow, contextFromSession, encode, inList, rowToChatSession, rowToSession, rowsForSessionIds } from "./supabase-session-rows.js";
 import type { AssignmentRow, ChildContext, SessionRow, StudentRow } from "./supabase-session-rows.js";
 import { SupabaseRestClient } from "./supabase-rest.js";
 import type { SupabaseConfig } from "./supabase-rest.js";
@@ -30,11 +30,9 @@ type ChatFailureEventRow = {
   readonly payload: Record<string, unknown>;
 };
 
-type SessionCompletionRow = Pick<SessionRow, "completed_at" | "session_id" | "status">;
-
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isSubmittedSessionRow = (row: SessionCompletionRow): boolean =>
+const isSubmittedSessionRow = (row: Pick<SessionRow, "completed_at" | "status">): boolean =>
   row.completed_at !== null || row.status === "submitted" || row.status === "completed";
 
 const resetChildTables = ["chat_turns", "events", "artifacts", "measures"] as const;
@@ -71,6 +69,13 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       student_anonymous_id: session.student_anonymous_id
     };
   };
+
+  const childContextFromSessionContext = (context: SessionContext): ChildContext => ({
+    assignment_id: context.assignmentId,
+    class_group_id: context.classGroupId,
+    session_id: context.sessionId,
+    student_anonymous_id: context.studentAnonymousId
+  });
 
   const chatTurnByRequest = async (sessionId: string, requestId: string, role: ChatTurn["role"]): Promise<ChatTurnRow | undefined> => {
     const rows = await db.get<readonly ChatTurnRow[]>("chat_turns", `session_id=eq.${encode(sessionId)}&request_id=eq.${encode(requestId)}&role=eq.${role}&limit=1`);
@@ -150,7 +155,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async insertChatTurn(input): Promise<StoredChatTurn> {
-      const context = await childContext(input.sessionId);
+      const context = input.context === undefined ? await childContext(input.sessionId) : childContextFromSessionContext(input.context);
       const payload = {
         ...context,
         created_at: input.timestamp,
@@ -170,7 +175,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async insertEvent(input): Promise<void> {
-      const context = await childContext(input.sessionId);
+      const context = input.context === undefined ? await childContext(input.sessionId) : childContextFromSessionContext(input.context);
       await db.upsert("events", {
         ...context,
         created_at: input.timestamp ?? new Date().toISOString(),
@@ -232,6 +237,12 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       return { assignment: row.assignment_snapshot, context: contextFromSession(row), session };
     },
 
+    async resumeSessionForChat(sessionId): Promise<SessionStartResult> {
+      const row = await sessionContext(sessionId);
+      const session = await rowToChatSession(db, row);
+      return { assignment: row.assignment_snapshot, context: contextFromSession(row), session };
+    },
+
     async startSession(input): Promise<SessionStartResult> {
       const inputLoginId = input.loginId?.trim() ?? "";
       const inputPassword = input.password?.trim() ?? "";
@@ -261,11 +272,16 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         if (student.password_hash === null || credentialHash(inputPassword) !== student.password_hash) throw new ApiError(401, "Student credentials are invalid.");
       }
       const assignedAssignment = { ...assignment.assignment, assignedStudentIds: assignment.assignment.assignedStudentIds ?? [], classGroupId: assignment.class_group_id };
-      const previousSessions = await db.get<readonly SessionCompletionRow[]>(
+      const previousSessions = await db.get<readonly SessionRow[]>(
         "sessions",
-        `select=session_id,status,completed_at&assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}`
+        `select=*&assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&order=updated_at.desc`
       );
       if (previousSessions.some(isSubmittedSessionRow)) throw new ApiError(409, "이미 제출한 과제입니다.");
+      const existingSession = previousSessions[0];
+      if (existingSession !== undefined) {
+        const session = await rowToSession(db, existingSession);
+        return { assignment: existingSession.assignment_snapshot, context: contextFromSession(existingSession), session };
+      }
       const baseSession = createSession(assignedAssignment);
       const session: PilotSession = {
         ...baseSession,
@@ -275,7 +291,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         sessionId: serverId("session"),
         student: { anonymousId: student.student_anonymous_id }
       };
-      const row = single(await db.insert<readonly SessionRow[]>("sessions", {
+      const row = single(await db.upsert<readonly SessionRow[]>("sessions", {
         assignment_id: assignment.id,
         assignment_snapshot: assignedAssignment,
         class_group_id: assignment.class_group_id,
@@ -286,7 +302,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         session_id: session.sessionId,
         status: session.status,
         student_anonymous_id: student.student_anonymous_id
-      }), "Session was not created.");
+      }, "session_id"), "Session was not created.");
       return { assignment: assignedAssignment, context: contextFromSession(row), session: { ...session, createdAt: row.created_at, updatedAt: row.updated_at } };
     },
 

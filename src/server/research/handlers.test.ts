@@ -45,6 +45,16 @@ describe("research API handlers", () => {
     expect(sessionIdFrom(response)).toMatch(/^session-/);
   });
 
+  it("returns the existing in-progress session when a student starts the same assignment again", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const first = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+
+    const second = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+
+    expect(sessionIdFrom(second)).toBe(sessionIdFrom(first));
+  });
+
   it("starts the explicitly selected assignment for student credentials without a participant code", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);

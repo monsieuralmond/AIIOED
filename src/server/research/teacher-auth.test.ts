@@ -49,7 +49,7 @@ describe("teacher authentication", () => {
     expect(recordedCalls.find((call) => call.method === "GET" && call.table === "teachers")?.url).not.toContain("initial_password");
   });
 
-  it("does not retry a failed login database read", async () => {
+  it("retries a transient failed login database read once", async () => {
     const fetchMock = vi.fn(async (): Promise<Response> =>
       new Response(JSON.stringify({ message: "temporary upstream failure" }), { status: 503 })
     );
@@ -57,6 +57,6 @@ describe("teacher authentication", () => {
 
     await expect(authenticateTeacher({ loginId: "teacher", password: "teacher-pw" })).rejects.toThrow("Supabase");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

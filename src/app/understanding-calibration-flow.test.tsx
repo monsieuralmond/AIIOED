@@ -71,4 +71,32 @@ describe("UnderstandingCalibrationFlow chat", () => {
 
     await waitFor(() => expect(screen.getByText("큐비트는 양자컴퓨터가 정보를 다루는 기본 단위입니다.")).toBeInTheDocument());
   });
+
+  it("lets students resend the same failed AI question without duplicating their message", async () => {
+    vi.mocked(requestSessionCalibrationChat)
+      .mockRejectedValueOnce(new Error("temporary provider failure"))
+      .mockResolvedValueOnce({
+        requestTags: ["definition_request"],
+        text: "큐비트는 양자컴퓨터가 정보를 다루는 기본 단위입니다.",
+        type: "clarify"
+      });
+
+    render(<FlowHarness />);
+
+    fireEvent.change(screen.getByLabelText("질문"), { target: { value: "큐비트가 뭐예요?" } });
+    fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "같은 질문 다시 보내기" })).toBeInTheDocument());
+    const firstRequest = vi.mocked(requestSessionCalibrationChat).mock.calls[0]?.[0];
+    if (firstRequest === undefined) throw new Error("first chat request was not captured.");
+
+    fireEvent.click(screen.getByRole("button", { name: "같은 질문 다시 보내기" }));
+
+    await waitFor(() => expect(screen.getByText("큐비트는 양자컴퓨터가 정보를 다루는 기본 단위입니다.")).toBeInTheDocument());
+    const secondRequest = vi.mocked(requestSessionCalibrationChat).mock.calls[1]?.[0];
+    if (secondRequest === undefined) throw new Error("second chat request was not captured.");
+    expect(secondRequest.requestId).toBe(firstRequest.requestId);
+    expect(screen.getAllByText("큐비트가 뭐예요?")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "같은 질문 다시 보내기" })).not.toBeInTheDocument();
+  });
 });

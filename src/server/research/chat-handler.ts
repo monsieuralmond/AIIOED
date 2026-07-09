@@ -14,7 +14,7 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
   const input = chatSchema.parse(payload);
   const env = researchServerEnv();
   const store = storeFactory();
-  const { context, session } = await store.resumeSession(input.sessionId);
+  const { context, session } = await store.resumeSessionForChat(input.sessionId);
   requireSessionAuth(request, context);
   const existing = await store.findAssistantTurnByRequestId(input.sessionId, input.requestId);
   if (existing !== null) {
@@ -31,6 +31,7 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
   const timestamp = new Date().toISOString();
   const studentTurnId = serverId("chat");
   const studentTurn = await store.insertChatTurn({
+    context,
     id: studentTurnId,
     requestId: input.requestId,
     role: "student",
@@ -53,6 +54,7 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
     if (await store.hasChatFailureForRequestId(input.sessionId, input.requestId)) {
       return completeAndPersistResearchChat({
         env,
+        context,
         message: studentTurn.text,
         requestId: input.requestId,
         session,
@@ -63,6 +65,7 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
   }
   return completeAndPersistResearchChat({
     env,
+    context,
     message: input.message,
     requestId: input.requestId,
     session,
@@ -72,9 +75,10 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
 
 type CompleteAndPersistResearchChatInput = {
   readonly env: ReturnType<typeof researchServerEnv>;
+  readonly context: Awaited<ReturnType<ResearchStore["resumeSessionForChat"]>>["context"];
   readonly message: string;
   readonly requestId: string;
-  readonly session: Awaited<ReturnType<ResearchStore["resumeSession"]>>["session"];
+  readonly session: Awaited<ReturnType<ResearchStore["resumeSessionForChat"]>>["session"];
   readonly store: ResearchStore;
 };
 
@@ -92,6 +96,7 @@ const completeAndPersistResearchChat = async (input: CompleteAndPersistResearchC
       researchCondition: input.session.researchCondition
     });
     await input.store.insertChatTurn({
+      context: input.context,
       id: serverId("chat"),
       requestId: input.requestId,
       responseType: response.type,
@@ -105,6 +110,7 @@ const completeAndPersistResearchChat = async (input: CompleteAndPersistResearchC
   } catch (error) {
     if (error instanceof AiRouteError) {
       await input.store.insertEvent({
+        context: input.context,
         id: serverId("event"),
         payload: {
           messageLength: input.message.length,

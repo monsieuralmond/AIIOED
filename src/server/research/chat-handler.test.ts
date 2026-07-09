@@ -38,6 +38,18 @@ describe("research chat handler", () => {
     expect(store.chatInsertCount).toBe(2);
   });
 
+  it("uses the chat-only session loader for chat requests", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+    const request = requestWithSessionToken(sessionTokenFrom(started));
+    const sessionId = sessionIdFrom(started);
+
+    await handlers.chat({ message: "양자컴퓨터가 뭐야?", requestId: "request-chat-session-loader", sessionId }, request);
+
+    expect(store.resumeSessionForChatCount).toBe(1);
+  });
+
   it("rejects duplicate chat requestIds while the first request is still processing", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);

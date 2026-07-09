@@ -79,6 +79,13 @@ type MeasureRow = {
   readonly stage: string;
 };
 
+type SessionChildRows = {
+  readonly artifacts: readonly ArtifactRow[];
+  readonly chatTurns: readonly ChatTurnRow[];
+  readonly events: readonly EventRow[];
+  readonly measures: readonly MeasureRow[];
+};
+
 export type ChildContext = {
   readonly assignment_id: string;
   readonly class_group_id: string;
@@ -142,23 +149,17 @@ const measureFromRow = (row: MeasureRow): ResearchMeasure => ({
   stage: row.stage
 });
 
-export const rowToSession = async (db: SupabaseRestClient, row: SessionRow): Promise<PilotSession> => {
-  const [chatTurns, events, artifacts, measures] = await Promise.all([
-    rowsForSessionIds<ChatTurnRow>(db, "chat_turns", [row.session_id]),
-    rowsForSessionIds<EventRow>(db, "events", [row.session_id]),
-    rowsForSessionIds<ArtifactRow>(db, "artifacts", [row.session_id]),
-    rowsForSessionIds<MeasureRow>(db, "measures", [row.session_id])
-  ]);
+const sessionFromRows = (row: SessionRow, childRows: SessionChildRows): PilotSession => {
   const base = createSession(row.assignment_snapshot);
   return {
     ...base,
     ...(row.completed_at === null ? {} : { completedAt: row.completed_at }),
-    artifacts: artifacts.map(artifactFromRow),
-    chatTurns: chatTurns.map(chatTurnFromRow),
+    artifacts: childRows.artifacts.map(artifactFromRow),
+    chatTurns: childRows.chatTurns.map(chatTurnFromRow),
     createdAt: row.created_at,
     currentStage: row.current_stage as Stage,
-    events: events.map(eventFromRow),
-    measures: measures.map(measureFromRow),
+    events: childRows.events.map(eventFromRow),
+    measures: childRows.measures.map(measureFromRow),
     metadata: row.metadata,
     researchCondition: row.research_condition,
     researchMode: row.research_mode,
@@ -167,4 +168,24 @@ export const rowToSession = async (db: SupabaseRestClient, row: SessionRow): Pro
     student: { anonymousId: row.student_anonymous_id },
     updatedAt: row.updated_at
   };
+};
+
+export const rowToChatSession = async (db: SupabaseRestClient, row: SessionRow): Promise<PilotSession> => {
+  const chatTurns = await rowsForSessionIds<ChatTurnRow>(db, "chat_turns", [row.session_id]);
+  return sessionFromRows(row, {
+    artifacts: [],
+    chatTurns,
+    events: [],
+    measures: []
+  });
+};
+
+export const rowToSession = async (db: SupabaseRestClient, row: SessionRow): Promise<PilotSession> => {
+  const [chatTurns, events, artifacts, measures] = await Promise.all([
+    rowsForSessionIds<ChatTurnRow>(db, "chat_turns", [row.session_id]),
+    rowsForSessionIds<EventRow>(db, "events", [row.session_id]),
+    rowsForSessionIds<ArtifactRow>(db, "artifacts", [row.session_id]),
+    rowsForSessionIds<MeasureRow>(db, "measures", [row.session_id])
+  ]);
+  return sessionFromRows(row, { artifacts, chatTurns, events, measures });
 };

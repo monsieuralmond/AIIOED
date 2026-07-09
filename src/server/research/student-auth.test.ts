@@ -171,7 +171,7 @@ describe("student authentication", () => {
     await expect(authenticateStudent({ loginId: "1", password: "wrong" })).rejects.toThrow("Student credentials are invalid.");
   });
 
-  it("does not retry a failed student database read", async () => {
+  it("retries a transient failed student database read once", async () => {
     const fetchMock = vi.fn(async (): Promise<Response> =>
       new Response(JSON.stringify({ message: "temporary upstream failure" }), { status: 503 })
     );
@@ -179,7 +179,7 @@ describe("student authentication", () => {
 
     await expect(authenticateStudent({ loginId: "1", password: "1" })).rejects.toThrow("Supabase");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("omits class assignments that are not assigned to the authenticated student", async () => {

@@ -6,7 +6,7 @@ import { UnderstandingCalibrationStages } from "../shared/research.js";
 import type { CalibrationChatRequest } from "../shared/calibration-ai.js";
 import type { PilotSession } from "../shared/types.js";
 import { updateSessionLlmMetadata } from "../session/session.js";
-import { WarningBanner } from "./ui.js";
+import { Button, WarningBanner } from "./ui.js";
 import { ChatInput, ChatLog, StageFrame, SurveyResponseGroup } from "./understanding-calibration-components.js";
 import { chatCompletedPayload, durationSince, lastEventTimestamp } from "./understanding-calibration-events.js";
 import {
@@ -28,6 +28,12 @@ import { UnderstandingCalibrationProblemFlow } from "./understanding-calibration
 import { appendCalibrationRecords, makeCalibrationChatTurn } from "./understanding-calibration-session.js";
 import { UnderstandingCalibrationCompletedStage } from "./understanding-calibration-completed-stage.js";
 
+type FailedChatRequest = {
+  readonly message: string;
+  readonly previewRequest?: CalibrationChatRequest;
+  readonly requestId: string;
+};
+
 export function UnderstandingCalibrationFlow(props: { readonly session: PilotSession; readonly setSession: (updater: (session: PilotSession) => PilotSession) => void }): ReactElement {
   const module = props.session.modules.understandingCalibration;
   const topic = module?.topic ?? props.session.assignment.title;
@@ -46,6 +52,7 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   const [predictionTextResponses, setPredictionTextResponses] = useState(() => emptyTextResponses(predictionSurveyItems));
   const [chatPending, setChatPending] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [failedChatRequest, setFailedChatRequest] = useState<FailedChatRequest | null>(null);
   const chatTurnsRef = useRef(props.session.chatTurns);
 
   useEffect(() => {
@@ -93,27 +100,14 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
     );
   };
 
-  const sendChat = async (): Promise<void> => {
-    const message = chatInput.trim();
-    if (message.length === 0 || chatPending) return;
+  const requestAssistantResponse = async (chatRequest: FailedChatRequest): Promise<void> => {
     setChatPending(true);
     setChatError("");
-    const studentTurn = makeCalibrationChatTurn("student", message);
-    setChatInput("");
-    const previewRequest = previewChatRequest(message);
-    chatTurnsRef.current = [...chatTurnsRef.current, studentTurn];
-    props.setSession((session) =>
-      appendCalibrationRecords(session, {
-        chatTurns: [studentTurn],
-        events: [{ type: "student_message", payload: { text: message } }],
-        stage: UnderstandingCalibrationStages.chat
-      })
-    );
     try {
       const response = await requestSessionCalibrationChat({
-        message,
-        ...(previewRequest === undefined ? {} : { previewRequest }),
-        requestId: studentTurn.id,
+        message: chatRequest.message,
+        ...(chatRequest.previewRequest === undefined ? {} : { previewRequest: chatRequest.previewRequest }),
+        requestId: chatRequest.requestId,
         sessionId: props.session.sessionId
       });
       const assistantTurn = makeCalibrationChatTurn("assistant", response.text, response.type);
@@ -132,9 +126,9 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
                 assistantTurnId: assistantTurn.id,
                 model: response.model ?? session.metadata.model,
                 requestTags: response.requestTags,
-                studentTurnId: studentTurn.id,
-                userMessage: message,
-                userMessageLength: message.length
+                studentTurnId: chatRequest.requestId,
+                userMessage: chatRequest.message,
+                userMessageLength: chatRequest.message.length
               }
             }
           ],
@@ -142,14 +136,38 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         });
         return response.llmMode === undefined || response.model === undefined ? nextSession : updateSessionLlmMetadata(nextSession, response.llmMode, response.model);
       });
+      setFailedChatRequest(null);
     } catch (error) {
       const messageForStudent = error instanceof Error && error.message.trim().length > 0
         ? `AI 응답을 받지 못했습니다. 잠시 후 다시 보내 주세요. (${error.message})`
         : "AI 응답을 받지 못했습니다. 잠시 후 다시 보내 주세요.";
       setChatError(messageForStudent);
+      setFailedChatRequest(chatRequest);
     } finally {
       setChatPending(false);
     }
+  };
+
+  const sendChat = async (): Promise<void> => {
+    const message = chatInput.trim();
+    if (message.length === 0 || chatPending) return;
+    const studentTurn = makeCalibrationChatTurn("student", message);
+    setChatInput("");
+    const previewRequest = previewChatRequest(message);
+    setFailedChatRequest(null);
+    chatTurnsRef.current = [...chatTurnsRef.current, studentTurn];
+    props.setSession((session) =>
+      appendCalibrationRecords(session, {
+        chatTurns: [studentTurn],
+        events: [{ type: "student_message", payload: { text: message } }],
+        stage: UnderstandingCalibrationStages.chat
+      })
+    );
+    await requestAssistantResponse({
+      message,
+      ...(previewRequest === undefined ? {} : { previewRequest }),
+      requestId: studentTurn.id
+    });
   };
 
   const completeChat = (): void => {
@@ -213,6 +231,14 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
             </header>
             <ChatLog turns={props.session.chatTurns} />
             {chatError.length > 0 ? <WarningBanner>{chatError}</WarningBanner> : null}
+            {failedChatRequest === null ? null : (
+              <div className="calibration-chat-retry">
+                <p>방금 질문은 남겨두었습니다. 연결이 회복되면 같은 질문을 다시 보낼 수 있습니다.</p>
+                <Button disabled={chatPending} type="button" variant="secondary" onClick={() => { void requestAssistantResponse(failedChatRequest); }}>
+                  {chatPending ? "다시 보내는 중" : "같은 질문 다시 보내기"}
+                </Button>
+              </div>
+            )}
             <ChatInput disabled={chatPending} value={chatInput} onChange={setChatInput} onSubmit={() => { void sendChat(); }} />
           </section>
         </div>

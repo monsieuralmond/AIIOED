@@ -82,6 +82,7 @@ export type ResearchStore = {
     readonly updatedAt?: string;
   }) => Promise<void>;
   readonly insertChatTurn: (input: {
+    readonly context?: SessionContext;
     readonly id: string;
     readonly requestId?: string;
     readonly responseType?: CoachResponseType;
@@ -92,6 +93,7 @@ export type ResearchStore = {
     readonly timestamp: string;
   }) => Promise<StoredChatTurn>;
   readonly insertEvent: (input: {
+    readonly context?: SessionContext;
     readonly id: string;
     readonly payload: Record<string, unknown>;
     readonly sessionId: string;
@@ -109,6 +111,7 @@ export type ResearchStore = {
   }) => Promise<void>;
   readonly listChatTurns: (sessionId: string) => Promise<readonly StoredChatTurn[]>;
   readonly resumeSession: (sessionId: string) => Promise<SessionStartResult>;
+  readonly resumeSessionForChat: (sessionId: string) => Promise<SessionStartResult>;
   readonly listSessions: (input: {
     readonly assignmentId?: string;
     readonly classGroupId?: string;

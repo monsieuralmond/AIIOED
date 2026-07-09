@@ -75,6 +75,7 @@ export class MemoryResearchStore implements ResearchStore {
   readonly resetRequests: Parameters<ResearchStore["resetStudentSession"]>[0][] = [];
   private readonly turnsByRequestRole = new Map<string, StoredChatTurn>();
   chatInsertCount = 0;
+  resumeSessionForChatCount = 0;
 
   async deleteTestData(input: Parameters<ResearchStore["deleteTestData"]>[0]): Promise<DeleteResult> {
     this.deleteRequests.push(input);
@@ -167,6 +168,11 @@ export class MemoryResearchStore implements ResearchStore {
     return { assignment: sessionWithTurns.assignment, context: this.context(sessionWithTurns), session: sessionWithTurns };
   }
 
+  async resumeSessionForChat(sessionId: string): Promise<SessionStartResult> {
+    this.resumeSessionForChatCount += 1;
+    return this.resumeSession(sessionId);
+  }
+
   async startSession(input: Parameters<ResearchStore["startSession"]>[0]): Promise<SessionStartResult> {
     this.startedSessions.push(input);
     const assignment = input.assignmentId === undefined ? sampleAssignment : { ...sampleAssignment, id: input.assignmentId };
@@ -178,6 +184,11 @@ export class MemoryResearchStore implements ResearchStore {
       (session.completedAt !== undefined || session.status === "submitted" || session.status === "completed")
     );
     if (alreadySubmitted) throw new ApiError(409, "이미 제출한 과제입니다.");
+    const existingSession = [...this.sessions.values()].find((session) =>
+      session.assignment.id === assignment.id &&
+      session.student.anonymousId === studentAnonymousId
+    );
+    if (existingSession !== undefined) return { assignment: existingSession.assignment, context: this.context(existingSession), session: existingSession };
     const session = {
       ...createSession(assignment),
       researchCondition: ResearchConditions.singleGroupBaseline,

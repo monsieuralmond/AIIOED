@@ -2,6 +2,10 @@ import { ApiError } from "./http.js";
 
 type QueryValue = boolean | number | string | undefined;
 
+type RequestOptions = {
+  readonly retryLimit?: number;
+};
+
 export type SupabaseConfig = {
   readonly retryLimit?: number;
   readonly serviceRoleKey: string;
@@ -9,8 +13,8 @@ export type SupabaseConfig = {
   readonly url: string;
 };
 
-const defaultTimeoutMs = 6_000;
-const retryLimit = 0;
+const defaultTimeoutMs = 12_000;
+const retryLimit = 1;
 const retryDelayMs = 150;
 const retryableStatusCodes = new Set([408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
 const cloudflareGatewayStatusCodes = new Set([520, 521, 522, 523, 524]);
@@ -107,16 +111,17 @@ export class SupabaseRestClient {
     };
   }
 
-  private async request<T>(path: string, init: RequestInit): Promise<T> {
+  private async request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
     let lastError: unknown;
-    for (let attempt = 0; attempt <= this.retryLimit; attempt += 1) {
+    const effectiveRetryLimit = options.retryLimit ?? this.retryLimit;
+    for (let attempt = 0; attempt <= effectiveRetryLimit; attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
         const response = await fetch(`${this.restUrl}${path}`, { ...init, signal: controller.signal });
         if (!response.ok) {
           const text = await response.text();
-          if (attempt < this.retryLimit && retryableStatusCodes.has(response.status)) {
+          if (attempt < effectiveRetryLimit && retryableStatusCodes.has(response.status)) {
             await waitBeforeRetry(attempt);
             continue;
           }
@@ -129,7 +134,7 @@ export class SupabaseRestClient {
         return (await response.json()) as T;
       } catch (error) {
         lastError = error;
-        if (error instanceof ApiError || attempt >= this.retryLimit) break;
+        if (error instanceof ApiError || attempt >= effectiveRetryLimit) break;
         await waitBeforeRetry(attempt);
       } finally {
         clearTimeout(timeout);
@@ -158,7 +163,7 @@ export class SupabaseRestClient {
       body: JSON.stringify(body),
       headers: this.headers({ prefer: "return=representation" }),
       method: "POST"
-    });
+    }, { retryLimit: 0 });
   }
 
   async patch<T>(table: string, query: string, body: unknown): Promise<T> {
@@ -174,7 +179,7 @@ export class SupabaseRestClient {
       body: JSON.stringify(body),
       headers: this.headers({ prefer: "return=representation" }),
       method: "POST"
-    });
+    }, { retryLimit: 0 });
   }
 
   async upsert<T>(table: string, body: unknown, onConflict?: string): Promise<T> {

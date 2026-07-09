@@ -29,6 +29,20 @@ const storeFromEnv = (): ResearchStore => {
   });
 };
 
+const transientStatusCodes = new Set([503, 504]);
+
+const retryTransientSessionStart = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!(error instanceof ApiError) || !transientStatusCodes.has(error.statusCode)) throw error;
+    await new Promise((resolve) => {
+      setTimeout(resolve, 200);
+    });
+    return operation();
+  }
+};
+
 export const createResearchApiHandlers = (storeFactory: () => ResearchStore = storeFromEnv): {
   readonly artifact: JsonHandler;
   readonly chat: JsonHandler;
@@ -205,13 +219,13 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     if (teacherAuth !== null) requireTeacherAuth(request, teacherAuth.teacherId);
     const result = "sessionId" in input
       ? await store.resumeSession(input.sessionId)
-      : await store.startSession({
+      : await retryTransientSessionStart(() => store.startSession({
         ...(input.loginId === undefined ? {} : { loginId: input.loginId }),
         ...(input.participantCode === undefined ? {} : { participantCode: input.participantCode }),
         ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
         ...(input.password === undefined ? {} : { password: input.password }),
         ...(teacherAuth === null ? {} : { teacherId: teacherAuth.teacherId })
-      });
+      }));
     if ("sessionId" in input) requireSessionAuth(request, result.context);
     return {
       assignment: result.assignment,

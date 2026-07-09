@@ -68,12 +68,29 @@ describe("SupabaseRestClient", () => {
     }
   });
 
-  it("does not retry failed database reads by default", async () => {
+  it("retries transient database reads once by default", async () => {
+    const fetchMock = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "database is unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "class-pilot" }]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new SupabaseRestClient({
+      serviceRoleKey: "service-role-test",
+      url: "https://project.supabase.co"
+    });
+
+    await expect(client.get("classes", "select=id")).resolves.toEqual([{ id: "class-pilot" }]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("can opt out of retrying transient database reads", async () => {
     const fetchMock = vi.fn(async (): Promise<Response> =>
-      new Response(JSON.stringify({ message: "database is unavailable" }), { status: 503 })
+      new Response(JSON.stringify({ message: "temporary" }), { status: 503 })
     );
     vi.stubGlobal("fetch", fetchMock);
     const client = new SupabaseRestClient({
+      retryLimit: 0,
       serviceRoleKey: "service-role-test",
       url: "https://project.supabase.co"
     });
@@ -83,20 +100,18 @@ describe("SupabaseRestClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("can opt in to retrying transient failures", async () => {
-    const fetchMock = vi
-      .fn<() => Promise<Response>>()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "temporary" }), { status: 503 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "class-pilot" }]), { status: 200 }));
+  it("does not retry plain inserts by default", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> =>
+      new Response(JSON.stringify({ message: "temporary" }), { status: 503 })
+    );
     vi.stubGlobal("fetch", fetchMock);
     const client = new SupabaseRestClient({
-      retryLimit: 1,
       serviceRoleKey: "service-role-test",
       url: "https://project.supabase.co"
     });
 
-    await expect(client.get("classes", "select=id")).resolves.toEqual([{ id: "class-pilot" }]);
+    await expect(client.insert("exports", { payload: {} })).rejects.toThrow("Supabase request failed");
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

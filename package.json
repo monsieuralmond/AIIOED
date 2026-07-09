@@ -9,6 +9,7 @@
     "test": "vitest",
     "qa:screens": "node scripts/capture-qa-screens.mjs",
     "qa:contact-sheet": "node scripts/make-visual-contact-sheet.mjs",
+    "verify:classroom-load": "node scripts/run-classroom-load-test.mjs",
     "verify:deployment": "node scripts/verify-research-deployment.mjs",
     "verify:worktree": "node scripts/check-worktree-state.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173"

@@ -2090,7 +2090,7 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
   border-radius: var(--radius-md);
   display: grid;
   gap: var(--space-4);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   height: 100%;
   min-width: 0;
   overflow: hidden;
@@ -2177,6 +2177,27 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
 }
 .calibration-chat-log.readonly {
   max-height: 260px;
+}
+.calibration-chat-retry {
+  align-items: center;
+  background: var(--surface-warning);
+  border: 1px solid var(--border-warning);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  padding: var(--space-3);
+}
+.calibration-chat-retry p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  margin: 0;
+}
+.calibration-chat-retry .ui-button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  white-space: nowrap;
 }
 .calibration-chat-input {
   align-items: stretch;
@@ -3892,6 +3913,10 @@ pre {
   }
   .calibration-chat-panel .calibration-chat-log {
     max-height: 320px;
+  }
+  .calibration-chat-retry {
+    align-items: stretch;
+    flex-direction: column;
   }
   .understanding-actions {
     align-items: stretch;
