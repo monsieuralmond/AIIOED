@@ -321,14 +321,14 @@ export function App(): ReactElement {
     ) ?? null;
   };
 
+  const studentForSession = (sessionItem: PilotSession): StudentAccount | null =>
+    visibleTeacherState.students.find((student) => sessionMatchesStudent(sessionItem, student)) ?? null;
+
   const latestStudentPreviewTarget = (assignment: Assignment): { readonly session: PilotSession | null; readonly student: StudentAccount } | null => {
     const latestAssignmentSession = [...visibleTeacherState.sessions].reverse().find((item) => item.assignment.id === assignment.id) ?? null;
     if (latestAssignmentSession !== null) {
-      const sessionStudent = visibleTeacherState.students.find((student) =>
-        assignmentsForStudent(visibleTeacherState, student).some((item) => item.id === assignment.id) &&
-        sessionMatchesStudent(latestAssignmentSession, student)
-      );
-      if (sessionStudent !== undefined) return { session: latestAssignmentSession, student: sessionStudent };
+      const sessionStudent = studentForSession(latestAssignmentSession);
+      if (sessionStudent !== null) return { session: latestAssignmentSession, student: sessionStudent };
     }
     const student = firstStudentForAssignment(assignment);
     return student === null ? null : { session: latestSessionForStudent(assignment, student), student };

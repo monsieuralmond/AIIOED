@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { FormEvent, ReactElement } from "react";
+import type { FormEvent, KeyboardEvent, ReactElement } from "react";
 import { Button, Field, Surface, TextInput } from "./ui.js";
 
 type RoleEntryMode = "admin" | "entry" | "teacher";
@@ -15,6 +15,16 @@ type RoleEntryProps = {
   readonly onAdmin: (loginId: string, password: string) => boolean | Promise<boolean>;
   readonly onTeacher: (loginId: string, password: string) => boolean | Promise<boolean>;
   readonly onStudentCredentials: (input: StudentLoginInput) => boolean | Promise<boolean>;
+};
+
+const submitLoginOnEnter = (
+  event: KeyboardEvent<HTMLFormElement>,
+  submit: () => Promise<void>,
+  pending: boolean
+): void => {
+  if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+  event.preventDefault();
+  if (!pending) void submit();
 };
 
 function BackArrowIcon(): ReactElement {
@@ -144,7 +154,7 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
           ) : null}
 
           {selectedRole === "student" ? (
-            <form className="login-section" aria-label="학생 로그인" onSubmit={submitStudentForm}>
+            <form className="login-section" aria-label="학생 로그인" onKeyDown={(event) => submitLoginOnEnter(event, submitStudentCredentials, studentPending)} onSubmit={submitStudentForm}>
               <header className="login-section-header">
                 <h2>계정 정보</h2>
               </header>
@@ -166,7 +176,7 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
           ) : null}
 
           {selectedRole === "teacher" ? (
-            <form className="login-section" aria-label="교사 로그인" onSubmit={submitTeacherForm}>
+            <form className="login-section" aria-label="교사 로그인" onKeyDown={(event) => submitLoginOnEnter(event, submitTeacher, teacherPending)} onSubmit={submitTeacherForm}>
               <header className="login-section-header">
                 <h2>계정 정보</h2>
               </header>
@@ -182,7 +192,7 @@ export function RoleEntry(props: RoleEntryProps): ReactElement {
           ) : null}
 
           {selectedRole === "admin" ? (
-            <form className="login-section" aria-label="관리자 로그인" onSubmit={submitAdminForm}>
+            <form className="login-section" aria-label="관리자 로그인" onKeyDown={(event) => submitLoginOnEnter(event, submitAdmin, adminPending)} onSubmit={submitAdminForm}>
               <header className="login-section-header">
                 <h2>계정 정보</h2>
               </header>

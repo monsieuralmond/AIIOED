@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { createInitialPilotState } from "../session/session.js";
+import { createInitialPilotState, createSession } from "../session/session.js";
 import { sampleAssignment, sampleClassGroups, sampleStudents } from "../shared/fixtures.js";
 import { ResearcherList } from "./researcher.js";
 
@@ -32,6 +32,30 @@ describe("ResearcherList", () => {
     expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: "로그 보기" })).not.toBeInTheDocument();
     expect(screen.getByText("2명")).toBeInTheDocument();
+  });
+
+  it("enables student preview when an assignment has an existing student session", () => {
+    const session = createSession({ ...sampleAssignment, assignedStudentIds: [] }, sampleStudents[0]);
+
+    render(createElement(ResearcherList, {
+      activeAssignment: session.assignment,
+      state: {
+        ...createInitialPilotState(),
+        activeAssignmentId: session.assignment.id,
+        assignments: [session.assignment],
+        sessions: [session],
+        students: sampleStudents
+      },
+      onAccounts: vi.fn(),
+      onAssign: vi.fn(),
+      onCreate: vi.fn(),
+      onEditAssignment: vi.fn(),
+      onReview: vi.fn(),
+      onStudent: vi.fn()
+    }));
+
+    expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
+    expect(screen.getByText("1명")).toBeInTheDocument();
   });
 
   it("saves an empty assignment roster when the teacher cancels assignment from a row", () => {

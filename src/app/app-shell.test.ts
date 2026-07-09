@@ -286,6 +286,67 @@ describe("App shell", () => {
     expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
   });
 
+  it("previews an existing student session even after the assignment roster was cleared", async () => {
+    const sampleStudent = sampleStudents[0];
+    if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
+    const unassignedAssignment = { ...sampleAssignment, assignedStudentIds: [] };
+    const anonymousId = "anon-unassigned-existing-session";
+    const rosterStudent = { ...sampleStudent, anonymousId };
+    const progressedSession = enterStage({
+      ...createSession(unassignedAssignment),
+      student: { anonymousId }
+    }, "writing");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/auth/teacher")) {
+        return new Response(JSON.stringify({
+          displayName: sampleTeacher.displayName,
+          teacherId: sampleTeacher.id,
+          teacherToken: "teacher-token-test"
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/admin/roster")) {
+        return new Response(JSON.stringify({
+          assignments: [{ payload: unassignedAssignment }],
+          classes: sampleClassGroups,
+          students: [rosterStudent, ...sampleStudents.slice(1)].map((student) => ({
+            classGroupId: student.classGroupId,
+            displayLabel: student.displayName,
+            id: student.id,
+            loginId: student.loginId,
+            participantCode: student.participantCode,
+            password: student.password,
+            studentAnonymousId: student.anonymousId ?? student.id,
+            studentNumber: student.studentNumber
+          })),
+          teachers: [sampleTeacher]
+        }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/list")) {
+        return new Response(JSON.stringify({ sessions: [progressedSession] }), { status: 200 });
+      }
+      if (url.endsWith("/api/session/start")) {
+        return new Response(JSON.stringify({ error: "teacher preview must reuse the existing student session" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(createElement(App));
+
+    fireEvent.click(screen.getByRole("button", { name: "교사 계정" }));
+    fireEvent.change(loginControls("교사 로그인").loginId, { target: { value: sampleTeacher.loginId } });
+    fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
+    fireEvent.click(loginControls("교사 로그인").submit);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
+    expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
+  });
+
   it("keeps local teacher preview stage changes when the session poll returns stale data", async () => {
     const sampleStudent = sampleStudents[0];
     if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");

@@ -38,7 +38,7 @@ const assignmentProgress = (state: PilotState, assignment: Assignment): Assignme
   const sessions = state.sessions.filter((session) => session.assignment.id === assignment.id);
   return {
     assignedStudentCount: studentsForAssignment(state, assignment).length,
-    inProgressCount: sessions.filter((session) => session.finalSubmission === null && session.events.length > 0).length,
+    inProgressCount: sessions.filter((session) => session.finalSubmission === null && session.status !== "completed" && session.status !== "submitted").length,
     submittedCount: sessions.filter((session) => session.finalSubmission !== null).length
   };
 };
@@ -77,7 +77,14 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
   const gradeFilters = uniqueStrings(assignments.map((assignment) => assignment.gradeLevel));
   const normalizedSearch = normalizeFilterText(searchQuery);
   const activeFilterCount = (normalizedSearch.length > 0 ? 1 : 0) + selectedCategories.length + (selectedGradeLevel === "all" ? 0 : 1);
-  const canOpenStudentPreview = props.activeAssignment !== null && assignmentProgress(props.state, props.activeAssignment).assignedStudentCount > 0;
+  const activeProgress = props.activeAssignment === null ? null : assignmentProgress(props.state, props.activeAssignment);
+  const activeHasSession = props.activeAssignment !== null && props.state.sessions.some((session) => session.assignment.id === props.activeAssignment?.id);
+  const canOpenStudentPreview = activeProgress !== null && (
+    activeProgress.assignedStudentCount > 0 ||
+    activeHasSession ||
+    activeProgress.inProgressCount > 0 ||
+    activeProgress.submittedCount > 0
+  );
   const filteredAssignments = assignments.filter((assignment) => {
     const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
     const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(assignmentCategory(assignment));
