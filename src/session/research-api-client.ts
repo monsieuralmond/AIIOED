@@ -345,6 +345,10 @@ export const loadTeacherSessionsFromDatabase = async (input: { readonly assignme
   return payload;
 };
 
+export const resetTeacherStudentSession = async (sessionId: string): Promise<void> => {
+  await postJson("/api/session/reset", { sessionId }, teacherHeaders());
+};
+
 export const loadAdminSessionsFromDatabase = async (input: { readonly assignmentId?: string; readonly classGroupId?: string } = {}): Promise<SessionListResponse> => {
   const payload = await postJson("/api/session/list", {
     completedOnly: false,

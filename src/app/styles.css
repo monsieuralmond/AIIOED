@@ -1076,6 +1076,29 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
 .process-review {
   padding: 0;
 }
+.process-reset-bar {
+  align-items: center;
+  background: var(--surface-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+}
+.process-reset-bar p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  margin: var(--space-1) 0 0;
+}
+.process-reset-message {
+  background: var(--surface-warning);
+  border-bottom: 1px solid var(--border-warning);
+  color: var(--text-primary);
+  font-weight: 800;
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+}
 .student-status-heading {
   align-items: start;
   border-bottom: 1px solid var(--border-subtle);

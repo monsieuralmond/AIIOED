@@ -4,7 +4,7 @@ import { unavailableFileSync } from "../session/file-sync.js";
 import { activeSession, assignmentsForStudent, createClassGroup, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
 import { clearBrowserActorIdentity, clearBrowserAdminAuth, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
-import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterDeltaToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resetTeacherStudentSession, resumeResearchSession, startResearchSessionWithParticipantCode, startTeacherPreviewSession, syncRosterDeltaToDatabase, syncSessionDelta } from "../session/research-api-client.js";
 import type { RosterSyncDelta } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
@@ -560,6 +560,25 @@ export function App(): ReactElement {
     });
   };
 
+  const resetTeacherSessionForStudent = async (sessionId: string): Promise<string | null> => {
+    if (actor?.role !== "teacher") return "교사 계정으로 로그인해야 합니다.";
+    const previousState = pilotStateRef.current;
+    const nextState = {
+      ...previousState,
+      sessions: previousState.sessions.filter((item) => item.sessionId !== sessionId)
+    };
+    pilotStateRef.current = nextState;
+    setPilotState(nextState);
+    try {
+      if (!useLocalResearchStorage) await resetTeacherStudentSession(sessionId);
+      return null;
+    } catch (error) {
+      pilotStateRef.current = previousState;
+      setPilotState(previousState);
+      return persistenceErrorMessage(error);
+    }
+  };
+
   const renderStudentWorkspace = (): ReactElement => {
     if (session === null) throw new Error("Student workspace requires an active persisted session.");
     if (session.researchMode === ResearchModes.understandingCalibration) return <UnderstandingCalibrationFlow session={session} setSession={setSession} />;
@@ -696,7 +715,7 @@ export function App(): ReactElement {
       const assignmentForForm = editingAssignmentId === null ? newAssignmentTemplate() : requireAssignment(visibleTeacherState, editingAssignmentId);
       return <CreateAssignment assignment={assignmentForForm} key={`${editingAssignmentId ?? "new"}-${assignmentForForm.id}`} mode={editingAssignmentId === null ? "create" : "edit"} state={visibleTeacherState} onBack={() => openRoute("list")} onDelete={removeAssignment} onSave={saveAssignment} />;
     }
-    if (route === "review") return <TeacherReview state={visibleTeacherState} onBack={() => openRoute("list")} onUpdateReview={updateTeacherReviewForSession} />;
+    if (route === "review") return <TeacherReview state={visibleTeacherState} onBack={() => openRoute("list")} onResetSession={resetTeacherSessionForStudent} onUpdateReview={updateTeacherReviewForSession} />;
     if (route === "accounts") return (
       <AccountManagement
         {...(actor?.role === "teacher" ? { currentTeacherId: actor.accountId } : {})}

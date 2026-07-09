@@ -37,6 +37,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const isSubmittedSessionRow = (row: SessionCompletionRow): boolean =>
   row.completed_at !== null || row.status === "submitted" || row.status === "completed";
 
+const resetChildTables = ["chat_turns", "events", "artifacts", "measures"] as const;
+
 const deleteResultFromRpc = (value: unknown): Pick<DeleteResult, "deleted" | "logId"> => {
   if (!isRecord(value)) throw new ApiError(500, "Delete result was not returned.");
   const deleted = value["deleted"];
@@ -209,6 +211,19 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       const query = `select=*&order=updated_at.desc${filters.length === 0 ? "" : `&${filters.join("&")}`}`;
       const rows = await db.get<readonly SessionRow[]>("sessions", query);
       return { sessions: await Promise.all(rows.map((row) => rowToSession(db, row))) };
+    },
+
+    async resetStudentSession(input) {
+      const session = await sessionContext(input.sessionId);
+      if (session.research_locked) throw new ApiError(409, "잠금 처리된 연구 데이터는 교사 화면에서 리셋할 수 없습니다.");
+      const ownedAssignments = await db.get<readonly Pick<AssignmentRow, "id">[]>(
+        "assignments",
+        `select=id&id=eq.${encode(session.assignment_id)}&created_by_teacher_id=eq.${encode(input.teacherId)}&limit=1`
+      );
+      if (ownedAssignments.length === 0) throw new ApiError(403, "Teacher cannot reset this session.");
+      await Promise.all(resetChildTables.map((table) => db.delete<unknown>(table, `session_id=eq.${encode(input.sessionId)}`)));
+      await db.delete<unknown>("sessions", `session_id=eq.${encode(input.sessionId)}`);
+      return { sessionId: input.sessionId };
     },
 
     async resumeSession(sessionId): Promise<SessionStartResult> {

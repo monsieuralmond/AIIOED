@@ -72,6 +72,7 @@ export class MemoryResearchStore implements ResearchStore {
   readonly deleteRequests: Parameters<ResearchStore["deleteTestData"]>[0][] = [];
   readonly exportRequests: Parameters<ResearchStore["exportData"]>[0][] = [];
   readonly listSessionRequests: Parameters<ResearchStore["listSessions"]>[0][] = [];
+  readonly resetRequests: Parameters<ResearchStore["resetStudentSession"]>[0][] = [];
   private readonly turnsByRequestRole = new Map<string, StoredChatTurn>();
   chatInsertCount = 0;
 
@@ -139,6 +140,21 @@ export class MemoryResearchStore implements ResearchStore {
   async listSessions(input: Parameters<ResearchStore["listSessions"]>[0]): Promise<{ readonly sessions: readonly PilotSession[] }> {
     this.listSessionRequests.push(input);
     return { sessions: [...this.sessions.values()] };
+  }
+
+  async resetStudentSession(input: Parameters<ResearchStore["resetStudentSession"]>[0]): Promise<{ readonly sessionId: string }> {
+    this.resetRequests.push(input);
+    if (!this.sessions.has(input.sessionId)) throw new ApiError(404, "Unknown session.");
+    this.sessions.delete(input.sessionId);
+    const keepTurn = (turn: StoredChatTurn): boolean => turn.sessionId !== input.sessionId;
+    const keepArtifact = (artifact: ArtifactWrite): boolean => artifact.sessionId !== input.sessionId;
+    const keepEvent = (event: EventWrite): boolean => event.sessionId !== input.sessionId;
+    const keepMeasure = (measure: MeasureWrite): boolean => measure.sessionId !== input.sessionId;
+    this.storedChatTurns.splice(0, this.storedChatTurns.length, ...this.storedChatTurns.filter(keepTurn));
+    this.storedArtifacts.splice(0, this.storedArtifacts.length, ...this.storedArtifacts.filter(keepArtifact));
+    this.storedEvents.splice(0, this.storedEvents.length, ...this.storedEvents.filter(keepEvent));
+    this.storedMeasures.splice(0, this.storedMeasures.length, ...this.storedMeasures.filter(keepMeasure));
+    return { sessionId: input.sessionId };
   }
 
   async resumeSession(sessionId: string): Promise<SessionStartResult> {

@@ -187,6 +187,73 @@ describe("research API handlers", () => {
     expect(store.listSessionRequests.at(-1)).toEqual({});
   });
 
+  it("lets teachers reset one student session and removes its saved research data", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const sessionToken = sessionTokenFrom(started);
+
+    await handlers.chatTurn({
+      id: "chat-before-reset",
+      role: "student",
+      sessionId,
+      stage: "guided_writing",
+      text: "리셋 전에 저장된 질문",
+      timestamp: "2026-07-05T00:00:00.000Z"
+    }, requestWithSessionToken(sessionToken));
+    await handlers.event({
+      id: "event-before-reset",
+      payload: { value: "event" },
+      sessionId,
+      stage: "guided_writing",
+      timestamp: "2026-07-05T00:00:00.000Z",
+      type: "student_message"
+    }, requestWithSessionToken(sessionToken));
+    await handlers.artifact({
+      id: "artifact-before-reset",
+      kind: "draft_snapshot",
+      payload: { text: "draft" },
+      sessionId,
+      stage: "guided_writing",
+      timestamp: "2026-07-05T00:00:00.000Z"
+    }, requestWithSessionToken(sessionToken));
+    await handlers.measure({
+      id: "measure-before-reset",
+      kind: "confidence",
+      payload: { value: 4 },
+      sessionId,
+      stage: "guided_writing",
+      timestamp: "2026-07-05T00:00:00.000Z"
+    }, requestWithSessionToken(sessionToken));
+    await handlers.updateStage({
+      completedAt: "2026-07-08T00:00:00.000Z",
+      currentStage: "submitted",
+      sessionId,
+      status: "submitted"
+    }, requestWithSessionToken(sessionToken));
+
+    await handlers.sessionReset({ sessionId }, requestWithTeacherToken("teacher-research"));
+
+    expect(store.sessions.has(sessionId)).toBe(false);
+    expect(store.storedChatTurns).toHaveLength(0);
+    expect(store.storedEvents).toHaveLength(0);
+    expect(store.storedArtifacts).toHaveLength(0);
+    expect(store.storedMeasures).toHaveLength(0);
+    expect(store.resetRequests.at(-1)).toEqual({ sessionId, teacherId: "teacher-research" });
+    await expect(handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest())).resolves.toEqual(expect.objectContaining({
+      studentAnonymousId: "anon-S001"
+    }));
+  });
+
+  it("requires a teacher token before resetting a student session", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+
+    await expect(handlers.sessionReset({ sessionId: sessionIdFrom(started) }, emptyRequest())).rejects.toMatchObject({ statusCode: 401 });
+  });
+
   it("restricts database export and test-data deletion to admins", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);

@@ -48,6 +48,10 @@ export type DeleteResult = {
   readonly logId: string;
 };
 
+export type SessionResetResult = {
+  readonly sessionId: string;
+};
+
 export type ResearchStore = {
   readonly deleteTestData: (input: {
     readonly assignmentId?: string;
@@ -110,6 +114,10 @@ export type ResearchStore = {
     readonly classGroupId?: string;
     readonly teacherId?: string;
   }) => Promise<SessionListResult>;
+  readonly resetStudentSession: (input: {
+    readonly sessionId: string;
+    readonly teacherId: string;
+  }) => Promise<SessionResetResult>;
   readonly startSession: (input: {
     readonly assignmentId?: string;
     readonly loginId?: string;

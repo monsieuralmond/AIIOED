@@ -87,6 +87,10 @@ export const deleteTestDataSchema = z.object({
   teacherId: z.string().optional()
 });
 
+export const sessionResetSchema = z.object({
+  sessionId: z.string().min(1)
+});
+
 const rosterClassSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -146,6 +150,7 @@ export type EventWriteInput = z.infer<typeof eventWriteSchema>;
 export type ExportInput = z.infer<typeof exportSchema>;
 export type MeasureWriteInput = z.infer<typeof measureWriteSchema>;
 export type RosterLoadInput = z.infer<typeof rosterLoadSchema>;
+export type SessionResetInput = z.infer<typeof sessionResetSchema>;
 export type SessionStartInput = z.infer<typeof sessionStartSchema>;
 export type StageUpdateInput = z.infer<typeof stageUpdateSchema>;
 export type RosterUpsertInput = z.infer<typeof rosterUpsertSchema>;

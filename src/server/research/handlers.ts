@@ -10,6 +10,7 @@ import {
   measureWriteSchema,
   rosterLoadSchema,
   rosterUpsertSchema,
+  sessionResetSchema,
   sessionStartSchema,
   stageUpdateSchema
 } from "./schemas.js";
@@ -41,6 +42,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   readonly rosterUpsertDelta: JsonHandler;
   readonly rosterUpsert: JsonHandler;
   readonly sessionList: JsonHandler;
+  readonly sessionReset: JsonHandler;
   readonly sessionStart: JsonHandler;
   readonly updateStage: JsonHandler;
 } => ({
@@ -182,6 +184,17 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
       ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
       ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId }),
       teacherId
+    });
+  },
+
+  sessionReset: async (payload, request) => {
+    const input = sessionResetSchema.parse(payload);
+    const auth = teacherAuthFromRequest(request);
+    if (auth === null) throw new ApiError(401, "Teacher authorization is required.");
+    requireTeacherAuth(request, auth.teacherId);
+    return storeFactory().resetStudentSession({
+      sessionId: input.sessionId,
+      teacherId: auth.teacherId
     });
   },
 

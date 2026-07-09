@@ -50,12 +50,19 @@ const studentsForAssignment = (state: PilotState, assignment: Assignment | null)
   return state.students.filter((student) => student.classGroupId === assignment.classGroupId);
 };
 
-export function TeacherReview(props: { readonly state: PilotState; readonly onBack: () => void; readonly onUpdateReview: (sessionId: string, input: TeacherReviewUpdate) => void }): ReactElement {
+export function TeacherReview(props: {
+  readonly state: PilotState;
+  readonly onBack: () => void;
+  readonly onResetSession: (sessionId: string) => Promise<string | null>;
+  readonly onUpdateReview: (sessionId: string, input: TeacherReviewUpdate) => void;
+}): ReactElement {
   const [selectedStudentId, setSelectedStudentId] = useState(props.state.students[0]?.id ?? "");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(initialAssignmentId(props.state));
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all_reviews");
   const [studentSearch, setStudentSearch] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resettingSessionId, setResettingSessionId] = useState<string | null>(null);
   const fallbackAssignmentId = initialAssignmentId(props.state);
   const effectiveAssignmentId = props.state.assignments.some((assignment) => assignment.id === selectedAssignmentId) ? selectedAssignmentId : fallbackAssignmentId;
   const selectedAssignment = props.state.assignments.find((assignment) => assignment.id === effectiveAssignmentId) ?? null;
@@ -80,6 +87,19 @@ export function TeacherReview(props: { readonly state: PilotState; readonly onBa
   const visibleRows = studentRows.filter((row) => (statusFilter === "all" || row.status === statusFilter) && (reviewFilter === "all_reviews" || reviewStatusForRow(row) === reviewFilter) && matchesSearch(row, studentSearch));
   const selectedRow = studentRows.find((row) => row.student.id === selectedStudentId) ?? studentRows[0] ?? null;
   const selectedSession = selectedRow?.session ?? null;
+  const resetSelectedSession = async (): Promise<void> => {
+    if (selectedRow === null || selectedSession === null) return;
+    setResetMessage("");
+    const confirmed = window.confirm(`${selectedRow.student.displayName} 학생의 이 과제 기록을 리셋할까요?\nAI 대화, 설문 응답, 문제 답안, 확신도, 제출 기록이 모두 삭제됩니다.`);
+    if (!confirmed) return;
+    setResettingSessionId(selectedSession.sessionId);
+    try {
+      const error = await props.onResetSession(selectedSession.sessionId);
+      setResetMessage(error ?? "기록을 리셋했습니다. 학생은 이 과제를 다시 시작할 수 있습니다.");
+    } finally {
+      setResettingSessionId(null);
+    }
+  };
   return (
     <main className="teacher-review-page">
       <section className="teacher-review-header">
@@ -149,10 +169,20 @@ export function TeacherReview(props: { readonly state: PilotState; readonly onBa
           })}
         </Surface>
         <Surface className="process-review">
+          {resetMessage.length === 0 ? null : <p className="process-reset-message" role="status">{resetMessage}</p>}
           {selectedSession === null ? (
             <EmptyProcessRecord row={selectedRow} />
           ) : (
-            <TeacherProcessRecord session={selectedSession} onUpdateReview={props.onUpdateReview} />
+            <>
+              <div className="process-reset-bar">
+                <div>
+                  <strong>{selectedRow?.student.displayName ?? "선택한 학생"} 기록</strong>
+                  <p>리셋하면 이 과제의 대화, 응답, 제출 기록이 삭제됩니다.</p>
+                </div>
+                <Button disabled={resettingSessionId === selectedSession.sessionId} onClick={() => void resetSelectedSession()}>제출 기록 리셋</Button>
+              </div>
+              <TeacherProcessRecord session={selectedSession} onUpdateReview={props.onUpdateReview} />
+            </>
           )}
         </Surface>
       </section>
