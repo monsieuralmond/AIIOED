@@ -97,4 +97,43 @@ describe("deployment health", () => {
       expect.objectContaining({ name: "admin_password", ok: false })
     ]));
   });
+
+  it("fails health when the teacher reset archive migration is missing", async () => {
+    process.env["ADMIN_ID"] = "admin-root";
+    process.env["ADMIN_LOGIN_ID"] = "admin";
+    process.env["ADMIN_PASSWORD"] = "admin-password-test";
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_API_KEY"] = "openai-test";
+    process.env["READING_COACH_AI_MODE"] = "real";
+    process.env["SERVER_AUTH_SECRET"] = "server-auth-test";
+    process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
+    process.env["SUPABASE_URL"] = "https://example.supabase.co";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const table = tableFromUrl(input);
+      if (table === "research_schema_health") {
+        return new Response(JSON.stringify({
+          apply_roster_mutation_available: true,
+          ai_request_quota_available: true,
+          delete_research_test_data_available: true,
+          plaintext_password_columns_removed: true,
+          reset_research_session_archives_before_delete: false,
+          reset_research_session_available: true,
+          session_uniqueness_available: true,
+          sync_research_session_available: true,
+          version: "012_secure_privileged_research_rpcs"
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    }));
+
+    const health = await researchDeploymentHealth();
+
+    expect(health.ok).toBe(false);
+    expect(health.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "supabase_reset_research_session_archive",
+        ok: false
+      })
+    ]));
+  });
 });

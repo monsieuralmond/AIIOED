@@ -220,14 +220,22 @@ describe("migration 013 teacher session reset archive", () => {
       const exportCount = await db.query<CountRow>("select count(*)::int as count from public.exports where export_kind = 'session_reset_pre_delete';");
       const logCount = await db.query<CountRow>("select count(*)::int as count from public.deletion_logs where deletion_scope = 'teacher_session_reset';");
       const archivedSessionId = await db.query<SnapshotTextRow>("select payload #>> '{rawSnapshot,session,session_id}' as value from public.exports limit 1;");
+      const archivedChat = await db.query<SnapshotTextRow>("select payload #>> '{rawSnapshot,chatTurns,0,text}' as value from public.exports limit 1;");
+      const archivedEvent = await db.query<SnapshotTextRow>("select payload #>> '{rawSnapshot,events,0,payload,value}' as value from public.exports limit 1;");
       const archivedAnswer = await db.query<SnapshotTextRow>("select payload #>> '{rawSnapshot,artifacts,0,payload,answer}' as value from public.exports limit 1;");
+      const archivedConfidence = await db.query<SnapshotTextRow>("select payload #>> '{rawSnapshot,measures,0,payload,confidence}' as value from public.exports limit 1;");
+      const deletionLogAnswer = await db.query<SnapshotTextRow>("select counts #>> '{rawSnapshot,artifacts,0,payload,answer}' as value from public.deletion_logs limit 1;");
 
       expect(sessionCount.rows[0]?.count).toBe(0);
       expect(chatCount.rows[0]?.count).toBe(0);
       expect(exportCount.rows[0]?.count).toBe(1);
       expect(logCount.rows[0]?.count).toBe(1);
       expect(archivedSessionId.rows[0]?.value).toBe("session-locked");
+      expect(archivedChat.rows[0]?.value).toBe("질문");
+      expect(archivedEvent.rows[0]?.value).toBe("event");
       expect(archivedAnswer.rows[0]?.value).toBe("답변");
+      expect(archivedConfidence.rows[0]?.value).toBe("4");
+      expect(deletionLogAnswer.rows[0]?.value).toBe("답변");
     });
   });
 
@@ -239,7 +247,11 @@ describe("migration 013 teacher session reset archive", () => {
       await expect(db.query("select public.reset_research_session('session-locked', 'teacher-2');")).rejects.toThrow(/Teacher cannot reset this session/);
 
       const sessionCount = await db.query<CountRow>("select count(*)::int as count from public.sessions where session_id = 'session-locked';");
+      const exportCount = await db.query<CountRow>("select count(*)::int as count from public.exports;");
+      const logCount = await db.query<CountRow>("select count(*)::int as count from public.deletion_logs;");
       expect(sessionCount.rows[0]?.count).toBe(1);
+      expect(exportCount.rows[0]?.count).toBe(0);
+      expect(logCount.rows[0]?.count).toBe(0);
     });
   });
 });
