@@ -31,9 +31,14 @@ describe("deployment health", () => {
       if (table === "research_schema_health") {
         return new Response(JSON.stringify({
           apply_roster_mutation_available: true,
+          ai_request_quota_available: true,
           delete_research_test_data_available: true,
           plaintext_password_columns_removed: true,
-          version: "007_remove_plaintext_roster_passwords"
+          reset_research_session_archives_before_delete: true,
+          reset_research_session_available: true,
+          session_uniqueness_available: true,
+          sync_research_session_available: true,
+          version: "013_archive_before_teacher_session_reset"
         }), { status: 200 });
       }
       return new Response(JSON.stringify([]), { status: 200 });
@@ -75,7 +80,9 @@ describe("deployment health", () => {
         return new Response(JSON.stringify({
           apply_roster_mutation_available: true,
           delete_research_test_data_available: true,
-          plaintext_password_columns_removed: true
+          plaintext_password_columns_removed: true,
+          reset_research_session_archives_before_delete: true,
+          reset_research_session_available: true
         }), { status: 200 });
       }
       return new Response(JSON.stringify([]), { status: 200 });

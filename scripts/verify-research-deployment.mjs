@@ -91,7 +91,12 @@ const assertRequiredHealthChecks = (health) => {
     "supabase_schema_health_rpc",
     "supabase_plaintext_password_columns_removed",
     "supabase_apply_roster_mutation_rpc",
-    "supabase_delete_research_test_data_rpc"
+    "supabase_delete_research_test_data_rpc",
+    "supabase_sync_research_session_rpc",
+    "supabase_session_uniqueness",
+    "supabase_ai_request_quota_rpc",
+    "supabase_reset_research_session_rpc",
+    "supabase_reset_research_session_archive"
   ]) {
     if (!checkNames.has(requiredCheck)) throw new Error(`Deployment health check ${requiredCheck} is missing. Apply the latest Supabase migrations first.`);
   }

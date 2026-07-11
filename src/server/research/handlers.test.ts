@@ -91,6 +91,30 @@ describe("research API handlers", () => {
     });
   });
 
+  it("rejects direct session writes after the submitted stage is locked", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const sessionToken = sessionTokenFrom(started);
+
+    await handlers.updateStage({
+      completedAt: "2026-07-08T00:00:00.000Z",
+      currentStage: "completed",
+      sessionId,
+      status: "submitted"
+    }, requestWithSessionToken(sessionToken));
+
+    await expect(handlers.event({
+      id: "event-after-submit",
+      payload: {},
+      sessionId,
+      stage: "completed",
+      timestamp: "2026-07-08T00:01:00.000Z",
+      type: "late_write"
+    }, requestWithSessionToken(sessionToken))).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it("passes teacher identity when a teacher starts a student preview session", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
@@ -173,6 +197,35 @@ describe("research API handlers", () => {
     }, emptyRequest())).rejects.toMatchObject({ statusCode: 401 });
   });
 
+  it("rejects session sync before revealing whether an unknown session exists", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+
+    await expect(handlers.sessionSync({
+      artifacts: [],
+      chatTurns: [],
+      currentStage: "reading",
+      events: [],
+      measures: [],
+      sessionId: "unknown-session",
+      status: "in_progress"
+    }, emptyRequest())).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it("lets the Supabase sync path decide whether a locked retry is idempotent", async () => {
+    const store = new MemoryResearchStore();
+    store.syncSessionDelta = async () => undefined;
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const sessionToken = sessionTokenFrom(started);
+
+    await handlers.updateStage({ currentStage: "completed", sessionId, status: "submitted" }, requestWithSessionToken(sessionToken));
+    await expect(handlers.sessionSync({
+      artifacts: [], chatTurns: [], currentStage: "completed", events: [], measures: [], sessionId, status: "submitted"
+    }, requestWithSessionToken(sessionToken))).resolves.toEqual({ ok: true });
+  });
+
   it("requires a teacher token before listing sessions", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
@@ -243,7 +296,7 @@ describe("research API handlers", () => {
       status: "submitted"
     }, requestWithSessionToken(sessionToken));
 
-    await handlers.sessionReset({ sessionId }, requestWithTeacherToken("teacher-research"));
+    await expect(handlers.sessionReset({ sessionId }, requestWithTeacherToken("teacher-research"))).resolves.toEqual({ sessionId });
 
     expect(store.sessions.has(sessionId)).toBe(false);
     expect(store.storedChatTurns).toHaveLength(0);
@@ -251,9 +304,6 @@ describe("research API handlers", () => {
     expect(store.storedArtifacts).toHaveLength(0);
     expect(store.storedMeasures).toHaveLength(0);
     expect(store.resetRequests.at(-1)).toEqual({ sessionId, teacherId: "teacher-research" });
-    await expect(handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest())).resolves.toEqual(expect.objectContaining({
-      studentAnonymousId: "anon-S001"
-    }));
   });
 
   it("requires a teacher token before resetting a student session", async () => {

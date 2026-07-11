@@ -17,7 +17,12 @@ type RequiredTable = {
 type SchemaHealth = {
   readonly apply_roster_mutation_available?: boolean;
   readonly delete_research_test_data_available?: boolean;
+  readonly reset_research_session_available?: boolean;
+  readonly reset_research_session_archives_before_delete?: boolean;
+  readonly ai_request_quota_available?: boolean;
   readonly plaintext_password_columns_removed?: boolean;
+  readonly session_uniqueness_available?: boolean;
+  readonly sync_research_session_available?: boolean;
   readonly version?: string;
 };
 
@@ -83,6 +88,31 @@ const schemaHealthChecks = async (db: SupabaseRestClient): Promise<readonly Heal
         "supabase_delete_research_test_data_rpc",
         health.delete_research_test_data_available === true,
         health.delete_research_test_data_available === true ? undefined : "delete_research_test_data RPC is missing."
+      ),
+      check(
+        "supabase_sync_research_session_rpc",
+        health.sync_research_session_available === true,
+        health.sync_research_session_available === true ? undefined : "sync_research_session RPC is missing."
+      ),
+      check(
+        "supabase_session_uniqueness",
+        health.session_uniqueness_available === true,
+        health.session_uniqueness_available === true ? undefined : "sessions_assignment_student_unique index is missing."
+      ),
+      check(
+        "supabase_ai_request_quota_rpc",
+        health.ai_request_quota_available === true,
+        health.ai_request_quota_available === true ? undefined : "reserve_ai_request RPC is missing."
+      ),
+      check(
+        "supabase_reset_research_session_rpc",
+        health.reset_research_session_available === true,
+        health.reset_research_session_available === true ? undefined : "reset_research_session RPC is missing."
+      ),
+      check(
+        "supabase_reset_research_session_archive",
+        health.reset_research_session_archives_before_delete === true,
+        health.reset_research_session_archives_before_delete === true ? undefined : "reset_research_session must archive raw data before deleting locked sessions."
       )
     ];
   } catch (error) {

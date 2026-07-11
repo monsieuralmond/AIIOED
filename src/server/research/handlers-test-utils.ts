@@ -6,7 +6,7 @@ import { ResearchConditions } from "../../shared/research.js";
 import type { PilotSession } from "../../shared/types.js";
 import { issueAdminToken, issueTeacherToken } from "./auth.js";
 import { ApiError } from "./http.js";
-import { serverId } from "./store.js";
+import { assertSessionWritable, serverId } from "./store.js";
 import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
 
 type ArtifactWrite = Parameters<ResearchStore["insertArtifact"]>[0];
@@ -73,6 +73,7 @@ export class MemoryResearchStore implements ResearchStore {
   readonly exportRequests: Parameters<ResearchStore["exportData"]>[0][] = [];
   readonly listSessionRequests: Parameters<ResearchStore["listSessions"]>[0][] = [];
   readonly resetRequests: Parameters<ResearchStore["resetStudentSession"]>[0][] = [];
+  syncSessionDelta?: NonNullable<ResearchStore["syncSessionDelta"]>;
   private readonly turnsByRequestRole = new Map<string, StoredChatTurn>();
   chatInsertCount = 0;
   resumeSessionForChatCount = 0;
@@ -145,7 +146,8 @@ export class MemoryResearchStore implements ResearchStore {
 
   async resetStudentSession(input: Parameters<ResearchStore["resetStudentSession"]>[0]): Promise<{ readonly sessionId: string }> {
     this.resetRequests.push(input);
-    if (!this.sessions.has(input.sessionId)) throw new ApiError(404, "Unknown session.");
+    const session = this.sessions.get(input.sessionId);
+    if (session === undefined) throw new ApiError(404, "Unknown session.");
     this.sessions.delete(input.sessionId);
     const keepTurn = (turn: StoredChatTurn): boolean => turn.sessionId !== input.sessionId;
     const keepArtifact = (artifact: ArtifactWrite): boolean => artifact.sessionId !== input.sessionId;
@@ -202,7 +204,13 @@ export class MemoryResearchStore implements ResearchStore {
   async updateStage(input: Parameters<ResearchStore["updateStage"]>[0]): Promise<SessionContext> {
     const session = this.sessions.get(input.sessionId);
     if (session === undefined) throw new Error("missing test session");
-    const next = { ...session, ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }), status: input.status ?? session.status };
+    assertSessionWritable(this.context(session));
+    const next = {
+      ...session,
+      ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),
+      currentStage: input.currentStage as PilotSession["currentStage"],
+      status: input.status ?? session.status
+    };
     this.sessions.set(input.sessionId, next);
     return this.context(next);
   }
@@ -214,6 +222,7 @@ export class MemoryResearchStore implements ResearchStore {
       currentStage: session.currentStage,
       researchCondition: session.researchCondition,
       researchMode: session.researchMode,
+      researchLocked: session.status === "submitted" || session.status === "completed",
       sessionId: session.sessionId,
       status: session.status,
       studentAnonymousId: session.student.anonymousId
