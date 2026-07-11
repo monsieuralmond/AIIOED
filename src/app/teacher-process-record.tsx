@@ -1,9 +1,24 @@
 import type { ReactElement } from "react";
 import { latestOutline } from "../session/session.js";
-import { ResearchModes } from "../shared/research.js";
+import { GuidedWritingStages, ResearchModes } from "../shared/research.js";
 import type { PilotEvent, PilotSession, TeacherReviewUpdate } from "../shared/types.js";
+import {
+  guidedOutlineToText,
+  guidedStepOrder,
+  guidedStepSpecs,
+  guidedSourcesToText,
+  guidedTopicToText,
+  latestGuidedDraftText,
+  latestGuidedFeedbackSuggestions,
+  latestGuidedOutlinePlan,
+  latestGuidedSources,
+  latestGuidedStepText,
+  latestGuidedTopicPlan,
+  latestGuidedWritingTitle
+} from "./guided-writing-model.js";
 import { TeacherReviewNoteEditor } from "./teacher-review-note.js";
 import { hasUnderstandingReflection, TeacherUnderstandingRecord, understandingAnswerCount, understandingConfidenceCount } from "./teacher-understanding-record.js";
+import { TeacherChatTranscript } from "./teacher-chat-transcript.js";
 
 type SummaryTone = "good" | "neutral" | "warning";
 
@@ -152,10 +167,28 @@ const sourceMemoCount = (events: readonly PilotEvent[]): number => {
 
 export const processSignalsForSession = (session: PilotSession): readonly ProcessSignal[] => compactSourceSignals(session.events.map(signalForEvent).filter((signal): signal is ProcessSignal => signal !== null)).slice(-8);
 
+const stepHasGuidedText = (session: PilotSession, step: (typeof guidedStepOrder)[number]): boolean => {
+  if (step === "topic") return guidedTopicToText(latestGuidedTopicPlan(session)).trim().length > 0;
+  if (step === "sources") return guidedSourcesToText(latestGuidedSources(session)).trim().length > 0;
+  if (step === "outline") return guidedOutlineToText(latestGuidedOutlinePlan(session)).trim().length > 0;
+  if (step === "writing") return latestGuidedDraftText(session).trim().length > 0;
+  if (step === "revision") {
+    return latestGuidedFeedbackSuggestions(session).length > 0 ||
+      session.currentStage === GuidedWritingStages.feedback ||
+      session.currentStage === GuidedWritingStages.completed ||
+      session.finalSubmission !== null;
+  }
+  return latestGuidedStepText(session, step).trim().length > 0;
+};
+
+const guidedStepCount = (session: PilotSession): number =>
+  guidedStepOrder.filter((step) => stepHasGuidedText(session, step)).length;
+
 export function TeacherProcessRecord(props: { readonly session: PilotSession; readonly onUpdateReview: (sessionId: string, input: TeacherReviewUpdate) => void }): ReactElement {
   const outline = latestOutline(props.session);
   const latestDraft = latestDraftText(props.session);
   const isUnderstandingSession = props.session.researchMode === ResearchModes.understandingCalibration;
+  const isGuidedWritingSession = props.session.researchMode === ResearchModes.guidedWriting;
   const evidenceCount = outline?.evidence.filter((item) => item.trim().length > 0).length ?? 0;
   const hasClaim = outline !== null && outline.claim.trim().length > 0;
   const hasCounterargument = outline !== null && outline.counterargument.trim().length > 0;
@@ -169,6 +202,9 @@ export function TeacherProcessRecord(props: { readonly session: PilotSession; re
   const confidenceCount = understandingConfidenceCount(props.session);
   const hasReflection = hasUnderstandingReflection(props.session);
   const hasSubmitted = props.session.status === "submitted" || props.session.status === "completed";
+  const guidedCompletedSteps = guidedStepCount(props.session);
+  const guidedSources = latestGuidedSources(props.session).filter((source) => source.content.trim().length > 0 || source.source.trim().length > 0);
+  const guidedSuggestions = latestGuidedFeedbackSuggestions(props.session);
   const summaryItems: readonly ProcessSummaryItem[] = isUnderstandingSession
     ? [
         { label: "문제 응답", tone: answerCount === 4 ? "good" : answerCount > 0 ? "neutral" : "warning", value: `${answerCount}/4개` },
@@ -177,6 +213,14 @@ export function TeacherProcessRecord(props: { readonly session: PilotSession; re
         { label: "회고", tone: hasReflection ? "good" : "neutral", value: hasReflection ? "기록 있음" : "기록 없음" },
         { label: "제출", tone: hasSubmitted ? "good" : "neutral", value: hasSubmitted ? "완료" : "진행 중" }
       ]
+    : isGuidedWritingSession
+      ? [
+          { label: "단계 기록", tone: guidedCompletedSteps >= guidedStepOrder.length ? "good" : guidedCompletedSteps > 0 ? "neutral" : "warning", value: `${guidedCompletedSteps}/${guidedStepOrder.length}개` },
+          { label: "자료", tone: guidedSources.length > 0 ? "good" : "warning", value: `${guidedSources.length}개` },
+          { label: "초안", tone: latestGuidedDraftText(props.session).trim().length > 0 ? "good" : "neutral", value: latestGuidedDraftText(props.session).trim().length > 0 ? "기록 있음" : "기록 없음" },
+          { label: "고쳐쓰기", tone: guidedSuggestions.length > 0 ? "good" : "neutral", value: `${guidedSuggestions.length}개 제안` },
+          { label: "제출", tone: props.session.finalSubmission === null ? "neutral" : "good", value: props.session.finalSubmission === null ? "미제출" : "최종 제출됨" }
+        ]
     : [
         { label: "주장", tone: hasClaim ? "good" : "warning", value: hasClaim ? "주장 있음" : "주장 없음" },
         { label: "근거", tone: evidenceCount >= 2 ? "good" : "warning", value: `근거 ${evidenceCount}개` },
@@ -192,6 +236,15 @@ export function TeacherProcessRecord(props: { readonly session: PilotSession; re
         { label: "확신도", value: `${confidenceCount}/4` },
         { label: "이벤트", value: `${props.session.events.length}개` }
       ]
+    : isGuidedWritingSession
+      ? [
+          { label: "대화", value: `${props.session.chatTurns.length}턴` },
+          { label: "단계", value: `${guidedCompletedSteps}/${guidedStepOrder.length}` },
+          { label: "자료", value: `${guidedSources.length}개` },
+          { label: "초안", value: `${props.session.draftSnapshots.length}개` },
+          { label: "피드백", value: `${guidedSuggestions.length}개` },
+          { label: "이벤트", value: `${props.session.events.length}개` }
+        ]
     : [
         { label: "대화", value: `${props.session.chatTurns.length}턴` },
         { label: "생각 정리", value: outline === null ? "없음" : "있음" },
@@ -228,10 +281,94 @@ export function TeacherProcessRecord(props: { readonly session: PilotSession; re
       <TeacherReviewNoteEditor key={props.session.sessionId} note={props.session.teacherReview} onSave={(input) => props.onUpdateReview(props.session.sessionId, input)} />
       {isUnderstandingSession ? (
         <TeacherUnderstandingRecord session={props.session} />
+      ) : isGuidedWritingSession ? (
+        <GuidedWritingProcessDetails session={props.session} />
       ) : (
         <WritingProcessDetails latestDraft={latestDraft} outline={outline} session={props.session} />
       )}
     </article>
+  );
+}
+
+function GuidedWritingProcessDetails(props: { readonly session: PilotSession }): ReactElement {
+  const material = latestGuidedStepText(props.session, "material");
+  const topic = latestGuidedTopicPlan(props.session);
+  const sources = latestGuidedSources(props.session).filter((source) => source.content.trim().length > 0 || source.source.trim().length > 0);
+  const outline = latestGuidedOutlinePlan(props.session);
+  const draft = latestGuidedDraftText(props.session);
+  const title = latestGuidedWritingTitle(props.session);
+  const suggestions = latestGuidedFeedbackSuggestions(props.session);
+  const checkedSuggestionEvents = props.session.events.filter((event) => event.type === "suggestion_checked" || event.type === "suggestion_resolved");
+
+  return (
+    <>
+      <section className="guided-process-details" aria-label="단계형 글쓰기 기록">
+        <h3>단계형 글쓰기 기록</h3>
+        <ol className="guided-process-step-list">
+          <li>
+            <h4>{guidedStepSpecs.material.title}</h4>
+            <p>{material.trim().length > 0 ? material : "아직 기록이 없습니다."}</p>
+          </li>
+          <li>
+            <h4>{guidedStepSpecs.topic.title}</h4>
+            <p>{topic.focus.trim().length > 0 ? topic.focus : "아직 기록이 없습니다."}</p>
+          </li>
+          <li>
+            <h4>{guidedStepSpecs.sources.title}</h4>
+            {sources.length === 0 ? <p>아직 자료 기록이 없습니다.</p> : (
+              <ol className="guided-process-source-list">
+                {sources.map((source, index) => (
+                  <li key={source.id}>
+                    <strong>자료 {index + 1}</strong>
+                    <p>{source.content.trim().length > 0 ? source.content : "내용 기록 없음"}</p>
+                    <small>{source.source.trim().length > 0 ? `출처: ${source.source}` : "출처 기록 없음"}</small>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </li>
+          <li>
+            <h4>{guidedStepSpecs.outline.title}</h4>
+            <dl className="process-outline guided-process-outline">
+              <div><dt>서론</dt><dd>{outline.introduction.trim().length > 0 ? outline.introduction : "기록 없음"}</dd></div>
+              {outline.body.map((entry, index) => <div key={entry.id}><dt>본론 {index + 1}</dt><dd>{entry.text.trim().length > 0 ? entry.text : "기록 없음"}</dd></div>)}
+              <div><dt>결론</dt><dd>{outline.conclusion.trim().length > 0 ? outline.conclusion : "기록 없음"}</dd></div>
+            </dl>
+          </li>
+          <li>
+            <h4>{guidedStepSpecs.writing.title}</h4>
+            <dl className="process-outline guided-process-outline">
+              <div><dt>제목</dt><dd>{title.trim().length > 0 ? title : "제목 기록 없음"}</dd></div>
+              <div><dt>초안</dt><dd>{draft.trim().length > 0 ? draft : "초안 기록 없음"}</dd></div>
+            </dl>
+          </li>
+          <li>
+            <h4>{guidedStepSpecs.revision.title}</h4>
+            {suggestions.length === 0 ? <p>아직 고쳐쓰기 제안 기록이 없습니다.</p> : (
+              <ol className="guided-process-suggestion-list">
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion.id}>
+                    <strong>{suggestion.category}</strong>
+                    <p>{suggestion.focusLabel}: {suggestion.text}</p>
+                    <small>{suggestion.resolved ? "해결됨" : "미해결"}</small>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {checkedSuggestionEvents.length > 0 ? <p className="process-record-subtitle">학생 수정 확인 기록 {checkedSuggestionEvents.length}개</p> : null}
+          </li>
+        </ol>
+      </section>
+      <section>
+        <h3>최종 글</h3>
+        <p>{props.session.finalSubmission?.text ?? "아직 제출하지 않았습니다."}</p>
+      </section>
+      <TeacherChatTranscript turns={props.session.chatTurns} />
+      <section>
+        <h3>붙여넣기 기록</h3>
+        {props.session.pasteEvents.length === 0 ? <p>붙여넣기 기록이 없습니다.</p> : <ol className="paste-list">{props.session.pasteEvents.map((paste) => <li key={paste.id}>{paste.textLength}자, {paste.lineCount}줄: {paste.textPreviewFirst80}</li>)}</ol>}
+      </section>
+    </>
   );
 }
 
@@ -242,10 +379,7 @@ function WritingProcessDetails(props: { readonly latestDraft: string; readonly o
         <h3>최종 글</h3>
         <p>{props.session.finalSubmission?.text ?? "아직 제출하지 않았습니다."}</p>
       </section>
-      <section className="teacher-chat-log-section">
-        <h3>AI 대화 요약</h3>
-        <p>{props.session.chatTurns.length === 0 ? "아직 대화가 없습니다." : `학생 질문과 AI 응답이 ${props.session.chatTurns.length}턴 기록되었습니다. 원문 대화는 관리자 로그에서만 확인합니다.`}</p>
-      </section>
+      <TeacherChatTranscript turns={props.session.chatTurns} />
       <section>
         <h3>생각 정리 기록</h3>
         {props.outline === null ? <p>아직 생각 정리가 없습니다.</p> : <dl className="process-outline"><div><dt>주장</dt><dd>{props.outline.claim}</dd></div><div><dt>근거</dt><dd>{props.outline.evidence.filter((item) => item.trim().length > 0).join(" / ")}</dd></div><div><dt>출처</dt><dd>{props.outline.question}</dd></div><div><dt>반론</dt><dd>{props.outline.counterargument}</dd></div></dl>}

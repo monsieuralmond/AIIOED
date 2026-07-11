@@ -9,6 +9,7 @@
     "test": "vitest",
     "qa:screens": "node scripts/capture-qa-screens.mjs",
     "qa:contact-sheet": "node scripts/make-visual-contact-sheet.mjs",
+    "test:e2e": "playwright test --project=chromium",
     "verify:classroom-load": "node scripts/run-classroom-load-test.mjs",
     "verify:deployment": "node scripts/verify-research-deployment.mjs",
     "verify:worktree": "node scripts/check-worktree-state.mjs",
@@ -24,6 +25,7 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@playwright/test": "^1.57.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",

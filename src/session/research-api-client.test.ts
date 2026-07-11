@@ -116,6 +116,18 @@ describe("research API client", () => {
     expect(headerValue(firstRequestInit(fetchMock), "x-research-session-token")).toBe("session-token-test");
   });
 
+  it("does not disguise unexpected client errors as network failures", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("unexpected client failure");
+    }));
+
+    await expect(requestSessionCalibrationChat({
+      message: "질문",
+      requestId: "unexpected-client-error",
+      sessionId: "session-server"
+    })).rejects.toThrow("unexpected client failure");
+  });
+
   it("clears expired session credentials when the server rejects a session token", async () => {
     saveBrowserActorIdentity({ accountId: "student-s001", role: "student" });
     saveBrowserSessionIdentity({
@@ -424,9 +436,81 @@ describe("research API client", () => {
 
     await syncSessionDelta(previous, next);
 
-    expect(posted.map((item) => item.path)).toEqual(["/api/chat-turn", "/api/event"]);
-    expect(posted[0]?.body["id"]).toBe("chat-local-student");
+    expect(posted.map((item) => item.path)).toEqual(["/api/session/sync"]);
     expect(posted[0]?.body["sessionId"]).toBe(session.sessionId);
-    expect(posted[1]?.body["id"]).toBe("event-new");
+    expect(posted[0]?.body["chatTurns"]).toEqual([expect.objectContaining({ id: "chat-local-student" })]);
+    expect(posted[0]?.body["events"]).toEqual([expect.objectContaining({ id: "event-new" })]);
+  });
+
+  it("keeps raw student and assistant message text in synced event payloads", async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      posted.push(parsePostedBody(typeof init?.body === "string" ? init.body : null));
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const student = sampleStudents[0];
+    if (student === undefined) throw new Error("sample student fixture is missing.");
+    const session = createSession({ ...sampleAssignment, researchMode: ResearchModes.guidedWriting }, student);
+    const messageEvent: PilotEvent = {
+      id: "event-student-message",
+      payload: { text: "원문 질문입니다." },
+      stage: session.currentStage,
+      timestamp: "2026-07-05T00:01:00.000Z",
+      type: "student_message"
+    };
+
+    await syncSessionDelta({ ...session, events: [] }, { ...session, events: [messageEvent] });
+
+    const firstPost = posted[0];
+    if (firstPost === undefined) throw new Error("session sync request was not posted.");
+    if (!isRecord(firstPost)) throw new Error("session sync body was not an object.");
+    expect(firstPost["events"]).toEqual([expect.objectContaining({
+      id: "event-student-message",
+      payload: { text: "원문 질문입니다." }
+    })]);
+  });
+
+  it("retries the complete unsaved session delta after an earlier queued sync fails", async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    let callCount = 0;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      posted.push(parsePostedBody(typeof init?.body === "string" ? init.body : null));
+      callCount += 1;
+      return new Response(JSON.stringify({ message: callCount <= 4 ? "temporary failure" : "ok" }), { status: callCount <= 4 ? 503 : 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const student = sampleStudents[0];
+    if (student === undefined) throw new Error("sample student fixture is missing.");
+    const session = createSession({ ...sampleAssignment, researchMode: ResearchModes.guidedWriting }, student);
+    const firstEvent: PilotEvent = {
+      id: "event-first-unsaved",
+      payload: { order: 1 },
+      stage: session.currentStage,
+      timestamp: "2026-07-05T00:01:00.000Z",
+      type: "stage_completed"
+    };
+    const secondEvent: PilotEvent = {
+      id: "event-second-unsaved",
+      payload: { order: 2 },
+      stage: session.currentStage,
+      timestamp: "2026-07-05T00:02:00.000Z",
+      type: "stage_completed"
+    };
+    const firstNext = { ...session, events: [firstEvent] };
+    const secondNext = { ...session, events: [firstEvent, secondEvent] };
+
+    const firstSync = syncSessionDelta(session, firstNext);
+    const secondSync = syncSessionDelta(firstNext, secondNext);
+    await expect(firstSync).rejects.toMatchObject({ status: 503 });
+    await expect(secondSync).rejects.toMatchObject({ status: 503 });
+
+    await syncSessionDelta(secondNext, secondNext);
+
+    const recoveryBody = posted[4];
+    expect(recoveryBody?.["events"]).toEqual([
+      expect.objectContaining({ id: "event-first-unsaved" }),
+      expect.objectContaining({ id: "event-second-unsaved" })
+    ]);
   });
 });

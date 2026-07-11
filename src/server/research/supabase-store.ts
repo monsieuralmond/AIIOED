@@ -3,10 +3,10 @@ import { isAssignmentAssignedToStudent } from "../../shared/assignment-access.js
 import type { ChatTurn, CoachResponseType, PilotSession } from "../../shared/types.js";
 import { ApiError } from "./http.js";
 import { credentialHash } from "./credentials.js";
-import { participantCodeHash, serverId } from "./store.js";
-import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionStartResult, StoredChatTurn } from "./store.js";
+import { assertSessionWritable, participantCodeHash, serverId } from "./store.js";
+import type { DeleteResult, ExportBundle, ResearchStore, SessionContext, SessionDelta, SessionStartResult, StoredChatTurn } from "./store.js";
 import { buildSupabaseExport } from "./supabase-export.js";
-import { chatTurnFromRow, contextFromSession, encode, inList, rowToChatSession, rowToSession, rowsForSessionIds } from "./supabase-session-rows.js";
+import { chatTurnFromRow, contextFromSession, encode, inList, rowToChatSession, rowToSession, rowsForSessionIds, rowsToSessions } from "./supabase-session-rows.js";
 import type { AssignmentRow, ChildContext, SessionRow, StudentRow } from "./supabase-session-rows.js";
 import { SupabaseRestClient } from "./supabase-rest.js";
 import type { SupabaseConfig } from "./supabase-rest.js";
@@ -34,8 +34,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 const isSubmittedSessionRow = (row: Pick<SessionRow, "completed_at" | "status">): boolean =>
   row.completed_at !== null || row.status === "submitted" || row.status === "completed";
-
-const resetChildTables = ["chat_turns", "events", "artifacts", "measures"] as const;
 
 const deleteResultFromRpc = (value: unknown): Pick<DeleteResult, "deleted" | "logId"> => {
   if (!isRecord(value)) throw new ApiError(500, "Delete result was not returned.");
@@ -142,6 +140,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async insertArtifact(input): Promise<void> {
+      assertSessionWritable(await sessionContext(input.sessionId));
       const context = await childContext(input.sessionId);
       await db.upsert("artifacts", {
         ...context,
@@ -155,6 +154,8 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async insertChatTurn(input): Promise<StoredChatTurn> {
+      if (input.context !== undefined) assertSessionWritable(input.context);
+      else assertSessionWritable(await sessionContext(input.sessionId));
       const context = input.context === undefined ? await childContext(input.sessionId) : childContextFromSessionContext(input.context);
       const payload = {
         ...context,
@@ -175,6 +176,8 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async insertEvent(input): Promise<void> {
+      if (input.context !== undefined) assertSessionWritable(input.context);
+      else assertSessionWritable(await sessionContext(input.sessionId));
       const context = input.context === undefined ? await childContext(input.sessionId) : childContextFromSessionContext(input.context);
       await db.upsert("events", {
         ...context,
@@ -187,6 +190,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async insertMeasure(input): Promise<void> {
+      assertSessionWritable(await sessionContext(input.sessionId));
       const context = await childContext(input.sessionId);
       await db.upsert("measures", {
         ...context,
@@ -215,19 +219,14 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       ];
       const query = `select=*&order=updated_at.desc${filters.length === 0 ? "" : `&${filters.join("&")}`}`;
       const rows = await db.get<readonly SessionRow[]>("sessions", query);
-      return { sessions: await Promise.all(rows.map((row) => rowToSession(db, row))) };
+      return { sessions: await rowsToSessions(db, rows) };
     },
 
     async resetStudentSession(input) {
-      const session = await sessionContext(input.sessionId);
-      if (session.research_locked) throw new ApiError(409, "잠금 처리된 연구 데이터는 교사 화면에서 리셋할 수 없습니다.");
-      const ownedAssignments = await db.get<readonly Pick<AssignmentRow, "id">[]>(
-        "assignments",
-        `select=id&id=eq.${encode(session.assignment_id)}&created_by_teacher_id=eq.${encode(input.teacherId)}&limit=1`
-      );
-      if (ownedAssignments.length === 0) throw new ApiError(403, "Teacher cannot reset this session.");
-      await Promise.all(resetChildTables.map((table) => db.delete<unknown>(table, `session_id=eq.${encode(input.sessionId)}`)));
-      await db.delete<unknown>("sessions", `session_id=eq.${encode(input.sessionId)}`);
+      await db.rpc("reset_research_session", {
+        p_session_id: input.sessionId,
+        p_teacher_id: input.teacherId
+      });
       return { sessionId: input.sessionId };
     },
 
@@ -291,7 +290,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         sessionId: serverId("session"),
         student: { anonymousId: student.student_anonymous_id }
       };
-      const row = single(await db.upsert<readonly SessionRow[]>("sessions", {
+      const insertedRows = await db.upsertIgnoringDuplicates<readonly SessionRow[]>("sessions", {
         assignment_id: assignment.id,
         assignment_snapshot: assignedAssignment,
         class_group_id: assignment.class_group_id,
@@ -302,18 +301,45 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         session_id: session.sessionId,
         status: session.status,
         student_anonymous_id: student.student_anonymous_id
-      }, "session_id"), "Session was not created.");
-      return { assignment: assignedAssignment, context: contextFromSession(row), session: { ...session, createdAt: row.created_at, updatedAt: row.updated_at } };
+      }, "assignment_id,student_anonymous_id");
+      const row = insertedRows[0] ?? single(await db.get<readonly SessionRow[]>(
+        "sessions",
+        `assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&limit=1`
+      ), "Session was not created.");
+      if (isSubmittedSessionRow(row)) throw new ApiError(409, "이미 제출한 과제입니다.");
+      return {
+        assignment: assignedAssignment,
+        context: contextFromSession(row),
+        session: {
+          ...session,
+          createdAt: row.created_at,
+          sessionId: row.session_id,
+          updatedAt: row.updated_at
+        }
+      };
+    },
+
+    async syncSessionDelta(input: SessionDelta): Promise<void> {
+      await db.rpc("sync_research_session", {
+        payload: input
+      });
     },
 
     async updateStage(input): Promise<SessionContext> {
+      const current = await sessionContext(input.sessionId);
+      assertSessionWritable(current);
+      const locksResearch = input.status === "submitted" || input.status === "completed";
+      const query = "session_id=eq." + encode(input.sessionId) + "&research_locked=eq.false";
       const body = {
         ...(input.completedAt === undefined ? {} : { completed_at: input.completedAt }),
         current_stage: input.currentStage,
         ...(input.status === undefined ? {} : { status: input.status }),
+        ...(locksResearch ? { research_locked: true } : {}),
         updated_at: new Date().toISOString()
       };
-      const row = single(await db.patch<readonly SessionRow[]>("sessions", `session_id=eq.${encode(input.sessionId)}`, body), "Session was not updated.");
+      const rows = await db.patch<readonly SessionRow[]>("sessions", query, body);
+      if (rows.length === 0) throw new ApiError(409, "제출된 연구 데이터는 더 이상 수정할 수 없습니다.");
+      const row = single(rows, "Session was not updated.");
       return contextFromSession(row);
     }
   };

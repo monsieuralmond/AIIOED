@@ -1,7 +1,7 @@
 import { researchServerEnv } from "./env.js";
 import { SupabaseRestClient } from "./supabase-rest.js";
 
-const authSupabaseTimeoutMs = 6_000;
+const authSupabaseTimeoutMs = 12_000;
 
 export const authSupabaseClient = (): SupabaseRestClient => {
   const env = researchServerEnv();

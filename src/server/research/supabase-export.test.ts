@@ -165,4 +165,74 @@ describe("Supabase export", () => {
       sessions: [expect.objectContaining({ sessionId: "session-completed", status: "completed" })]
     });
   });
+
+  it("exports the configured independent problem count instead of assuming four problems", async () => {
+    const configuredNumbers = [1, 4];
+    const configuredProblems = configuredNumbers.map((number) => ({ number, prompt: `문제 ${number}`, title: `문제 ${number}` }));
+    const sessionRow = {
+      assignment_id: "assignment-dynamic",
+      assignment_snapshot: {
+        calibrationConfig: { independentProblems: configuredProblems },
+        id: "assignment-dynamic",
+        passage: "설명 자료",
+        question: "설명하세요.",
+        researchCondition: "single_group_baseline",
+        researchMode: "understanding_calibration",
+        title: "동적 문항",
+        gradeLevel: "초등 고학년",
+        targetLength: ""
+      },
+      class_group_id: "class-pilot",
+      completed_at: "2026-07-05T00:20:00.000Z",
+      created_at: "2026-07-05T00:00:00.000Z",
+      current_stage: "completed",
+      metadata: {},
+      research_condition: "single_group_baseline",
+      research_mode: "understanding_calibration",
+      session_id: "session-dynamic",
+      status: "completed",
+      student_anonymous_id: "anon-dynamic",
+      updated_at: "2026-07-05T00:20:00.000Z"
+    };
+    const artifacts = configuredNumbers.map((number) => ({
+      assignment_id: "assignment-dynamic",
+      class_group_id: "class-pilot",
+      created_at: `2026-07-05T00:0${number}:00.000Z`,
+      id: `artifact-dynamic-${number}`,
+      kind: `problem${number}`,
+      payload: { answer: `답변 ${number}` },
+      session_id: "session-dynamic",
+      stage: `problem_${number}`,
+      student_anonymous_id: "anon-dynamic",
+      updated_at: null
+    }));
+    const measures = configuredNumbers.map((number) => ({
+      assignment_id: "assignment-dynamic",
+      class_group_id: "class-pilot",
+      created_at: `2026-07-05T00:1${number}:00.000Z`,
+      id: `measure-dynamic-${number}`,
+      kind: `problem${number}_confidence`,
+      payload: { confidence: number + 2 },
+      session_id: "session-dynamic",
+      stage: `problem_${number}_confidence`,
+      student_anonymous_id: "anon-dynamic"
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const table = tableFromUrl(input);
+      if (table === "sessions") return new Response(JSON.stringify([sessionRow]), { status: 200 });
+      if (table === "artifacts") return new Response(JSON.stringify([...artifacts, { assignment_id: "assignment-dynamic", class_group_id: "class-pilot", created_at: "2026-07-05T00:18:00.000Z", id: "artifact-dynamic-final", kind: "final_reflection", payload: { text: "마지막 생각" }, session_id: "session-dynamic", stage: "final_reflection", student_anonymous_id: "anon-dynamic", updated_at: null }]), { status: 200 });
+      if (table === "measures") return new Response(JSON.stringify([...measures, { assignment_id: "assignment-dynamic", class_group_id: "class-pilot", created_at: "2026-07-05T00:17:00.000Z", id: "measure-dynamic-reflection", kind: "reflection_self_report", payload: {}, session_id: "session-dynamic", stage: "reflection_survey", student_anonymous_id: "anon-dynamic" }, { assignment_id: "assignment-dynamic", class_group_id: "class-pilot", created_at: "2026-07-05T00:19:00.000Z", id: "measure-dynamic-final", kind: "final_reflection_self_report", payload: {}, session_id: "session-dynamic", stage: "final_reflection", student_anonymous_id: "anon-dynamic" }]), { status: 200 });
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bundle = await buildSupabaseExport(new SupabaseRestClient({ serviceRoleKey: "service-role-test", url: "https://example.supabase.co" }), {
+      anonymized: true,
+      completedOnly: true
+    });
+    const sessions = bundle["raw-json.json"]["sessions"];
+    if (!Array.isArray(sessions)) throw new Error("Dynamic export sessions were not returned.");
+    expect(sessions[0]).toMatchObject({ completedProblemCount: "2", problem1_answer: "답변 1", problem4_answer: "답변 4", requiredProblemCount: "2" });
+    expect(bundle["item-long.csv"]).toContain("problem4");
+  });
 });

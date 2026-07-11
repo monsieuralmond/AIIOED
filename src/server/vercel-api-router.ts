@@ -26,6 +26,7 @@ const apiRoutePaths = [
   "session/list",
   "session/reset",
   "session/start",
+  "session/sync",
   "session/update-stage"
 ] as const;
 
@@ -65,6 +66,7 @@ export const createVercelApiJsonHandler = (): JsonHandler => {
     "session/list": researchHandlers.sessionList,
     "session/reset": researchHandlers.sessionReset,
     "session/start": researchHandlers.sessionStart,
+    "session/sync": researchHandlers.sessionSync,
     "session/update-stage": researchHandlers.updateStage
   } satisfies Record<ApiRoutePath, JsonHandler>;
 

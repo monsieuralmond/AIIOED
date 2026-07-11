@@ -209,6 +209,8 @@ const authorizeRosterMutation = async (input: RosterUpsertInput, request: Parame
     if (input.expectedRosterRevision !== undefined && input.expectedRosterRevision !== scope.revision) {
       throw new ApiError(409, "Roster changed on the server. Reload before saving again.");
     }
+    const deletedStudents = await rowsByIds<RosterStudentRow>(db, "students", "id,student_anonymous_id", input.deletedStudentIds);
+    await assertNoLockedResearchDataDeletion(db, input, deletedStudents);
   } else {
     if (teacherId === null || scope === null) throw new ApiError(401, "Teacher authorization is required.");
     requireTeacherAuth(request, teacherId);
@@ -223,16 +225,43 @@ const deleteRowsByIds = async (db: SupabaseRestClient, table: string, column: st
   await db.delete<unknown>(table, `${column}=${inList(uniqueIds)}`);
 };
 
+const runWithConcurrency = async <T>(items: readonly T[], limit: number, task: (item: T) => Promise<void>): Promise<void> => {
+  let firstError: unknown;
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (firstError === undefined) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const item = items[currentIndex];
+      if (item === undefined) return;
+      try {
+        await task(item);
+      } catch (error) {
+        if (firstError === undefined) firstError = error;
+        return;
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.allSettled(workers);
+  if (firstError !== undefined) {
+    if (firstError instanceof Error) throw firstError;
+    throw new ApiError(500, "Roster save failed.");
+  }
+};
+
 const upsertRows = async (db: SupabaseRestClient, table: string, rows: readonly Record<string, unknown>[]): Promise<void> => {
   if (rows.length === 0) return;
   await db.upsert<unknown>(table, rows, "id");
 };
 
+const rosterPatchConcurrency = 4;
+
 const patchRowsById = async (db: SupabaseRestClient, table: string, rows: readonly (Record<string, unknown> & { readonly id: string })[]): Promise<void> => {
-  await Promise.all(rows.map((row) => {
+  await runWithConcurrency(rows, rosterPatchConcurrency, async (row) => {
     const { id, ...body } = row;
-    return db.patch<unknown>(table, `id=eq.${encode(id)}`, body);
-  }));
+    await db.patch<unknown>(table, `id=eq.${encode(id)}`, body);
+  });
 };
 
 const applyRosterDeltaRows = async (db: SupabaseRestClient, input: RosterUpsertInput, activeTeacherId: string | null): Promise<void> => {

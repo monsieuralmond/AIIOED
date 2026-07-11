@@ -1,6 +1,5 @@
-import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { enterStudent, openTeacherExport } from "./helpers.js";
+import { enterStudent, openAdminExport } from "./helpers.js";
 
 test("complete pilot flow", async ({ page }) => {
   await enterStudent(page);
@@ -18,7 +17,7 @@ test("complete pilot flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: "확인됨" })).toBeVisible();
   await page.getByRole("button", { name: "제출" }).click();
   await expect(page.getByText("제출 완료")).toBeVisible();
-  await openTeacherExport(page);
+  await openAdminExport(page);
   const raw = await page.getByTestId("export-json").textContent();
   const exported: unknown = JSON.parse(raw ?? "{}");
   expect(exported).toHaveProperty("sessions.0.finalSubmission.text");
@@ -29,5 +28,4 @@ test("complete pilot flow", async ({ page }) => {
   expect(JSON.stringify(exported)).toContain("feedback_generated");
   expect(JSON.stringify(exported)).toContain("feedback_viewed");
   expect(JSON.stringify(exported)).toContain("suggestion_resolved");
-  await writeFile(".omo/evidence/pilot-writing-coach-v0/task-11-export.json", raw ?? "{}", "utf8");
 });

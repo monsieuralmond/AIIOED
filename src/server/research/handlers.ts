@@ -12,12 +12,14 @@ import {
   rosterUpsertSchema,
   sessionResetSchema,
   sessionStartSchema,
+  sessionDeltaSchema,
   stageUpdateSchema
 } from "./schemas.js";
+import { assertSessionWritable } from "./store.js";
 import type { ResearchStore } from "./store.js";
 import { createSupabaseResearchStore } from "./supabase-store.js";
 import { loadRoster, upsertRoster, upsertRosterDelta } from "./roster-handlers.js";
-import { adminAuthFromRequest, issueSessionToken, requireAdminAuth, requireSessionAuth, requireTeacherAuth, teacherAuthFromRequest } from "./auth.js";
+import { adminAuthFromRequest, issueSessionToken, requireAdminAuth, requireSessionAuth, requireSessionIdAuth, requireTeacherAuth, teacherAuthFromRequest } from "./auth.js";
 import { researchDeploymentHealth } from "./health.js";
 import { createChatHandler } from "./chat-handler.js";
 
@@ -58,13 +60,16 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   readonly sessionList: JsonHandler;
   readonly sessionReset: JsonHandler;
   readonly sessionStart: JsonHandler;
+  readonly sessionSync: JsonHandler;
   readonly updateStage: JsonHandler;
 } => ({
   artifact: async (payload, request) => {
     const input = artifactWriteSchema.parse(payload);
+    requireSessionIdAuth(request, input.sessionId);
     const store = storeFactory();
     const { context } = await store.resumeSession(input.sessionId);
     requireSessionAuth(request, context);
+    assertSessionWritable(context);
     await store.insertArtifact({
       id: input.id,
       kind: input.kind,
@@ -81,9 +86,11 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
 
   chatTurn: async (payload, request) => {
     const input = chatTurnWriteSchema.parse(payload);
+    requireSessionIdAuth(request, input.sessionId);
     const store = storeFactory();
     const { context } = await store.resumeSession(input.sessionId);
     requireSessionAuth(request, context);
+    assertSessionWritable(context);
     await store.insertChatTurn({
       id: input.id,
       role: input.role,
@@ -114,9 +121,11 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
 
   event: async (payload, request) => {
     const input = eventWriteSchema.parse(payload);
+    requireSessionIdAuth(request, input.sessionId);
     const store = storeFactory();
     const { context } = await store.resumeSession(input.sessionId);
     requireSessionAuth(request, context);
+    assertSessionWritable(context);
     await store.insertEvent({
       id: input.id,
       payload: input.payload,
@@ -149,9 +158,11 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
 
   measure: async (payload, request) => {
     const input = measureWriteSchema.parse(payload);
+    requireSessionIdAuth(request, input.sessionId);
     const store = storeFactory();
     const { context } = await store.resumeSession(input.sessionId);
     requireSessionAuth(request, context);
+    assertSessionWritable(context);
     await store.insertMeasure({
       id: input.id,
       kind: input.kind,
@@ -217,6 +228,7 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     const store = storeFactory();
     const teacherAuth = "sessionId" in input ? null : teacherAuthFromRequest(request);
     if (teacherAuth !== null) requireTeacherAuth(request, teacherAuth.teacherId);
+    if ("sessionId" in input) requireSessionIdAuth(request, input.sessionId);
     const result = "sessionId" in input
       ? await store.resumeSession(input.sessionId)
       : await retryTransientSessionStart(() => store.startSession({
@@ -237,11 +249,63 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
     };
   },
 
+  sessionSync: async (payload, request) => {
+    const input = sessionDeltaSchema.parse(payload);
+    requireSessionIdAuth(request, input.sessionId);
+    const store = storeFactory();
+    if (store.syncSessionDelta !== undefined) {
+      await store.syncSessionDelta(input);
+      return { ok: true };
+    }
+    const { context } = await store.resumeSession(input.sessionId);
+    requireSessionAuth(request, context);
+    assertSessionWritable(context);
+    for (const turn of input.chatTurns) {
+      await store.insertChatTurn({
+        id: turn.id,
+        ...(turn.requestId === undefined ? {} : { requestId: turn.requestId }),
+        ...(turn.responseType === undefined ? {} : { responseType: turn.responseType }),
+        role: turn.role,
+        sessionId: input.sessionId,
+        stage: context.currentStage,
+        text: turn.text,
+        timestamp: turn.timestamp
+      });
+    }
+    for (const event of input.events) await store.insertEvent({ ...event, sessionId: input.sessionId });
+    for (const artifact of input.artifacts) await store.insertArtifact({
+      id: artifact.id,
+      kind: artifact.kind,
+      payload: artifact.payload,
+      sessionId: input.sessionId,
+      stage: artifact.stage,
+      timestamp: artifact.createdAt,
+      ...(artifact.updatedAt === undefined ? {} : { updatedAt: artifact.updatedAt })
+    });
+    for (const measure of input.measures) await store.insertMeasure({
+      id: measure.id,
+      kind: measure.kind,
+      payload: measure.payload,
+      sessionId: input.sessionId,
+      stage: measure.stage,
+      timestamp: measure.collectedAt
+    });
+    await store.updateStage({
+      currentStage: input.currentStage,
+      sessionId: input.sessionId,
+      ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),
+      status: input.status
+    });
+    return { ok: true };
+  },
+
   updateStage: async (payload, request) => {
     const input = stageUpdateSchema.parse(payload);
+    requireSessionIdAuth(request, input.sessionId);
     const store = storeFactory();
     const { context } = await store.resumeSession(input.sessionId);
     requireSessionAuth(request, context);
+    assertSessionWritable(context);
     return store.updateStage({
       currentStage: input.currentStage,
       sessionId: input.sessionId,

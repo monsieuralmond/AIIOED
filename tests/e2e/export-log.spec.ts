@@ -1,9 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent, enterTeacher, openTeacherExport } from "./helpers.js";
+import { enterStudent, openAdminExport } from "./helpers.js";
 
 test("export view exposes research JSON shape", async ({ page }) => {
-  await enterTeacher(page);
-  await page.getByRole("button", { name: "로그 보기" }).click();
+  await openAdminExport(page);
   const raw = await page.getByTestId("export-json").textContent();
   expect(raw).not.toBeNull();
   const exported: unknown = JSON.parse(raw ?? "{}");
@@ -49,10 +48,9 @@ test("export captures revision check attempts for later labeling", async ({ page
   await page.getByRole("button", { name: "내 수정 확인" }).click();
   await expect(page.getByText("개요에 쓴 자료나 예시 두 가지가 초안에 아직 모두 들어가지 않았어요.")).toBeVisible();
 
-  await openTeacherExport(page);
+  await openAdminExport(page);
   const raw = await page.getByTestId("export-json").textContent();
   const exported: unknown = JSON.parse(raw ?? "{}");
-
   expect(JSON.stringify(exported)).toContain("suggestion_checked");
   expect(JSON.stringify(exported)).toContain("개요에 쓴 자료나 예시 두 가지가 초안에 아직 모두 들어가지 않았어요.");
   await expect(page.getByText(/라벨링 행 [1-9]/u)).toBeVisible();

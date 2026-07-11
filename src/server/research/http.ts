@@ -13,12 +13,41 @@ export class ApiError extends Error {
 
 export type JsonHandler = (payload: unknown, request: IncomingMessage) => Promise<unknown>;
 
+const maxBodyBytes = (): number => {
+  const raw = process.env["MAX_JSON_BODY_BYTES"];
+  if (raw === undefined) return 2_000_000;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2_000_000;
+};
+
 const readBody = async (request: IncomingMessage): Promise<string> =>
   new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    request.on("error", reject);
+    let bytes = 0;
+    let settled = false;
+    request.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      bytes += chunk.byteLength;
+      if (bytes > maxBodyBytes()) {
+        settled = true;
+        request.resume();
+        reject(new ApiError(413, "Request body is too large."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      if (!settled) {
+        settled = true;
+        resolve(Buffer.concat(chunks).toString("utf8"));
+      }
+    });
+    request.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    });
   });
 
 const readJson = async (request: IncomingMessage): Promise<unknown> => {
@@ -40,7 +69,7 @@ const statusForError = (error: unknown): number => {
 const messageForError = (error: unknown): string => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof ZodError) return "Request payload does not match the API schema.";
-  return error instanceof Error ? error.message : "Unexpected API error.";
+  return "Unexpected API error.";
 };
 
 export const sendJson = (response: ServerResponse, statusCode: number, payload: unknown): void => {

@@ -58,6 +58,7 @@ type EventRow = {
   readonly created_at: string;
   readonly id: string;
   readonly payload: Record<string, unknown>;
+  readonly session_id: string;
   readonly stage: Stage;
   readonly type: PilotEvent["type"];
 };
@@ -67,6 +68,7 @@ type ArtifactRow = {
   readonly id: string;
   readonly kind: string;
   readonly payload: Record<string, unknown>;
+  readonly session_id: string;
   readonly stage: string;
   readonly updated_at: string | null;
 };
@@ -76,6 +78,7 @@ type MeasureRow = {
   readonly id: string;
   readonly kind: string;
   readonly payload: Record<string, unknown>;
+  readonly session_id: string;
   readonly stage: string;
 };
 
@@ -108,6 +111,7 @@ export const contextFromSession = (row: SessionRow): SessionContext => ({
   currentStage: row.current_stage,
   researchCondition: row.research_condition,
   researchMode: row.research_mode,
+  researchLocked: row.research_locked,
   sessionId: row.session_id,
   status: row.status,
   studentAnonymousId: row.student_anonymous_id
@@ -188,4 +192,37 @@ export const rowToSession = async (db: SupabaseRestClient, row: SessionRow): Pro
     rowsForSessionIds<MeasureRow>(db, "measures", [row.session_id])
   ]);
   return sessionFromRows(row, { artifacts, chatTurns, events, measures });
+};
+
+const rowsBySessionId = <T extends { readonly session_id: string }>(rows: readonly T[]): ReadonlyMap<string, readonly T[]> => {
+  const grouped = new Map<string, T[]>();
+  for (const row of rows) {
+    const currentRows = grouped.get(row.session_id);
+    if (currentRows === undefined) grouped.set(row.session_id, [row]);
+    else currentRows.push(row);
+  }
+  return grouped;
+};
+
+const groupedRowsForSession = <T>(grouped: ReadonlyMap<string, readonly T[]>, sessionId: string): readonly T[] =>
+  grouped.get(sessionId) ?? [];
+
+export const rowsToSessions = async (db: SupabaseRestClient, rows: readonly SessionRow[]): Promise<readonly PilotSession[]> => {
+  const sessionIds = rows.map((row) => row.session_id);
+  const [chatTurns, events, artifacts, measures] = await Promise.all([
+    rowsForSessionIds<ChatTurnRow>(db, "chat_turns", sessionIds),
+    rowsForSessionIds<EventRow>(db, "events", sessionIds),
+    rowsForSessionIds<ArtifactRow>(db, "artifacts", sessionIds),
+    rowsForSessionIds<MeasureRow>(db, "measures", sessionIds)
+  ]);
+  const chatTurnsBySession = rowsBySessionId(chatTurns);
+  const eventsBySession = rowsBySessionId(events);
+  const artifactsBySession = rowsBySessionId(artifacts);
+  const measuresBySession = rowsBySessionId(measures);
+  return rows.map((row) => sessionFromRows(row, {
+    artifacts: groupedRowsForSession(artifactsBySession, row.session_id),
+    chatTurns: groupedRowsForSession(chatTurnsBySession, row.session_id),
+    events: groupedRowsForSession(eventsBySession, row.session_id),
+    measures: groupedRowsForSession(measuresBySession, row.session_id)
+  }));
 };

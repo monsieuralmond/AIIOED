@@ -1,6 +1,5 @@
-import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { enterStudent, openTeacherExport } from "./helpers.js";
+import { enterStudent, openAdminExport } from "./helpers.js";
 
 test("draft editor records paste attempts", async ({ page }) => {
   const pastedText =
@@ -22,12 +21,11 @@ test("draft editor records paste attempts", async ({ page }) => {
     node.dispatchEvent(event);
   }, pastedText);
   await expect(page.getByText("붙여넣기가 기록되었어요")).toBeVisible();
-  await openTeacherExport(page);
+  expect(pastedText.length).toBeGreaterThanOrEqual(140);
+  await openAdminExport(page);
   const raw = await page.getByTestId("export-json").textContent();
   const exported: unknown = JSON.parse(raw ?? "{}");
   expect(exported).toHaveProperty("sessions.0.pasteEvents.0.target", "draft");
   expect(exported).toHaveProperty("sessions.0.pasteEvents.0.textLength", pastedText.length);
-  expect(pastedText.length).toBeGreaterThanOrEqual(140);
   expect(JSON.stringify(exported)).toContain("paste_detected");
-  await writeFile(".omo/evidence/pilot-writing-coach-v0/task-9-paste.json", raw ?? "{}", "utf8");
 });

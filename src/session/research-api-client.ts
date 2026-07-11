@@ -1,8 +1,7 @@
 import type { CalibrationChatRequest, CalibrationChatResponse } from "../shared/calibration-ai.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
-import type { ResearchArtifact, ResearchMeasure } from "../shared/research.js";
-import type { Assignment, ChatTurn, ClassGroup, PilotEvent, PilotState, PilotSession, Stage, StudentAccount, TeacherAccount } from "../shared/types.js";
-import { clearBrowserAdminAuth, clearBrowserActorIdentity, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserAdminAuth, loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
+import type { Assignment, ClassGroup, PilotEvent, PilotState, PilotSession, StudentAccount, TeacherAccount } from "../shared/types.js";
+import { clearBrowserAdminAuth, clearBrowserActorIdentity, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserAdminAuth, loadBrowserAiAuthHeaders, loadBrowserSessionToken, loadBrowserTeacherAuth } from "./browser-session.js";
 import type { BrowserSessionIdentity } from "./browser-session.js";
 import { parseDatabaseRoster } from "./database-roster.js";
 import type { DatabaseRoster } from "./database-roster.js";
@@ -127,18 +126,35 @@ const parseJsonPayload = (text: string, status: number): unknown => {
 };
 
 const postJson = async (path: string, body: unknown, headers: Readonly<Record<string, string>> = {}): Promise<unknown> => {
-  const response = await fetch(path, {
-    body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
-    method: "POST"
-  });
-  const payload = parseJsonPayload(await response.text(), response.status);
-  if (!response.ok) {
-    if (response.status === 401) clearExpiredAuth(headers);
-    const message = isRecord(payload) && typeof payload["message"] === "string" ? payload["message"] : "요청에 실패했습니다.";
-    throw new ResearchApiClientError(message, response.status, payload);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30_000);
+  try {
+    let response: Response;
+    try {
+      response = await fetch(path, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json", ...headers },
+        method: "POST",
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw new ResearchApiClientError("요청 시간이 초과되었습니다.", 504, null);
+      if (error instanceof TypeError) throw new ResearchApiClientError("네트워크 요청에 실패했습니다.", 0, null);
+      throw error;
+    }
+    const payload = parseJsonPayload(await response.text(), response.status);
+    if (!response.ok) {
+      if (response.status === 401) clearExpiredAuth(headers);
+      const message = isRecord(payload) && typeof payload["message"] === "string" ? payload["message"] : "요청에 실패했습니다.";
+      throw new ResearchApiClientError(message, response.status, payload);
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof ResearchApiClientError) throw error;
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return payload;
 };
 
 const clearExpiredAuth = (headers: Readonly<Record<string, string>>): void => {
@@ -297,7 +313,7 @@ export const startTeacherPreviewSession = async (input: StartParticipantSessionI
 };
 
 const requestPreviewCalibrationChat = async (request: CalibrationChatRequest): Promise<CalibrationChatResponse> => {
-  const payload = await postJson("/api/ai", { kind: "calibrationChat", payload: request });
+  const payload = await postJson("/api/ai", { kind: "calibrationChat", payload: request }, loadBrowserAiAuthHeaders());
   if (!isCalibrationChatResponse(payload)) throw new Error("AI 응답 형식이 올바르지 않습니다.");
   return payload;
 };
@@ -478,70 +494,78 @@ export const syncRosterDeltaToDatabase = async (state: PilotState, delta: Roster
   return isRecord(payload) && typeof payload["rosterRevision"] === "string" ? { rosterRevision: payload["rosterRevision"] } : {};
 };
 
-const syncEvent = (sessionId: string, event: PilotEvent): Promise<unknown> =>
-  postJson("/api/event", {
-    id: event.id,
-    payload: event.payload,
-    sessionId,
-    stage: event.stage,
-    timestamp: event.timestamp,
-    type: event.type
-  }, sessionHeaders());
-
-const syncArtifact = (sessionId: string, artifact: ResearchArtifact): Promise<unknown> =>
-  postJson("/api/artifact", {
-    id: artifact.id,
-    kind: artifact.kind,
-    payload: artifact.payload,
-    sessionId,
-    stage: artifact.stage,
-    timestamp: artifact.createdAt,
-    ...(artifact.updatedAt === undefined ? {} : { updatedAt: artifact.updatedAt })
-  }, sessionHeaders());
-
-const syncMeasure = (sessionId: string, measure: ResearchMeasure): Promise<unknown> =>
-  postJson("/api/measure", {
-    id: measure.id,
-    kind: measure.kind,
-    payload: measure.payload,
-    sessionId,
-    stage: measure.stage,
-    timestamp: measure.collectedAt
-  }, sessionHeaders());
-
-const syncChatTurn = (sessionId: string, stage: Stage, turn: ChatTurn): Promise<unknown> =>
-  postJson("/api/chat-turn", {
-    id: turn.id,
-    role: turn.role,
-    sessionId,
-    stage,
-    text: turn.text,
-    timestamp: turn.timestamp,
-    ...(turn.responseType === undefined ? {} : { responseType: turn.responseType })
-  }, sessionHeaders());
-
 const itemsAddedById = <T extends { readonly id: string }>(previous: readonly T[], next: readonly T[]): readonly T[] => {
   const previousIds = new Set(previous.map((item) => item.id));
   return next.filter((item) => !previousIds.has(item.id));
 };
 
-export const syncSessionDelta = async (previous: PilotSession, next: PilotSession): Promise<void> => {
+type SessionSyncState = {
+  lastSynced: PilotSession;
+  latest: PilotSession;
+  promise: Promise<void>;
+  running: boolean;
+};
+
+const sessionSyncStates = new Map<string, SessionSyncState>();
+
+const retryableSessionSync = (error: unknown): boolean => error instanceof ResearchApiClientError && [0, 408, 429, 500, 502, 503, 504].includes(error.status);
+
+const waitForRetry = async (attempt: number): Promise<void> => {
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 250 * 2 ** attempt));
+};
+
+const syncSessionDeltaOnce = async (previous: PilotSession, next: PilotSession): Promise<void> => {
   const newEvents = itemsAddedById(previous.events, next.events);
   const newArtifacts = itemsAddedById(previous.artifacts, next.artifacts);
   const newMeasures = itemsAddedById(previous.measures, next.measures);
   const newChatTurns = next.researchMode === ResearchModes.understandingCalibration ? [] : itemsAddedById(previous.chatTurns, next.chatTurns);
-  await Promise.all([
-    ...newChatTurns.map((turn) => syncChatTurn(next.sessionId, next.currentStage, turn)),
-    ...newEvents.map((event) => syncEvent(next.sessionId, event)),
-    ...newArtifacts.map((artifact) => syncArtifact(next.sessionId, artifact)),
-    ...newMeasures.map((measure) => syncMeasure(next.sessionId, measure))
-  ]);
-  if (previous.currentStage !== next.currentStage || previous.status !== next.status || previous.completedAt !== next.completedAt) {
-    await postJson("/api/session/update-stage", {
-      ...(next.completedAt === undefined ? {} : { completedAt: next.completedAt }),
-      currentStage: next.currentStage,
-      sessionId: next.sessionId,
-      status: next.status
-    }, sessionHeaders());
+  if (newChatTurns.length === 0 && newEvents.length === 0 && newArtifacts.length === 0 && newMeasures.length === 0 && previous.currentStage === next.currentStage && previous.status === next.status && previous.completedAt === next.completedAt) return;
+  await postJson("/api/session/sync", {
+    artifacts: newArtifacts,
+    chatTurns: newChatTurns,
+    ...(next.completedAt === undefined ? {} : { completedAt: next.completedAt }),
+    currentStage: next.currentStage,
+    events: newEvents,
+    measures: newMeasures,
+    sessionId: next.sessionId,
+    status: next.status
+  }, sessionHeaders());
+};
+
+const runSessionSyncState = async (state: SessionSyncState): Promise<void> => {
+  while (state.lastSynced !== state.latest) {
+    const target = state.latest;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        await syncSessionDeltaOnce(state.lastSynced, target);
+        state.lastSynced = target;
+        break;
+      } catch (error) {
+        if (!retryableSessionSync(error) || attempt === 3) throw error;
+        await waitForRetry(attempt);
+      }
+    }
   }
+};
+
+export const syncSessionDelta = (previous: PilotSession, next: PilotSession): Promise<void> => {
+  const state = sessionSyncStates.get(next.sessionId) ?? {
+    lastSynced: previous,
+    latest: next,
+    promise: Promise.resolve(),
+    running: false
+  } satisfies SessionSyncState;
+  state.latest = next;
+  sessionSyncStates.set(next.sessionId, state);
+  if (state.running) return state.promise;
+  state.running = true;
+  const queued = runSessionSyncState(state).then(() => {
+    state.running = false;
+    if (sessionSyncStates.get(next.sessionId) === state && state.lastSynced === state.latest) sessionSyncStates.delete(next.sessionId);
+  }, (error: unknown) => {
+    state.running = false;
+    throw error;
+  });
+  state.promise = queued;
+  return queued;
 };

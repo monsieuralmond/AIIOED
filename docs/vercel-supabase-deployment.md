@@ -58,24 +58,24 @@ GEMINI_MODEL=gemini-2.5-flash-lite
 ADMIN_ID=admin-root
 ADMIN_LOGIN_ID=admin
 ADMIN_PASSWORD=replace-with-admin-password
-MAX_CHAT_TURNS=20
-MAX_CHAT_TURNS_PER_MINUTE=6
-MAX_AI_REQUESTS_PER_MINUTE=12
+MAX_AI_REQUESTS_PER_MINUTE=120
 MAX_JSON_BODY_BYTES=2000000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`와 `GEMINI_API_KEY`는 브라우저 코드에 노출하지 않는다.
+학생 연구 세션의 AI 채팅과 글쓰기 코치 채팅은 시간, 총 턴 수, 분당 턴 수, 앱 내부 AI quota로 하드 차단하지 않는다. `MAX_AI_REQUESTS_PER_MINUTE`는 고쳐쓰기 점검처럼 채팅이 아닌 AI 보조 엔드포인트 보호용으로만 남긴다.
 
 ## Supabase 준비
 
 1. Supabase 프로젝트를 만든다.
-2. `supabase/migrations/001_research_platform.sql`부터 `013_archive_before_teacher_session_reset.sql`까지 번호 순서대로 적용한다. Supabase CLI를 사용한다면 `supabase db push`를 실행하고, SQL Editor를 사용한다면 각 파일 내용을 번호 순서대로 실행한다. 특히 `009_session_uniqueness_and_lock.sql`은 명시적 transaction과 테이블 잠금을 사용하므로 파일 전체를 한 번에 붙여넣고 실행한다.
+2. `supabase/migrations/001_research_platform.sql`부터 `014_fix_ai_request_quota_ambiguity.sql`까지 번호 순서대로 적용한다. Supabase CLI를 사용한다면 `supabase db push`를 실행하고, SQL Editor를 사용한다면 각 파일 내용을 번호 순서대로 실행한다. 특히 `009_session_uniqueness_and_lock.sql`은 명시적 transaction과 테이블 잠금을 사용하므로 파일 전체를 한 번에 붙여넣고 실행한다.
    - `008`은 세션 하위 자료의 원자적 동기화 RPC를 추가한다.
    - `009`는 기존 DB에 생긴 중복 연구 세션을 대표 세션 하나로 병합한 뒤, 병합 전 원자료 스냅샷을 `exports`와 `deletion_logs`에 남기고 학생·과제 조합의 세션 유일성 인덱스를 추가한다.
    - `010`은 제출 잠금과 하위 자료 저장을 같은 DB 잠금 경계에서 검사하고 `research_schema_health()` 버전을 갱신한다.
    - `011`은 Vercel 다중 인스턴스에서도 공유되는 AI 분당 요청 쿼터 RPC를 추가한다.
    - `012`는 privileged RPC의 공개 실행 권한을 회수하고, 제출 잠금과 충돌하지 않는 원자적 세션 리셋 RPC를 추가한다.
    - `013`은 교사가 제출 완료 세션을 리셋할 때 원자료 스냅샷을 `exports`와 `deletion_logs`에 먼저 저장한 뒤 세션과 하위 자료를 삭제하도록 리셋 RPC를 교체한다.
+   - `014`는 AI quota RPC 내부의 `principal_kind` 이름 충돌을 제거한다.
    - 이전 버전의 `009`에서 `duplicate research sessions exist` 오류가 났다면 최신 `009_session_uniqueness_and_lock.sql` 전체를 다시 실행한다. 최신 `009`는 일반 중복 세션을 자동 병합하지만, 같은 학생과 같은 과제에 잠금/제출 세션이 둘 이상 있거나 잠금 세션으로 자식 원자료를 병합해야 하는 경우에는 멈춘다. 그 경우에는 먼저 원자료를 export하고 대표 세션을 수동으로 정해야 한다.
    - Supabase SQL Editor에서 최신 `009` 전체 실행 중 `Connection terminated due to connection timeout`이 나면 `supabase/manual/009_repair_duplicate_sessions_stepwise.sql`을 먼저 실행한다. 그다음 SQL Editor에서 `select public.repair_duplicate_research_sessions_once(1);`를 반복 실행해 `remainingDuplicateGroups`가 `0`이 될 때까지 중복 세션을 작은 단위로 병합한다. 함수는 SQL Editor 타임아웃을 피하기 위해 한 번에 최대 10개까지만 처리한다. `0`이 되면 `create unique index if not exists sessions_assignment_student_unique on public.sessions(assignment_id, student_anonymous_id);`를 실행한 뒤 `010`부터 계속 적용한다.
    - stepwise repair 실행 중 `duplicate research sessions include multiple locked/submitted rows`가 나오면 자동 병합하면 안 되는 제출/완료 세션이 둘 이상 있다는 뜻이다. 같은 SQL 파일에 포함된 `select * from public.list_duplicate_research_session_choices();`로 충돌 세션 목록을 확인한 뒤, 남길 세션 하나를 정하고 `select public.choose_duplicate_research_session_canonical('남길_session_id', array['제외할_session_id']);`를 실행한다. 제외된 세션은 삭제 전에 `exports`와 `deletion_logs`에 원자료 스냅샷이 저장된다. 그다음 다시 `select public.repair_duplicate_research_sessions_once(1);`를 반복한다.

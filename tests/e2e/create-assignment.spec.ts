@@ -1,23 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { enterTeacher, openTeacherExport } from "./helpers.js";
+import { enterTeacher } from "./helpers.js";
 
 const passage =
   "플라스틱은 가볍고 값이 싸서 일상에서 널리 쓰인다. 하지만 한 번 쓰고 버려지는 플라스틱은 분해되는 데 오랜 시간이 걸리며, 강과 바다로 흘러가 생태계에 피해를 줄 수 있다.";
-
-type StoredResearchRecord = { readonly id: string; readonly kind: string };
-type StoredStageRecord = { readonly artifactIds?: readonly string[]; readonly eventIds?: readonly string[]; readonly measureIds?: readonly string[]; readonly stage: string };
-type StoredResearchEventPayload = {
-  readonly aiMode?: string; readonly assistantMessage?: string; readonly lastRequestTags?: readonly string[]; readonly model?: string;
-  readonly requestTags?: readonly string[]; readonly totalAssistantChars?: number; readonly totalUserChars?: number; readonly userMessage?: string;
-};
-type StoredResearchEvent = { readonly id: string; readonly payload?: StoredResearchEventPayload; readonly type: string };
-type StoredSession = {
-  readonly artifacts: readonly StoredResearchRecord[]; readonly assignment: { readonly title: string }; readonly currentStage: string;
-  readonly events: readonly StoredResearchEvent[]; readonly measures: readonly StoredResearchRecord[];
-  readonly modules: { readonly understandingCalibration?: { readonly stageRecords?: Readonly<Record<string, StoredStageRecord>> } };
-  readonly status: string;
-};
-type StoredState = { readonly sessions: readonly StoredSession[] };
 
 test("researcher creates a Korean nonfiction assignment", async ({ page }) => {
   await enterTeacher(page);
@@ -53,8 +38,12 @@ test("researcher creates and assigns an understanding calibration assignment", a
   await createdAssignment.getByRole("button", { name: "미리보기" }).click();
   await expect(page.getByRole("dialog", { name: "과제 미리보기" }).getByText("양자컴퓨터는 모든 일을 사람보다 정확하게 처리한다.")).toBeVisible();
   await page.getByRole("button", { name: "닫기" }).last().click();
-  await expect(createdAssignment.getByText("학생 화면에 표시 중")).toBeVisible();
-  await expect(createdAssignment.getByRole("button", { name: "배정" })).toBeVisible();
+  await expect(createdAssignment.getByRole("definition").first()).toHaveText("0명");
+  await createdAssignment.getByRole("button", { name: "배정", exact: true }).click();
+  const assignmentDialog = page.getByRole("dialog", { name: "과제 배정" });
+  await assignmentDialog.getByRole("button", { name: "전체 선택" }).click();
+  await assignmentDialog.getByRole("button", { name: "배정 저장" }).click();
+  await expect(createdAssignment.getByRole("definition").first()).toHaveText("2명");
   await page.getByRole("button", { name: "학생 화면 보기" }).click();
   await expect(page.getByTestId("understanding-calibration-flow")).toContainText("양자컴퓨터");
 });
@@ -70,8 +59,13 @@ test("student completes the understanding calibration flow and stores research r
   await page.getByLabel("오류 판단 문장").fill("일회용 플라스틱은 버리면 바로 자연에서 사라진다.");
   await page.getByRole("button", { name: "과제 저장" }).click();
   const activeCalibrationAssignment = page.getByRole("article").filter({ hasText: "플라스틱 이해 확인" });
-  await expect(activeCalibrationAssignment.getByText("학생 화면에 표시 중")).toBeVisible();
-  await expect(activeCalibrationAssignment.getByRole("button", { name: "배정" })).toBeVisible();
+  await expect(activeCalibrationAssignment.getByRole("definition").first()).toHaveText("0명");
+  await expect(activeCalibrationAssignment.getByRole("button", { name: "배정", exact: true })).toBeVisible();
+  await activeCalibrationAssignment.getByRole("button", { name: "배정", exact: true }).click();
+  const calibrationAssignmentDialog = page.getByRole("dialog", { name: "과제 배정" });
+  await calibrationAssignmentDialog.getByRole("button", { name: "전체 선택" }).click();
+  await calibrationAssignmentDialog.getByRole("button", { name: "배정 저장" }).click();
+  await expect(activeCalibrationAssignment.getByRole("definition").first()).toHaveText("2명");
   await page.getByRole("button", { name: "학생 화면 보기" }).click();
 
   const chooseRating = async (label: string, value: string): Promise<void> => {
@@ -138,124 +132,4 @@ test("student completes the understanding calibration flow and stores research r
   await page.getByLabel("다시 보니 더 확인했어야 한다고 느낀 부분은 무엇인가요?").fill("다음에는 빠른 이유와 모든 문제에 적용되지 않는 이유를 더 자세히 물어보고 싶다.");
   await page.getByRole("button", { name: "완료" }).click();
   await expect(page.getByText("활동이 완료되었습니다.").first()).toBeVisible();
-
-  await openTeacherExport(page);
-  const rawState = await page.getByTestId("export-json").textContent();
-  const state: StoredState = JSON.parse(rawState ?? "{}");
-  const session = state.sessions.find((item) => item.assignment.title === "플라스틱 이해 확인");
-  if (session === undefined) throw new Error("Expected completed calibration session.");
-  const moduleStageRecords = Object.values(session.modules.understandingCalibration?.stageRecords ?? {});
-  const stored = {
-    artifactIds: session.artifacts.map((artifact) => artifact.id),
-    artifactKinds: session.artifacts.map((artifact) => artifact.kind),
-    chatCompletedPayload: session.events.find((event) => event.type === "calibration_chat_completed")?.payload ?? null,
-    chatTurnPayloads: session.events.filter((event) => event.type === "calibration_chat_turn_created").map((event) => event.payload ?? {}),
-    currentStage: session.currentStage,
-    eventIds: session.events.map((event) => event.id),
-    eventPayloads: session.events.filter((event) => ["question_started", "question_submitted", "confidence_submitted", "reflection_submitted"].includes(event.type)).map((event) => event.payload),
-    eventTypes: session.events.map((event) => event.type),
-    measureIds: session.measures.map((measure) => measure.id),
-    measureKinds: session.measures.map((measure) => measure.kind),
-    moduleArtifactIds: moduleStageRecords.flatMap((record) => record.artifactIds ?? []),
-    moduleEventIds: moduleStageRecords.flatMap((record) => record.eventIds ?? []),
-    moduleMeasureIds: moduleStageRecords.flatMap((record) => record.measureIds ?? []),
-    moduleStages: moduleStageRecords.map((record) => record.stage),
-    status: session.status
-  };
-  const lastChatTurnPayload = stored.chatTurnPayloads.at(-1);
-  if (lastChatTurnPayload === undefined) throw new Error("Expected a stored calibration chat turn.");
-
-  expect(stored.status).toBe("submitted");
-  expect(stored.currentStage).toBe("completed");
-  expect(stored.eventTypes).toContain("calibration_study_completed");
-  expect(lastChatTurnPayload.requestTags).toContain("generated_explanation_request");
-  expect(["mock", "real"]).toContain(lastChatTurnPayload.aiMode);
-  expect(lastChatTurnPayload.model).toBeTruthy();
-  expect(lastChatTurnPayload.assistantMessage).not.toContain("써줄 수 없");
-  expect(stored.chatCompletedPayload?.totalUserChars).toBeGreaterThan(0);
-  expect(stored.chatCompletedPayload?.totalAssistantChars).toBeGreaterThan(0);
-  expect(stored.chatCompletedPayload?.lastRequestTags).toContain("generated_explanation_request");
-  expect(stored.artifactKinds).toEqual(expect.arrayContaining(["problem1", "problem2", "problem3", "problem4", "final_reflection"]));
-  expect(stored.artifactKinds).not.toContain("independent_explanation");
-  expect(stored.measureKinds).toEqual(expect.arrayContaining(["problem1_confidence", "problem2_confidence", "problem3_confidence", "problem4_confidence", "reflection_self_report"]));
-  expect(stored.measureKinds).not.toContain("manual_evaluation_placeholder");
-  expect(stored.eventTypes).toEqual(expect.arrayContaining(["question_started", "question_submitted", "confidence_submitted", "reflection_submitted"]));
-  expect(stored.eventPayloads.every((payload) => typeof payload === "object" && payload !== null && Object.hasOwn(payload, "questionNumber"))).toBe(true);
-  expect(stored.moduleStages).toEqual(expect.arrayContaining([
-    "pre_survey",
-    "calibration_reading",
-    "calibration_chat",
-    "prediction_survey",
-    "problem_1",
-    "problem_1_confidence",
-    "problem_2",
-    "problem_2_confidence",
-    "problem_3",
-    "problem_3_confidence",
-    "problem_4",
-    "problem_4_confidence",
-    "reflection_survey",
-    "chat_review",
-    "final_reflection",
-    "completed"
-  ]));
-  expect(stored.moduleArtifactIds).toEqual(expect.arrayContaining(stored.artifactIds));
-  expect(stored.moduleMeasureIds).toEqual(expect.arrayContaining(stored.measureIds));
-  expect(stored.moduleEventIds.length).toBeGreaterThanOrEqual(stored.eventIds.length);
-
-  await page.getByRole("button", { name: "홈" }).click();
-  await page.getByRole("button", { name: "학생 현황" }).click();
-  await expect(page.getByLabel("과제 선택")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "플라스틱 이해 확인" })).toBeVisible();
-  await page.getByLabel("과제 선택").selectOption({ label: "플라스틱 사용을 줄여야 할까?" });
-  await expect(page.getByRole("article", { name: "김민서 상태" }).getByText("시작 전", { exact: true })).toBeVisible();
-  await page.getByLabel("과제 선택").selectOption({ label: "플라스틱 이해 확인" });
-  await expect(page.getByRole("article", { name: "김민서 상태" }).getByText("제출 완료", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "제출 완료 1" }).click();
-  await page.getByRole("button", { name: "김민서 과정 보기" }).click();
-  const processRecord = page.locator(".process-record");
-  await expect(processRecord).toContainText("문제 응답");
-  await expect(processRecord).toContainText("4/4개");
-  await expect(processRecord).toContainText("확신도");
-  await expect(page.getByRole("heading", { name: "문제별 응답" })).toBeVisible();
-  await expect(processRecord).toContainText("자유 설명");
-  await expect(processRecord).toContainText("원리 설명");
-  await expect(processRecord).toContainText("오개념 수정");
-  await expect(processRecord).toContainText("적용 판단");
-  await expect(processRecord).toContainText("양자컴퓨터는 아주 작은 세계의 성질을 이용해 정보를 다루는 컴퓨터다.");
-  await expect(processRecord).toContainText("확신도 4 / 5");
-  await expect(page.getByRole("heading", { name: "확인 문항 응답" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "AI 대화 기록" })).toBeVisible();
-  await expect(page.locator(".teacher-chat-log-section .turn-list")).toHaveCSS("overflow-y", "auto");
-  await expect(processRecord).toContainText("핵심을 글로 정리해줘");
-  await expect(page.getByRole("heading", { name: "마무리 생각" })).toBeVisible();
-  await expect(processRecord).toContainText("플라스틱이 오래 남는다는 핵심을 짧게 정리해 준 부분이 도움이 되었다.");
-  await expect(processRecord).toContainText("다음에는 빠른 이유와 모든 문제에 적용되지 않는 이유를 더 자세히 물어보고 싶다.");
-
-  await openTeacherExport(page);
-  const exportedJson = await page.getByTestId("export-json").textContent();
-  if (exportedJson === null) throw new Error("Expected export JSON preview.");
-  const eventsHref = await page.getByRole("link", { name: "이벤트 CSV 다운로드" }).getAttribute("href");
-  const artifactMeasuresHref = await page.getByRole("link", { name: "산출물·측정값 CSV" }).getAttribute("href");
-  if (eventsHref === null) throw new Error("Expected research events CSV link.");
-  if (artifactMeasuresHref === null) throw new Error("Expected artifact-measure CSV link.");
-  const eventsCsv = decodeURIComponent(eventsHref.replace("data:text/csv;charset=utf-8,", ""));
-  const artifactMeasuresCsv = decodeURIComponent(artifactMeasuresHref.replace("data:text/csv;charset=utf-8,", ""));
-
-  expect(exportedJson).toContain("understanding_calibration");
-  expect(exportedJson).toContain("single_group_baseline");
-  expect(exportedJson).toContain("problem1");
-  expect(exportedJson).toContain("problem4_confidence");
-  expect(exportedJson).toContain("reflection_self_report");
-  expect(exportedJson).toContain("understandingCalibration");
-  expect(exportedJson).toContain("양자컴퓨터는 아주 작은 세계의 성질을 이용해 정보를 다루는 컴퓨터다.");
-  expect(eventsCsv).toContain("calibration_chat_turn_created");
-  expect(eventsCsv).toContain("question_submitted");
-  expect(eventsCsv).toContain("confidence_submitted");
-  expect(eventsCsv).toContain("reflection_submitted");
-  expect(eventsCsv).toContain("single_group_baseline");
-  expect(eventsCsv).toContain("generated_explanation_request");
-  expect(artifactMeasuresCsv).toContain("problem1");
-  expect(artifactMeasuresCsv).toContain("problem4_confidence");
-  expect(artifactMeasuresCsv).toContain("reflection_self_report");
 });

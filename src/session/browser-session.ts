@@ -147,3 +147,19 @@ export const saveBrowserAdminAuth = (auth: BrowserAdminAuth): void => {
   if (typeof window.sessionStorage?.setItem !== "function") return;
   window.sessionStorage.setItem(BROWSER_ADMIN_AUTH_KEY, JSON.stringify(auth));
 };
+
+export const loadBrowserAiAuthHeaders = (): Readonly<Record<string, string>> => {
+  const sessionToken = loadBrowserSessionToken();
+  if (sessionToken !== null) return { "x-research-session-token": sessionToken };
+  const teacherAuth = loadBrowserTeacherAuth();
+  if (teacherAuth !== null) return {
+    "x-research-teacher-id": teacherAuth.teacherId,
+    "x-research-teacher-token": teacherAuth.teacherToken
+  };
+  const adminAuth = loadBrowserAdminAuth();
+  if (adminAuth !== null) return {
+    "x-research-admin-id": adminAuth.adminId,
+    "x-research-admin-token": adminAuth.adminToken
+  };
+  return {};
+};

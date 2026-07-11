@@ -1516,6 +1516,59 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
   overscroll-behavior: contain;
   padding-right: var(--space-2);
 }
+.teacher-chat-transcript-summary {
+  margin-bottom: var(--space-3);
+}
+.teacher-chat-transcript {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  max-height: min(460px, 58vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-2) 0 0;
+}
+.teacher-chat-turn {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  position: relative;
+}
+.teacher-chat-turn.student {
+  background: var(--surface-elevated);
+}
+.teacher-chat-turn.assistant {
+  background: var(--surface-coach);
+}
+.teacher-chat-turn strong,
+.teacher-chat-turn summary {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.teacher-chat-turn summary {
+  cursor: pointer;
+}
+.teacher-chat-turn summary::marker {
+  color: var(--accent-primary);
+}
+.teacher-chat-turn details[open] summary {
+  margin-bottom: var(--space-2);
+}
+.teacher-chat-turn p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.teacher-chat-turn-order {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  position: absolute;
+  right: var(--space-3);
+  top: var(--space-3);
+}
 .process-outline {
   display: grid;
   gap: var(--space-3);
@@ -1531,6 +1584,51 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
 }
 .process-outline dd {
   margin: 0;
+  white-space: pre-wrap;
+}
+.guided-process-step-list,
+.guided-process-source-list,
+.guided-process-suggestion-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.guided-process-step-list > li {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.guided-process-step-list h4 {
+  font-size: var(--font-size-md);
+  margin: 0;
+}
+.guided-process-step-list p,
+.guided-process-step-list small {
+  white-space: pre-wrap;
+}
+.guided-process-source-list li,
+.guided-process-suggestion-list li {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+}
+.guided-process-source-list strong,
+.guided-process-suggestion-list strong {
+  color: var(--accent-primary);
+  font-size: var(--font-size-sm);
+}
+.guided-process-source-list small,
+.guided-process-suggestion-list small {
+  color: var(--text-secondary);
+  font-weight: 700;
 }
 .process-record blockquote {
   background: var(--surface-muted);

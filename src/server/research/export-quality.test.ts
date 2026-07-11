@@ -7,11 +7,23 @@ const session = (input: {
   readonly id: string;
   readonly mode: string;
   readonly status?: string;
+  readonly problemNumbers?: readonly (1 | 2 | 3 | 4)[];
 }): ExportQualitySession => ({
   assignment_id: "assignment-1",
   class_group_id: "class-1",
   completed_at: input.status === "submitted" ? "2026-07-05T00:00:00.000Z" : null,
   current_stage: "completed",
+  ...(input.problemNumbers === undefined ? {} : {
+    assignment_snapshot: {
+      calibrationConfig: { independentProblems: input.problemNumbers.map((number) => ({ number, prompt: `문제 ${number}`, title: `문제 ${number}` })) },
+      gradeLevel: "초등 고학년",
+      id: "assignment-1",
+      passage: "설명 자료",
+      question: "설명하세요.",
+      targetLength: "",
+      title: "동적 문항"
+    }
+  }),
   research_condition: ResearchConditions.singleGroupBaseline,
   research_mode: input.mode,
   session_id: input.id,
@@ -72,6 +84,20 @@ describe("export quality rows", () => {
     });
 
     expect(rows[0]?.has_final_submission).toBe("true");
+    expect(rows[0]?.issue_count).toBe("0");
+  });
+
+  it("uses non-contiguous configured problem numbers for calibration quality checks", () => {
+    const rows = buildExportQualityRows({
+      artifacts: [artifact("session-3", "problem1"), artifact("session-3", "problem4"), artifact("session-3", "final_reflection")],
+      chatTurns: [],
+      events: [],
+      measures: [measure("session-3", "problem1_confidence"), measure("session-3", "problem4_confidence"), measure("session-3", "reflection_self_report")],
+      sessions: [session({ id: "session-3", mode: ResearchModes.understandingCalibration, status: "submitted", problemNumbers: [1, 4] })]
+    });
+
+    expect(rows[0]?.problem_answer_count).toBe("2");
+    expect(rows[0]?.confidence_count).toBe("2");
     expect(rows[0]?.issue_count).toBe("0");
   });
 });

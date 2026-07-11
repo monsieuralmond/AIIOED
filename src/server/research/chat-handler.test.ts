@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createResearchApiHandlers } from "./handlers.js";
 import {
   emptyRequest,
@@ -22,6 +22,11 @@ describe("research chat handler", () => {
     process.env["READING_COACH_AI_MODE"] = "mock";
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
     process.env["SUPABASE_URL"] = "https://example.supabase.co";
+    vi.stubGlobal("fetch", vi.fn(async (): Promise<Response> => new Response(JSON.stringify({ allowed: true }), { status: 200 })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("returns the stored assistant turn for duplicate chat requestIds", async () => {
@@ -76,7 +81,7 @@ describe("research chat handler", () => {
     expect(store.chatInsertCount).toBe(1);
   });
 
-  it("rate limits rapid distinct chat requests before calling the AI again", async () => {
+  it("allows rapid distinct chat requests in classroom research sessions", async () => {
     process.env["MAX_CHAT_TURNS_PER_MINUTE"] = "1";
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
@@ -85,11 +90,72 @@ describe("research chat handler", () => {
     const sessionId = sessionIdFrom(started);
 
     await handlers.chat({ message: "첫 질문", requestId: "request-rate-1", sessionId }, request);
-    await expect(handlers.chat({
+    const response = await handlers.chat({
       message: "둘째 질문",
       requestId: "request-rate-2",
       sessionId
-    }, request)).rejects.toMatchObject({ statusCode: 429 });
+    }, request);
+
+    expect(requiredStringField(response, "text").length).toBeGreaterThan(0);
+    expect(store.storedChatTurns.filter((turn) => turn.role === "student")).toHaveLength(2);
+  });
+
+  it("allows separate students to chat concurrently after the advisory chat time passes", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const participants = Array.from({ length: 20 }, (_, index) => `S${(index + 1).toString().padStart(3, "0")}`);
+    const starts = await Promise.all(participants.map(async (participantCode) => {
+      const started = await handlers.sessionStart({ participantCode }, emptyRequest());
+      const sessionId = sessionIdFrom(started);
+      const session = store.sessions.get(sessionId);
+      if (session === undefined) throw new Error("started session was not stored.");
+      store.sessions.set(sessionId, {
+        ...session,
+        assignment: {
+          ...session.assignment,
+          calibrationConfig: {
+            maxChatMinutes: 1
+          }
+        },
+        createdAt: "2026-07-05T00:00:00.000Z"
+      });
+      return {
+        request: requestWithSessionToken(sessionTokenFrom(started)),
+        sessionId
+      };
+    }));
+
+    const responses = await Promise.all(starts.map(async (started, index) =>
+      handlers.chat({
+        message: "양자컴퓨터가 뭐야?",
+        requestId: `request-concurrent-${index}`,
+        sessionId: started.sessionId
+      }, started.request)
+    ));
+
+    expect(responses).toHaveLength(20);
+    expect(store.storedChatTurns.filter((turn) => turn.role === "student")).toHaveLength(20);
+    expect(store.storedChatTurns.filter((turn) => turn.role === "assistant")).toHaveLength(20);
+  });
+
+  it("does not reserve shared AI quota for classroom chat requests", async () => {
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["READING_COACH_AI_MODE"] = "real";
+    const fetchMock = vi.fn(async (): Promise<Response> => new Response(JSON.stringify({ allowed: false }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+
+    await expect(handlers.chat({
+      message: "질문",
+      requestId: "quota-rejected",
+      sessionId: sessionIdFrom(started)
+    }, requestWithSessionToken(sessionTokenFrom(started)))).rejects.toMatchObject({ statusCode: 503 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.storedChatTurns.filter((turn) => turn.role === "student")).toHaveLength(1);
+    expect(store.storedEvents.at(-1)).toEqual(expect.objectContaining({ type: "calibration_chat_failed" }));
   });
 
   it("reports the configured OpenAI model for duplicate real chat requestIds", async () => {

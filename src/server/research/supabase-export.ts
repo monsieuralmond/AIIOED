@@ -68,6 +68,13 @@ type ProblemExportFields = {
   readonly durationMs: string;
 };
 
+const defaultProblemKeys = ["problem1", "problem2", "problem3", "problem4"] as const;
+
+const problemKeysForAssignment = (assignment: Assignment | undefined): readonly string[] => {
+  const configured = assignment?.calibrationConfig?.independentProblems?.map((problem) => `problem${problem.number}`);
+  return configured === undefined || configured.length === 0 ? defaultProblemKeys : [...new Set(configured)];
+};
+
 const encode = (value: string): string => encodeURIComponent(value);
 
 const inList = (values: readonly string[]): string => `in.(${values.map(encode).join(",")})`;
@@ -135,7 +142,7 @@ const payloadNumber = (payload: Readonly<Record<string, unknown>> | undefined, k
 
 const csvNumber = (value: number | null): string => value === null ? "" : String(value);
 
-const problemFields = (sessionId: string, problemKey: "problem1" | "problem2" | "problem3" | "problem4", artifacts: readonly ArtifactExportRow[], measures: readonly MeasureExportRow[]): ProblemExportFields => {
+const problemFields = (sessionId: string, problemKey: string, artifacts: readonly ArtifactExportRow[], measures: readonly MeasureExportRow[]): ProblemExportFields => {
   const artifact = artifacts.find((row) => row.session_id === sessionId && row.kind === problemKey);
   const measure = measures.find((row) => row.session_id === sessionId && row.kind === `${problemKey}_confidence`);
   const answer = payloadString(artifact?.payload, "answer");
@@ -147,8 +154,8 @@ const problemFields = (sessionId: string, problemKey: "problem1" | "problem2" | 
   };
 };
 
-const confidenceTrajectory = (sessionId: string, measures: readonly MeasureExportRow[]): readonly number[] =>
-  ["problem1_confidence", "problem2_confidence", "problem3_confidence", "problem4_confidence"].flatMap((kind) => {
+const confidenceTrajectory = (sessionId: string, problemKeys: readonly string[], measures: readonly MeasureExportRow[]): readonly number[] =>
+  problemKeys.map((problemKey) => `${problemKey}_confidence`).flatMap((kind) => {
     const confidence = payloadNumber(measures.find((row) => row.session_id === sessionId && row.kind === kind)?.payload, "confidence");
     return confidence === null ? [] : [confidence];
   });
@@ -172,6 +179,7 @@ const isSubmittedOrCompleted = (status: string): boolean => status === "submitte
 const isCompletedForExport = (row: {
   readonly completedAt: string | null;
   readonly completedProblemCount: string;
+  readonly requiredProblemCount: string;
   readonly currentStage: string;
   readonly hasFinalReflection: string;
   readonly hasFinalSubmission: string;
@@ -183,7 +191,7 @@ const isCompletedForExport = (row: {
   switch (row.researchMode) {
     case ResearchModes.understandingCalibration:
       return row.currentStage === "completed" &&
-        row.completedProblemCount === "4" &&
+        row.completedProblemCount === row.requiredProblemCount &&
         row.hasReflectionSurvey === "true" &&
         row.hasFinalReflection === "true";
     case ResearchModes.guidedWriting:
@@ -282,17 +290,28 @@ const exportBundle = (
   measures: readonly MeasureExportRow[]
 ): ExportBundle => {
   const sessionWideRows = sessions.map((session) => {
+    const problemKeys = problemKeysForAssignment(session.assignment_snapshot);
     const problem1 = problemFields(session.session_id, "problem1", artifacts, measures);
     const problem2 = problemFields(session.session_id, "problem2", artifacts, measures);
     const problem3 = problemFields(session.session_id, "problem3", artifacts, measures);
     const problem4 = problemFields(session.session_id, "problem4", artifacts, measures);
-    const trajectory = confidenceTrajectory(session.session_id, measures);
-    const completedProblemCount = [problem1, problem2, problem3, problem4].filter((problem) => problem.answer.length > 0 && problem.confidence.length > 0).length;
+    const trajectory = confidenceTrajectory(session.session_id, problemKeys, measures);
+    const completedProblemCount = problemKeys.map((problemKey) => problemFields(session.session_id, problemKey, artifacts, measures)).filter((problem) => problem.answer.length > 0 && problem.confidence.length > 0).length;
+    const dynamicProblemColumns = Object.fromEntries(problemKeys.flatMap((problemKey) => {
+      const problem = problemFields(session.session_id, problemKey, artifacts, measures);
+      return [
+        [`${problemKey}_answer`, problem.answer],
+        [`${problemKey}_answerLength`, problem.answerLength],
+        [`${problemKey}_confidence`, problem.confidence],
+        [`${problemKey}_durationMs`, problem.durationMs]
+      ];
+    }));
     return {
       assignmentId: session.assignment_id,
       classGroupId: session.class_group_id,
       completedAt: session.completed_at,
       completedProblemCount: String(completedProblemCount),
+      requiredProblemCount: String(problemKeys.length),
       confidenceDrop: confidenceDrop(trajectory),
       confidenceTrajectory: JSON.stringify(trajectory),
       currentStage: session.current_stage,
@@ -315,6 +334,7 @@ const exportBundle = (
       problem4_answerLength: problem4.answerLength,
       problem4_confidence: problem4.confidence,
       problem4_durationMs: problem4.durationMs,
+      ...dynamicProblemColumns,
       researchCondition: session.research_condition,
       researchMode: session.research_mode,
       sessionId: session.session_id,
@@ -337,6 +357,22 @@ const exportBundle = (
     ...includedArtifacts.map((artifact) => ({ assignmentId: artifact.assignment_id, classGroupId: artifact.class_group_id, itemKind: "artifact", itemType: artifact.kind, payload: artifact.payload, sessionId: artifact.session_id, stage: artifact.stage, studentAnonymousId: artifact.student_anonymous_id, timestamp: artifact.created_at })),
     ...includedMeasures.map((measure) => ({ assignmentId: measure.assignment_id, classGroupId: measure.class_group_id, itemKind: "measure", itemType: measure.kind, payload: measure.payload, sessionId: measure.session_id, stage: measure.stage, studentAnonymousId: measure.student_anonymous_id, timestamp: measure.created_at }))
   ];
+  const qualitySessions = sessionWideRows.map((row) => {
+    const sourceSession = sessions.find((session) => session.assignment_id === row.assignmentId && session.session_id === row.sessionId);
+    return {
+      assignment_id: row.assignmentId,
+      ...(sourceSession?.assignment_snapshot === undefined ? {} : { assignment_snapshot: sourceSession.assignment_snapshot }),
+      class_group_id: row.classGroupId,
+      completed_at: row.completedAt,
+      current_stage: row.currentStage,
+      research_condition: row.researchCondition,
+      research_mode: row.researchMode,
+      session_id: row.sessionId,
+      status: row.status,
+      student_anonymous_id: row.studentAnonymousId,
+      updated_at: row.updatedAt
+    };
+  });
   const rawJson = {
     anonymized: input.anonymized,
     artifacts: includedArtifacts,
@@ -347,18 +383,7 @@ const exportBundle = (
       chatTurns: includedChatTurns,
       events: includedEvents,
       measures: includedMeasures,
-      sessions: sessionWideRows.map((row) => ({
-        assignment_id: row.assignmentId,
-        class_group_id: row.classGroupId,
-        completed_at: row.completedAt,
-        current_stage: row.currentStage,
-        research_condition: row.researchCondition,
-        research_mode: row.researchMode,
-        session_id: row.sessionId,
-        status: row.status,
-        student_anonymous_id: row.studentAnonymousId,
-        updated_at: row.updatedAt
-      }))
+      sessions: qualitySessions
     }),
     events: includedEvents,
     exportSchemaVersion: "research-db-export-v1",

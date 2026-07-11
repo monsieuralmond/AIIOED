@@ -1,8 +1,10 @@
 import { ResearchModes } from "../../shared/research.js";
 import type { ResearchCondition, ResearchMode } from "../../shared/research.js";
+import type { Assignment } from "../../shared/types.js";
 
 export type ExportQualitySession = {
   readonly assignment_id: string;
+  readonly assignment_snapshot?: Assignment | undefined;
   readonly class_group_id: string;
   readonly completed_at: string | null;
   readonly current_stage: string;
@@ -54,8 +56,16 @@ export type ExportQualityRow = {
   readonly updated_at: string;
 };
 
-const problemKinds = ["problem1", "problem2", "problem3", "problem4"] as const;
-const confidenceKinds = ["problem1_confidence", "problem2_confidence", "problem3_confidence", "problem4_confidence"] as const;
+const defaultProblemNumbers = [1, 2, 3, 4] as const;
+
+const problemNumbersForSession = (session: ExportQualitySession): readonly number[] => {
+  const configured = session.assignment_snapshot?.calibrationConfig?.independentProblems?.map((problem) => problem.number);
+  return configured === undefined || configured.length === 0 ? defaultProblemNumbers : [...new Set(configured)];
+};
+
+const problemKindsForSession = (session: ExportQualitySession): readonly string[] => problemNumbersForSession(session).map((number) => `problem${number}`);
+
+const confidenceKindsForSession = (session: ExportQualitySession): readonly string[] => problemNumbersForSession(session).map((number) => `problem${number}_confidence`);
 
 const rowsForSession = <T extends ExportQualityChildRow>(sessionId: string, rows: readonly T[]): readonly T[] =>
   rows.filter((row) => row.session_id === sessionId);
@@ -90,8 +100,8 @@ const qualityIssues = (
   if (contextMismatchCount > 0) issues.push("child_context_mismatch");
   if (completedLike(session) && session.completed_at === null) issues.push("completed_at_missing");
   if (session.research_mode === ResearchModes.understandingCalibration) {
-    const missingProblems = missingKinds(artifacts, problemKinds);
-    const missingConfidence = missingKinds(measures, confidenceKinds);
+    const missingProblems = missingKinds(artifacts, problemKindsForSession(session));
+    const missingConfidence = missingKinds(measures, confidenceKindsForSession(session));
     if (missingProblems.length > 0) issues.push(`missing_problem_artifacts:${missingProblems.join("|")}`);
     if (missingConfidence.length > 0) issues.push(`missing_confidence_measures:${missingConfidence.join("|")}`);
     if (!hasKind(measures, "reflection_self_report")) issues.push("missing_reflection_survey");
@@ -123,7 +133,7 @@ export const buildExportQualityRows = (input: {
       chat_turn_count: String(sessionChatTurns.length),
       class_group_id: session.class_group_id,
       completed_at: session.completed_at ?? "",
-      confidence_count: String(countKinds(sessionMeasures, confidenceKinds)),
+      confidence_count: String(countKinds(sessionMeasures, confidenceKindsForSession(session))),
       context_mismatch_count: String(contextMismatchCount),
       current_stage: session.current_stage,
       event_count: String(sessionEvents.length),
@@ -133,7 +143,7 @@ export const buildExportQualityRows = (input: {
       issue_count: String(issues.length),
       issues: issues.join(";"),
       measure_count: String(sessionMeasures.length),
-      problem_answer_count: String(countKinds(sessionArtifacts, problemKinds)),
+      problem_answer_count: String(countKinds(sessionArtifacts, problemKindsForSession(session))),
       research_condition: session.research_condition,
       research_mode: session.research_mode,
       session_id: session.session_id,

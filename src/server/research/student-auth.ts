@@ -6,7 +6,7 @@ import { credentialHash } from "./credentials.js";
 import { ApiError } from "./http.js";
 import { participantCodeHash } from "./store.js";
 import type { AssignmentRow, SessionRow, StudentRow } from "./supabase-session-rows.js";
-import { encode, inList, rowToSession } from "./supabase-session-rows.js";
+import { encode, inList, rowsToSessions } from "./supabase-session-rows.js";
 
 const studentLoginSchema = z.object({
   loginId: z.string().optional().default(""),
@@ -94,7 +94,7 @@ export const authenticateStudent = async (payload: unknown): Promise<StudentAuth
     );
   return {
     assignments: assignedAssignments,
-    sessions: await Promise.all(sessionRows.map((row) => rowToSession(db, row))),
+    sessions: await rowsToSessions(db, sessionRows),
     student: studentAccount
   };
 };

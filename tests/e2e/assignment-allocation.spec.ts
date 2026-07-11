@@ -25,7 +25,12 @@ test("student sees the assignment assigned to their own class", async ({ page })
   await page.getByLabel("해결할 문제").fill("새 반 학생은 이 지문을 바탕으로 자신의 주장을 쓰세요.");
   await page.getByLabel("학생에게 보일 요구사항").fill("지문에서 찾은 내용과 자신의 생각을 함께 쓰세요.");
   await page.getByRole("button", { name: "과제 저장" }).click();
-  await page.getByRole("article", { name: `${newAssignmentTitle} 과제` }).getByRole("button", { name: "미리보기" }).click();
+  const createdAssignment = page.getByRole("article", { name: `${newAssignmentTitle} 과제` });
+  await createdAssignment.getByRole("button", { name: "배정", exact: true }).click();
+  const assignmentDialog = page.getByRole("dialog", { name: "과제 배정" });
+  await assignmentDialog.getByRole("checkbox", { name: "12번 새학생" }).check();
+  await assignmentDialog.getByRole("button", { name: "배정 저장" }).click();
+  await createdAssignment.getByRole("button", { name: "미리보기" }).click();
   await page.getByRole("button", { name: "미리보기 닫기" }).click();
 
   await page.getByRole("button", { name: "역할 바꾸기" }).click();

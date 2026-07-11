@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const playwrightPort = process.env["PLAYWRIGHT_PORT"] ?? "5174";
+const playwrightPort = process.env["PLAYWRIGHT_PORT"] ?? "5184";
 const baseURL = process.env["PLAYWRIGHT_BASE_URL"] ?? `http://127.0.0.1:${playwrightPort}`;
 const reuseExistingServer = process.env["PLAYWRIGHT_REUSE_EXISTING_SERVER"] === "1";
 

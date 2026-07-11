@@ -1,6 +1,7 @@
 import type { CoachRequest, CoachResponse, ReviewSuggestion, ReviewSuggestionCheckResponse, ReviewSuggestionsResponse } from "../shared/types.js";
 import { calibrationRequestTags } from "../shared/calibration-ai.js";
 import type { CalibrationChatRequest, CalibrationChatResponse, CalibrationRequestTag } from "../shared/calibration-ai.js";
+import { loadBrowserAiAuthHeaders } from "../session/browser-session.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -12,7 +13,7 @@ const parseJsonPayload = (text: string): unknown => {
 const postJson = async (path: string, body: unknown): Promise<unknown> => {
   const response = await fetch(path, {
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...loadBrowserAiAuthHeaders() },
     method: "POST"
   });
   const text = await response.text();

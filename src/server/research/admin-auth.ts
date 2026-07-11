@@ -11,7 +11,8 @@ const adminLoginSchema = z.object({
 const requiredCredential = (key: string, localFallback: string): string => {
   const configured = process.env[key]?.trim();
   if (configured !== undefined && configured.length > 0) return configured;
-  if (process.env["NODE_ENV"] === "production") throw new ApiError(500, `${key} is required on the server.`);
+  const hasSupabaseConfig = (process.env["SUPABASE_URL"]?.trim().length ?? 0) > 0 && (process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim().length ?? 0) > 0;
+  if (process.env["NODE_ENV"] === "production" || hasSupabaseConfig) throw new ApiError(500, `${key} is required on the server.`);
   return localFallback;
 };
 

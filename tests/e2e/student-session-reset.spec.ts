@@ -19,19 +19,19 @@ test("student chat starts fresh after reload and re-entry", async ({ page }) => 
   await page.getByRole("button", { name: "로그아웃" }).click();
 
   await page.getByRole("button", { name: "학생 계정" }).click();
-  await page.getByLabel("참여코드").fill("S002");
-  await page.getByLabel("학생 아이디").fill("s002");
-  await page.getByLabel("학생 비밀번호").fill("test");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
+  await page.getByLabel("참여자 코드").fill("S002");
+  await page.getByLabel("아이디").fill("s002");
+  await page.getByLabel("비밀번호").fill("test");
+  await page.getByRole("button", { name: "로그인" }).click();
   await expectStudentWorkspace(page);
   await expect(page.getByText(message)).toHaveCount(0);
   await page.getByRole("button", { name: "로그아웃" }).click();
 
   await page.getByRole("button", { name: "학생 계정" }).click();
-  await page.getByLabel("참여코드").fill("S001");
-  await page.getByLabel("학생 아이디").fill("s001");
-  await page.getByLabel("학생 비밀번호").fill("test");
-  await page.getByRole("button", { name: "학생으로 시작" }).click();
+  await page.getByLabel("참여자 코드").fill("S001");
+  await page.getByLabel("아이디").fill("s001");
+  await page.getByLabel("비밀번호").fill("test");
+  await page.getByRole("button", { name: "로그인" }).click();
   await expectStudentWorkspace(page);
   await expect(page.getByText(message)).toHaveCount(0);
 });

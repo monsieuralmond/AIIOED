@@ -9,7 +9,7 @@ import { authenticateAdmin } from "./src/server/research/admin-auth";
 import { authenticateStudent } from "./src/server/research/student-auth";
 import { authenticateTeacher } from "./src/server/research/teacher-auth";
 
-const serverEnvKeys = ["ADMIN_DISPLAY_NAME", "ADMIN_ID", "ADMIN_LOGIN_ID", "ADMIN_PASSWORD", "AI_PROVIDER", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_RETRY_DELAY_MS", "GEMINI_TIMEOUT_MS", "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_RETRY_DELAY_MS", "OPENAI_TIMEOUT_MS", "READING_COACH_AI_MODE", "SERVER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL", "EXPORT_SESSION_LIMIT", "MAX_CHAT_TURNS", "MAX_CHAT_TURNS_PER_MINUTE"] as const;
+const serverEnvKeys = ["ADMIN_DISPLAY_NAME", "ADMIN_ID", "ADMIN_LOGIN_ID", "ADMIN_PASSWORD", "AI_PROVIDER", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_RETRY_DELAY_MS", "GEMINI_TIMEOUT_MS", "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_RETRY_DELAY_MS", "OPENAI_TIMEOUT_MS", "READING_COACH_AI_MODE", "SERVER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL", "EXPORT_SESSION_LIMIT", "MAX_AI_REQUESTS_PER_MINUTE", "MAX_CHAT_TURNS", "MAX_CHAT_TURNS_PER_MINUTE", "MAX_CONCURRENT_AI_REQUESTS", "MAX_JSON_BODY_BYTES"] as const;
 
 const installServerEnv = (env: Record<string, string>): void => {
   for (const key of serverEnvKeys) {
@@ -35,6 +35,8 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use("/api/auth/student", connectJsonRoute((payload) => authenticateStudent(payload)));
           server.middlewares.use("/api/auth/teacher", connectJsonRoute((payload) => authenticateTeacher(payload)));
           server.middlewares.use("/api/session/start", connectJsonRoute(researchHandlers.sessionStart));
+          server.middlewares.use("/api/session/reset", connectJsonRoute(researchHandlers.sessionReset));
+          server.middlewares.use("/api/session/sync", connectJsonRoute(researchHandlers.sessionSync));
           server.middlewares.use("/api/session/list", connectJsonRoute(researchHandlers.sessionList));
           server.middlewares.use("/api/session/update-stage", connectJsonRoute(researchHandlers.updateStage));
           server.middlewares.use("/api/event", connectJsonRoute(researchHandlers.event));
@@ -45,6 +47,7 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use("/api/admin/health", connectJsonRoute(researchHandlers.health));
           server.middlewares.use("/api/admin/roster", connectJsonRoute(researchHandlers.rosterLoad));
           server.middlewares.use("/api/admin/upsert-roster", connectJsonRoute(researchHandlers.rosterUpsert));
+          server.middlewares.use("/api/admin/upsert-roster-delta", connectJsonRoute(researchHandlers.rosterUpsertDelta));
           server.middlewares.use("/api/ai", connectJsonRoute(aiHandler));
         },
         configurePreviewServer(server) {
@@ -54,6 +57,8 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use("/api/auth/student", connectJsonRoute((payload) => authenticateStudent(payload)));
           server.middlewares.use("/api/auth/teacher", connectJsonRoute((payload) => authenticateTeacher(payload)));
           server.middlewares.use("/api/session/start", connectJsonRoute(researchHandlers.sessionStart));
+          server.middlewares.use("/api/session/reset", connectJsonRoute(researchHandlers.sessionReset));
+          server.middlewares.use("/api/session/sync", connectJsonRoute(researchHandlers.sessionSync));
           server.middlewares.use("/api/session/list", connectJsonRoute(researchHandlers.sessionList));
           server.middlewares.use("/api/session/update-stage", connectJsonRoute(researchHandlers.updateStage));
           server.middlewares.use("/api/event", connectJsonRoute(researchHandlers.event));
@@ -64,6 +69,7 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use("/api/admin/health", connectJsonRoute(researchHandlers.health));
           server.middlewares.use("/api/admin/roster", connectJsonRoute(researchHandlers.rosterLoad));
           server.middlewares.use("/api/admin/upsert-roster", connectJsonRoute(researchHandlers.rosterUpsert));
+          server.middlewares.use("/api/admin/upsert-roster-delta", connectJsonRoute(researchHandlers.rosterUpsertDelta));
           server.middlewares.use("/api/ai", connectJsonRoute(aiHandler));
         }
       }

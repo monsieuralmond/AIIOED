@@ -98,6 +98,7 @@ export function App(): ReactElement {
   const [, setRosterRevision] = useState<string | null>(null);
   const rosterRevisionRef = useRef<string | null>(null);
   const rosterSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const submissionSyncInFlightRef = useRef<string | null>(null);
   const pilotStateRef = useRef<PilotState>(pilotState);
   const fileSync: FileSyncStatus = unavailableFileSync();
   const actor = pilotState.selectedActor;
@@ -269,7 +270,7 @@ export function App(): ReactElement {
         .catch(reportSessionSyncError);
     };
     refreshSessions();
-    const intervalId = window.setInterval(refreshSessions, 10_000);
+    const intervalId = window.setInterval(refreshSessions, 30_000);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
@@ -446,16 +447,14 @@ export function App(): ReactElement {
 
   const startServerSessionForStudent = async (student: StudentAccount): Promise<boolean> => {
     if (useLocalResearchStorage) {
-      const assignment = assignmentsForStudent(pilotState, student)[0];
-      if (assignment === undefined) return false;
       const nextActor: SelectedActor = { accountId: student.id, role: "student" };
       clearBrowserAdminAuth();
       clearBrowserTeacherAuth();
       clearBrowserSessionIdentity();
       clearBrowserSessionToken();
       saveBrowserActorIdentity(nextActor);
-      setPilotState((state) => selectActor(startStudentSession(state, student.id, assignment.id).state, nextActor));
-      openRoute("student");
+      setPilotState((state) => selectActor(state, nextActor));
+      openRoute("list");
       return true;
     }
     try {
@@ -539,15 +538,27 @@ export function App(): ReactElement {
   };
 
   const setSession = (updater: (session: PilotSession) => PilotSession): void => {
-    setPilotState((state) => {
-      const currentSession = activeSession(state);
-      if (currentSession === null) throw new Error("Student workspace requires an active persisted session.");
-      const nextSession = updater(currentSession);
-      if (loadBrowserSessionIdentity()?.sessionId === currentSession.sessionId) {
-        void syncSessionDelta(currentSession, nextSession).catch(reportSessionSyncError);
-      }
-      return updatePilotSession(state, nextSession);
-    });
+    const state = pilotStateRef.current;
+    const currentSession = activeSession(state);
+    if (currentSession === null) throw new Error("Student workspace requires an active persisted session.");
+    if (submissionSyncInFlightRef.current === currentSession.sessionId) return;
+    const nextSession = updater(currentSession);
+    const nextState = updatePilotSession(state, nextSession);
+    const isServerSession = loadBrowserSessionIdentity()?.sessionId === currentSession.sessionId;
+    const isFinalSubmission = isServerSession && currentSession.status !== "submitted" && nextSession.status === "submitted";
+    const commit = (): void => {
+      pilotStateRef.current = nextState;
+      setPilotState(nextState);
+    };
+    if (isFinalSubmission) {
+      submissionSyncInFlightRef.current = currentSession.sessionId;
+      void syncSessionDelta(currentSession, nextSession).then(commit).catch(reportSessionSyncError).finally(() => {
+        submissionSyncInFlightRef.current = null;
+      });
+      return;
+    }
+    commit();
+    if (isServerSession) void syncSessionDelta(currentSession, nextSession).catch(reportSessionSyncError);
   };
 
   const updateTeacherReviewForSession = (sessionId: string, input: TeacherReviewUpdate): void => {

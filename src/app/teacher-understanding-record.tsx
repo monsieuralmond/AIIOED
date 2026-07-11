@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { PilotSession } from "../shared/types.js";
+import { TeacherChatTranscript } from "./teacher-chat-transcript.js";
 import { finalReflectionSurveyItemsForModule, independentProblemsForModule, predictionSurveyItemsForModule, preSurveyItemsForModule, reflectionSurveyItemsForModule, surveyItemsForTopic, surveyResponseType } from "./understanding-calibration-data.js";
 import type { IndependentProblem, LikertItem } from "./understanding-calibration-data.js";
 
@@ -163,10 +164,7 @@ export function TeacherUnderstandingRecord(props: { readonly session: PilotSessi
           <SurveyGroup responses={finalReflectionResponses} title="대화 다시 본 뒤" />
         </div>
       </section>
-      <section aria-label="AI 대화 요약" className="understanding-chat-section teacher-chat-log-section">
-        <h3>AI 대화 요약</h3>
-        <p>{props.session.chatTurns.length === 0 ? "아직 대화가 없습니다." : `학생 질문과 AI 응답이 ${props.session.chatTurns.length}턴 기록되었습니다. 원문 대화는 관리자 로그에서만 확인합니다.`}</p>
-      </section>
+      <TeacherChatTranscript turns={props.session.chatTurns} />
       <section aria-label="AI 응답 상태" className="understanding-ai-failure-section">
         <h3>AI 응답 상태</h3>
         <p>{aiFailureCount === 0 ? "AI 응답 실패 기록이 없습니다." : `AI 응답 실패가 ${aiFailureCount}회 기록되었습니다. 상세 로그는 관리자 export에서 확인합니다.`}</p>

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudentCredentials, enterTeacher, switchToTeacher } from "./helpers.js";
+import { enterStudentCredentials, enterTeacher, openAdminExport, switchToTeacher } from "./helpers.js";
 
 const completeStudentWriting = async (page: import("@playwright/test").Page): Promise<void> => {
   await page.getByRole("button", { name: "이해했어요" }).click();
@@ -25,7 +25,7 @@ test("teacher can assign, monitor, and review a student's process record", async
   await enterTeacher(page);
   const sampleAssignment = page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" });
   await expect(sampleAssignment.getByRole("button", { name: "미리보기" })).toBeVisible();
-  await expect(sampleAssignment.getByRole("button", { name: "배정" })).toBeVisible();
+  await expect(sampleAssignment.getByRole("button", { name: "배정", exact: true })).toBeVisible();
   await sampleAssignment.getByRole("button", { name: "미리보기" }).click();
   await expect(page.getByRole("dialog", { name: "과제 미리보기" })).toContainText("플라스틱 사용을 줄여야 할까?");
   await expect(page.getByLabel("배정할 반")).toHaveCount(0);
@@ -66,10 +66,10 @@ test("teacher can assign, monitor, and review a student's process record", async
   await expect(signalPanel).toContainText("수정 확인");
   await expect(signalPanel).toContainText("미해결");
   await expect(page.getByRole("heading", { name: "최종 글" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "대화 기록" })).toBeVisible();
-  await expect(page.locator(".teacher-chat-log-section .turn-list")).toHaveCSS("overflow-y", "auto");
+  await expect(page.getByRole("heading", { name: "AI 대화 기록" })).toBeVisible();
   await expect(page.getByText("근거를 어떻게 확인할까?")).toBeVisible();
-  await expect(page.getByRole("blockquote")).toContainText("일회용 플라스틱은 줄여야 한다. 분해가 오래 걸리고 생태계에 피해를 주기 때문이다.");
+  await expect(page.getByText("AI 응답 1 보기")).toBeVisible();
+  await expect(page.getByText(/원문 대화는 관리자 로그에서만 확인합니다/)).toHaveCount(0);
   await expect(page.getByText("생각 정리 기록")).toBeVisible();
   await expect(page.getByText("초안 기록")).toBeVisible();
   await expect(page.getByRole("heading", { name: "교사 검토" })).toBeVisible();
@@ -86,13 +86,13 @@ test("teacher can assign, monitor, and review a student's process record", async
   await page.getByRole("button", { name: "추가 확인 필요 0" }).click();
   await expect(page.getByText("조건에 맞는 학생이 없습니다.")).toBeVisible();
 
-  await page.getByRole("button", { name: "홈" }).click();
-  await page.getByRole("button", { name: "로그 보기" }).click();
+  await openAdminExport(page);
   const raw = await page.getByTestId("export-json").textContent();
   expect(raw).not.toBeNull();
   const exported: unknown = JSON.parse(raw ?? "{}");
   expect(exported).toHaveProperty("sessions.0.teacherReview.status", "reviewed");
   expect(exported).toHaveProperty("sessions.0.teacherReview.note", "근거 요청과 반론 작성이 확인됨.");
+
 });
 
 test("selected teacher role persists across reloads", async ({ page }) => {

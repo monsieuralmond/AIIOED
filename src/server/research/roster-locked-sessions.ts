@@ -12,7 +12,7 @@ type LockedSessionRow = {
 };
 
 const lockedSessionQueryFor = (field: string, values: readonly string[]): string | null =>
-  values.length === 0 ? null : `select=session_id&research_locked=eq.true&${field}=${inList(values)}&limit=1`;
+  values.length === 0 ? null : `select=session_id&${field}=${inList(values)}&limit=1`;
 
 const lockedSessionExists = async (db: SupabaseRestClient, query: string | null): Promise<boolean> => {
   if (query === null) return false;
@@ -32,5 +32,5 @@ export const assertNoLockedResearchDataDeletion = async (
     lockedSessionExists(db, lockedSessionQueryFor("class_group_id", input.deletedClassIds)),
     lockedSessionExists(db, lockedSessionQueryFor("student_anonymous_id", studentAnonymousIds))
   ]);
-  if (hasLockedSession.some((item) => item)) throw new ApiError(409, "잠금 처리된 연구 데이터가 있어 일반 화면에서 삭제할 수 없습니다.");
+  if (hasLockedSession.some((item) => item)) throw new ApiError(409, "이미 수집된 연구 데이터가 있어 일반 화면에서 삭제할 수 없습니다.");
 };

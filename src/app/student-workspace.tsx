@@ -33,7 +33,6 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
   const [warningFields, setWarningFields] = useState<readonly string[]>([]);
   const [coachBusy, setCoachBusy] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [resolvedSuggestionIds, setResolvedSuggestionIds] = useState<readonly string[]>([]);
   const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
@@ -50,7 +49,6 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
     const nextDraft = latestDraft(props.session);
     setOutline(nextOutline);
     setDraft(nextDraft);
-    setSubmitted(props.session.finalSubmission !== null);
     setResolvedSuggestionIds(resolvedSuggestionIdsFromSession(props.session));
     setSelectedSuggestionId(null);
     setSuggestionCheckResult(null);
@@ -102,7 +100,7 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
     props.setSession((session) => recordPaste(session, text));
     setWarning("붙여넣기가 기록되었어요");
   };
-  const submit = (): void => { props.setSession((session) => submitFinal(session, draft)); setSubmitted(true); };
+  const submit = (): void => { props.setSession((session) => submitFinal(session, draft)); };
   const openReview = (): void => {
     const localSuggestions = createReviewSuggestions({ draft, outline });
     setApiError("");
@@ -180,7 +178,7 @@ export function StudentWorkspace(props: { readonly session: PilotSession; readon
           {props.session.currentStage === "reading" ? <ReadingStage session={props.session} onNext={() => goStage("thinking")} /> : null}
           {props.session.currentStage === "thinking" ? <ThinkingStage missing={warningFields} outline={outline} warning={warning} onAddEvidence={() => saveOutline({ ...outline, evidence: [...outline.evidence, ""] })} onAddSource={() => saveOutline({ ...outline, question: outline.question.trim().length === 0 ? "- " : `${outline.question.trimEnd()}\n- ` })} onChange={saveOutline} onCheck={() => { const missing = outlineMissingFields(outline); setWarningFields(missing); setWarning(missing.length === 0 ? "개요가 준비됐어요" : "개요를 점검했어요"); props.setSession((session) => warnWeakOutline(session, outline)); }} onContinue={() => goStage("writing")} onNext={startWriting} /> : null}
           {props.session.currentStage === "writing" ? <StudentWritingStage draft={draft} outline={outline} reviewBusy={reviewBusy} warning={warning} onDraft={changeDraft} onPaste={pasteDraft} onReview={openReview} /> : null}
-          {props.session.currentStage === "review" ? <ReviewStage draft={draft} outline={outline} selectedSuggestion={selectedSuggestion} submitted={submitted} warning={warning} onDraft={changeDraft} onPaste={pasteDraft} onSubmit={submit} /> : null}
+          {props.session.currentStage === "review" ? <ReviewStage draft={draft} outline={outline} selectedSuggestion={selectedSuggestion} submitted={props.session.finalSubmission !== null} warning={warning} onDraft={changeDraft} onPaste={pasteDraft} onSubmit={submit} /> : null}
         </Surface>
         <StudentSupportPanel checkingSuggestionId={checkingSuggestionId} chatInput={chatInput} coachBusy={coachBusy} outline={outline} resolvedSuggestionIds={resolvedSuggestionIds} selectedSuggestionId={selectedSuggestion?.id ?? null} stage={props.session.currentStage} suggestionCheckResult={suggestionCheckResult} suggestions={suggestions} turns={props.session.chatTurns} onCheckSuggestion={checkSuggestion} onInput={setChatInput} onQuickPrompt={sendCoachMessage} onResolveSuggestion={markSuggestion} onSelectSuggestion={selectSuggestion} onSend={sendChat} />
       </section>

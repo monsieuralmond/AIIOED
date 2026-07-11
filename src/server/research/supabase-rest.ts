@@ -13,8 +13,8 @@ export type SupabaseConfig = {
   readonly url: string;
 };
 
-const defaultTimeoutMs = 12_000;
-const retryLimit = 1;
+const defaultTimeoutMs = 24_000;
+const defaultRetryLimit = 1;
 const retryDelayMs = 150;
 const retryableStatusCodes = new Set([408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
 const cloudflareGatewayStatusCodes = new Set([520, 521, 522, 523, 524]);
@@ -97,7 +97,7 @@ export class SupabaseRestClient {
 
   constructor(config: SupabaseConfig) {
     this.restUrl = `${config.url.replace(/\/$/, "")}/rest/v1`;
-    this.retryLimit = config.retryLimit ?? retryLimit;
+    this.retryLimit = config.retryLimit ?? defaultRetryLimit;
     this.serviceRoleKey = config.serviceRoleKey;
     this.timeoutMs = config.timeoutMs ?? defaultTimeoutMs;
   }

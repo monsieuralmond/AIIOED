@@ -367,6 +367,122 @@ describe("roster handlers", () => {
     })]);
   });
 
+  type DeferredPatch = {
+    readonly promise: Promise<Response>;
+    readonly reject: (reason: unknown) => void;
+    readonly resolve: (response?: Response) => void;
+  };
+
+  const deferredPatch = (): DeferredPatch => {
+    let resolvePatch: ((response?: Response) => void) | undefined;
+    let rejectPatch: ((reason: unknown) => void) | undefined;
+    const promise = new Promise<Response>((resolve, reject) => {
+      resolvePatch = (response) => resolve(response ?? new Response(JSON.stringify([]), { status: 200 }));
+      rejectPatch = reject;
+    });
+    if (resolvePatch === undefined || rejectPatch === undefined) throw new Error("Deferred patch was not initialized.");
+    return { promise, reject: rejectPatch, resolve: resolvePatch };
+  };
+
+  const flushMicrotasks = async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  const waitForPatchCount = async (patches: readonly DeferredPatch[], count: number): Promise<void> => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (patches.length >= count) return;
+      await flushMicrotasks();
+    }
+    throw new Error(`Expected ${count} patch requests to start.`);
+  };
+
+  it("limits concurrent roster row patches while applying large account deltas", async () => {
+    let activeStudentPatches = 0;
+    let maxActiveStudentPatches = 0;
+    const patches: DeferredPatch[] = [];
+    const students = Array.from({ length: 6 }, (_, index) => ({
+      classGroupId: "class-pilot",
+      displayLabel: `학생 ${index + 1}`,
+      id: `student-${index + 1}`,
+      loginId: `s${index + 1}`,
+      participantCode: `S${String(index + 1).padStart(3, "0")}`,
+      studentAnonymousId: `anon-${index + 1}`,
+      studentNumber: index + 1
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const table = tableFromUrl(url);
+      if (method === "PATCH" && table === "students") {
+        activeStudentPatches += 1;
+        maxActiveStudentPatches = Math.max(maxActiveStudentPatches, activeStudentPatches);
+        const patch = deferredPatch();
+        patches.push(patch);
+        const response = await patch.promise;
+        activeStudentPatches -= 1;
+        return response;
+      }
+      if (method === "GET") return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const save = upsertRosterDelta({
+      students
+    }, adminRequest());
+
+    await waitForPatchCount(patches, 4);
+
+    expect(patches).toHaveLength(4);
+    expect(maxActiveStudentPatches).toBeLessThanOrEqual(4);
+    for (const patch of patches) patch.resolve();
+    await waitForPatchCount(patches, 6);
+    expect(patches).toHaveLength(6);
+    for (const patch of patches.slice(4)) patch.resolve();
+    await expect(save).resolves.toMatchObject({ ok: true });
+  });
+
+  it("waits for started roster row patches to settle before reporting a patch failure", async () => {
+    let activeStudentPatches = 0;
+    const patches: DeferredPatch[] = [];
+    const students = Array.from({ length: 6 }, (_, index) => ({
+      classGroupId: "class-pilot",
+      id: `student-failure-${index + 1}`,
+      participantCode: `F${String(index + 1).padStart(3, "0")}`,
+      studentAnonymousId: `anon-failure-${index + 1}`
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const method = init?.method ?? "GET";
+      const table = tableFromUrl(String(input));
+      if (method === "PATCH" && table === "students") {
+        activeStudentPatches += 1;
+        const patch = deferredPatch();
+        patches.push(patch);
+        try {
+          return await patch.promise;
+        } finally {
+          activeStudentPatches -= 1;
+        }
+      }
+      if (method === "GET") return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const save = upsertRosterDelta({ students }, adminRequest());
+    await waitForPatchCount(patches, 4);
+
+    expect(patches).toHaveLength(4);
+    const failedPatch = patches[0];
+    if (failedPatch === undefined) throw new Error("first patch did not start.");
+    failedPatch.resolve(new Response(JSON.stringify({ message: "patch failed" }), { status: 400 }));
+    for (const patch of patches.slice(1)) patch.resolve();
+    await expect(save).rejects.toThrow("Supabase request failed: patch failed");
+    expect(activeStudentPatches).toBe(0);
+    expect(patches).toHaveLength(4);
+  });
+
   it("loads the current roster tables instead of resurrecting a stale roster snapshot", async () => {
     const calls: RecordedFetch[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

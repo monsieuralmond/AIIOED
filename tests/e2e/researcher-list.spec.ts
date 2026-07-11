@@ -12,7 +12,7 @@ test("researcher list exposes create, preview, and log actions", async ({ page }
   const rail = page.getByLabel("연구자 메뉴");
   await expect(rail.getByRole("button", { name: "학생 현황" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "학생 화면 보기" })).toBeVisible();
-  await expect(rail.getByRole("button", { name: "로그 보기" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "로그 보기" })).toHaveCount(0);
   await expect(page.getByText("학생 화면 열기")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "진행 현황" })).toHaveCount(0);
   await expect(page.getByLabel("활성 과제").getByRole("button", { name: "로그 보기" })).toHaveCount(0);
@@ -35,20 +35,20 @@ test("teacher previews and assigns from separate assignment row actions", async 
 
   const activeAssignment = page.getByRole("article", { name: "실험 반 과제 과제" });
   const sampleAssignment = page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" });
-  await expect(activeAssignment.getByText("학생 화면에 표시 중")).toBeVisible();
+  await expect(activeAssignment.getByRole("definition").first()).toHaveText("0명");
   await sampleAssignment.getByRole("button", { name: "미리보기" }).click();
   await expect(page.getByRole("dialog", { name: "과제 미리보기" })).toContainText("플라스틱 사용을 줄여야 할까?");
   await expect(page.getByLabel("배정할 반")).toHaveCount(0);
   await page.getByRole("button", { name: "닫기" }).last().click();
-  await expect(activeAssignment.getByText("학생 화면에 표시 중")).toBeVisible();
-  await sampleAssignment.getByRole("button", { name: "배정" }).click();
+  await expect(activeAssignment.getByRole("definition").first()).toHaveText("0명");
+  await sampleAssignment.getByRole("button", { name: "배정", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "과제 배정" })).toContainText("플라스틱 사용을 줄여야 할까?");
   await expect(page.getByLabel("배정할 반")).toHaveValue("class-pilot");
-  await expect(activeAssignment.getByText("학생 화면에 표시 중")).toBeVisible();
+  await expect(activeAssignment.getByRole("definition").first()).toHaveText("0명");
   await page.getByLabel("배정할 반").selectOption({ label: "실험 반" });
-  await expect(page.getByText("실험 반 학생 0명에게 보입니다.")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "과제 배정" })).toContainText("이 반에 등록된 학생이 없습니다.");
   await page.getByRole("button", { name: "배정 저장" }).click();
-  await expect(sampleAssignment.getByText("학생 화면에 표시 중")).toBeVisible();
+  await expect(sampleAssignment.getByRole("definition").first()).toHaveText("0명");
   await expect(sampleAssignment).toContainText("실험 반");
 });
 
@@ -120,7 +120,7 @@ test("mobile teacher shell keeps primary actions visible without a collapsed men
 
   await expect(page.getByRole("button", { name: "학생 현황" })).toBeVisible();
   await expect(page.getByRole("button", { name: "학생 화면 보기" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "로그 보기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그 보기" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "내 과제 만들기" })).toBeVisible();
   await expect(page.getByRole("button", { name: "역할 바꾸기" })).toBeVisible();
 });

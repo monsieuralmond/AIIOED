@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterStudent, enterStudentCredentials, expectStudentWorkspace, openTeacherExport } from "./helpers.js";
+import { enterStudent, enterStudentCredentials, expectStudentWorkspace, openAdminExport } from "./helpers.js";
 
 test("student starts from an assigned task and can reopen assignment details mid-task", async ({ page }) => {
   await page.goto("/");
@@ -84,7 +84,8 @@ test("direct student URL creates the session for the selected student", async ({
 
   await page.goto("/student");
   await page.getByRole("button", { name: "이해했어요" }).click();
-  await openTeacherExport(page);
+  await expect(page.getByRole("heading", { name: "개요 작성" })).toBeVisible();
+  await openAdminExport(page);
 
   const raw = await page.getByTestId("export-json").textContent();
   const exported: unknown = JSON.parse(raw ?? "{}");

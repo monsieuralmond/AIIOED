@@ -1,21 +1,23 @@
 import { AiRouteError } from "../gemini-client.js";
+import { runWithAiConcurrency } from "../ai-concurrency.js";
 import { researchServerEnv } from "./env.js";
 import type { JsonHandler } from "./http.js";
 import { ApiError } from "./http.js";
 import { completeResearchChat } from "./research-chat.js";
 import type { CalibrationChatResponse } from "../../shared/calibration-ai.js";
 import { chatSchema } from "./schemas.js";
-import { chatLimitMessage } from "./chat-limits.js";
-import { requireSessionAuth } from "./auth.js";
-import { serverId } from "./store.js";
+import { requireSessionAuth, requireSessionIdAuth } from "./auth.js";
+import { assertSessionWritable, serverId } from "./store.js";
 import type { ResearchStore } from "./store.js";
 
 export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandler => async (payload, request) => {
   const input = chatSchema.parse(payload);
+  requireSessionIdAuth(request, input.sessionId);
   const env = researchServerEnv();
   const store = storeFactory();
   const { context, session } = await store.resumeSessionForChat(input.sessionId);
   requireSessionAuth(request, context);
+  assertSessionWritable(context);
   const existing = await store.findAssistantTurnByRequestId(input.sessionId, input.requestId);
   if (existing !== null) {
     return {
@@ -26,8 +28,6 @@ export const createChatHandler = (storeFactory: () => ResearchStore): JsonHandle
       type: "clarify"
     };
   }
-  const limitMessage = chatLimitMessage(session);
-  if (limitMessage !== null) throw new ApiError(429, limitMessage);
   const timestamp = new Date().toISOString();
   const studentTurnId = serverId("chat");
   const studentTurn = await store.insertChatTurn({
@@ -84,7 +84,7 @@ type CompleteAndPersistResearchChatInput = {
 
 const completeAndPersistResearchChat = async (input: CompleteAndPersistResearchChatInput): Promise<CalibrationChatResponse> => {
   try {
-    const response = await completeResearchChat({
+    const response = await runWithAiConcurrency(() => completeResearchChat({
       ...(input.session.assignment.calibrationConfig?.aiContext === undefined ? {} : { aiContext: input.session.assignment.calibrationConfig.aiContext }),
       apiKey: input.env.aiApiKey,
       assignment: input.session.assignment,
@@ -94,7 +94,7 @@ const completeAndPersistResearchChat = async (input: CompleteAndPersistResearchC
       model: input.env.aiModel,
       provider: input.env.aiProvider,
       researchCondition: input.session.researchCondition
-    });
+    }));
     await input.store.insertChatTurn({
       context: input.context,
       id: serverId("chat"),

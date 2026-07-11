@@ -53,6 +53,7 @@ describe("Supabase research schema contract", () => {
     const quotaSql = migrationSql("011_ai_request_quota.sql");
     const securitySql = migrationSql("012_secure_privileged_research_rpcs.sql");
     const resetSql = migrationSql("013_archive_before_teacher_session_reset.sql");
+    const quotaFixSql = migrationSql("014_fix_ai_request_quota_ambiguity.sql");
 
     expect(syncSql).toContain("create or replace function public.sync_research_session(payload jsonb)");
     expect(syncSql).toContain("for update");
@@ -84,6 +85,7 @@ describe("Supabase research schema contract", () => {
     expect(lockSql).toContain("session_uniqueness_available");
     expect(quotaSql).toContain("create table if not exists public.ai_request_buckets");
     expect(quotaSql).toContain("reserve_ai_request");
+    expect(quotaSql).toContain("on conflict on constraint ai_request_buckets_pkey");
     expect(quotaSql).toContain("ai_request_quota_available");
     expect(securitySql).toContain("revoke all on function public.apply_roster_mutation(jsonb)");
     expect(securitySql).toContain("revoke all on function public.delete_research_test_data(jsonb)");
@@ -94,5 +96,8 @@ describe("Supabase research schema contract", () => {
     expect(resetSql).toContain("teacher_session_reset");
     expect(resetSql).toContain("rawsnapshot");
     expect(resetSql).toContain("reset_research_session_archives_before_delete");
+    expect(quotaFixSql).toContain("create or replace function public.reserve_ai_request");
+    expect(quotaFixSql).toContain("on conflict on constraint ai_request_buckets_pkey");
+    expect(quotaFixSql).toContain("ai_request_quota_ambiguity_fixed");
   });
 });

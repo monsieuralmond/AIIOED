@@ -8,7 +8,7 @@ const tableFromUrl = (url: string): string => {
   return pathname.split("/").filter((part) => part.length > 0).at(-1) ?? "";
 };
 
-describe("locked roster deletion guard", () => {
+describe("roster research data deletion guard", () => {
   beforeEach(() => {
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
     process.env["SUPABASE_URL"] = "https://example.supabase.co";
@@ -18,10 +18,10 @@ describe("locked roster deletion guard", () => {
     vi.unstubAllGlobals();
   });
 
-  it("rejects deletion when a matching research locked session exists", async () => {
+  it("rejects deletion when a matching research session exists", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);
-      if (tableFromUrl(url) === "sessions" && url.includes("research_locked=eq.true")) {
+      if (tableFromUrl(url) === "sessions" && url.includes("assignment_id=in.")) {
         return new Response(JSON.stringify([{ session_id: "session-locked" }]), { status: 200 });
       }
       return new Response(JSON.stringify([]), { status: 200 });
@@ -36,7 +36,7 @@ describe("locked roster deletion guard", () => {
     });
 
     await expect(assertNoLockedResearchDataDeletion(db, input, [])).rejects.toMatchObject({
-      message: "잠금 처리된 연구 데이터가 있어 일반 화면에서 삭제할 수 없습니다.",
+      message: "이미 수집된 연구 데이터가 있어 일반 화면에서 삭제할 수 없습니다.",
       statusCode: 409
     });
   });

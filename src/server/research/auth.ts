@@ -34,6 +34,11 @@ const teacherIdHeader = "x-research-teacher-id";
 const teacherTokenHeader = "x-research-teacher-token";
 const tokenTtlMs = 1000 * 60 * 60 * 12;
 
+export type AiPrincipal = {
+  readonly id: string;
+  readonly kind: "admin" | "session" | "teacher";
+};
+
 const secret = (): string => {
   const configured = process.env["SERVER_AUTH_SECRET"]?.trim();
   if (configured !== undefined && configured.length > 0) return configured;
@@ -111,6 +116,13 @@ export const requireSessionAuth = (request: IncomingMessage, context: Pick<Sessi
   }
 };
 
+export const requireSessionIdAuth = (request: IncomingMessage, sessionId: string): void => {
+  const payload = parseToken(headerValue(request, sessionTokenHeader) ?? "");
+  if (payload?.kind !== "session" || payload.sessionId !== sessionId) {
+    throw new ApiError(401, "Session authorization is required.");
+  }
+};
+
 export const teacherAuthFromRequest = (request: IncomingMessage): { readonly teacherId: string; readonly token: string } | null => {
   const teacherId = headerValue(request, teacherIdHeader);
   const token = headerValue(request, teacherTokenHeader);
@@ -140,4 +152,22 @@ export const requireAdminAuth = (request: IncomingMessage): string => {
     throw new ApiError(401, "Admin authorization is required.");
   }
   return requestAdminId;
+};
+
+export const requireAiAuth = (request: IncomingMessage): AiPrincipal => {
+  const sessionPayload = parseToken(headerValue(request, sessionTokenHeader) ?? "");
+  if (sessionPayload?.kind === "session") return { id: sessionPayload.sessionId, kind: "session" };
+
+  const teacherPayload = parseToken(headerValue(request, teacherTokenHeader) ?? "");
+  const teacherId = headerValue(request, teacherIdHeader);
+  if (teacherPayload?.kind === "teacher" && teacherId === teacherPayload.teacherId) {
+    return { id: teacherPayload.teacherId, kind: "teacher" };
+  }
+
+  const adminPayload = parseToken(headerValue(request, adminTokenHeader) ?? "");
+  const adminId = headerValue(request, adminIdHeader);
+  if (adminPayload?.kind === "admin" && adminId === adminPayload.adminId) {
+    return { id: adminPayload.adminId, kind: "admin" };
+  }
+  throw new ApiError(401, "AI authorization is required.");
 };
