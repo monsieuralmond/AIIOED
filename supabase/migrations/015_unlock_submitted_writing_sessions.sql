@@ -189,6 +189,14 @@ as $$
     'session_uniqueness_available', exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'sessions_assignment_student_unique'),
     'ai_request_quota_available', exists (select 1 from pg_proc join pg_namespace on pg_namespace.oid = pg_proc.pronamespace where pg_namespace.nspname = 'public' and pg_proc.proname = 'reserve_ai_request'),
     'reset_research_session_available', exists (select 1 from pg_proc join pg_namespace on pg_namespace.oid = pg_proc.pronamespace where pg_namespace.nspname = 'public' and pg_proc.proname = 'reset_research_session'),
+    'reset_research_session_archives_before_delete', exists (
+      select 1
+      from pg_proc
+      join pg_namespace on pg_namespace.oid = pg_proc.pronamespace
+      where pg_namespace.nspname = 'public'
+        and pg_proc.proname = 'reset_research_session'
+        and pg_get_functiondef(pg_proc.oid) ilike '%session_reset_pre_delete%'
+    ),
     'submitted_writing_sessions_unlocked', not exists (
       select 1
       from public.sessions

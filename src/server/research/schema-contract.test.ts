@@ -103,6 +103,7 @@ describe("Supabase research schema contract", () => {
     expect(writingUnlockSql).toContain("015_unlock_submitted_writing_sessions");
     expect(writingUnlockSql).toContain("where research_mode in ('writing_coach', 'guided_writing')");
     expect(writingUnlockSql).toContain("target.research_mode = 'understanding_calibration'");
+    expect(writingUnlockSql).toContain("reset_research_session_archives_before_delete");
     expect(writingUnlockSql).toContain("submitted_writing_sessions_unlocked");
   });
 });
