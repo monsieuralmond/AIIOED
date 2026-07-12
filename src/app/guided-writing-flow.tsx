@@ -313,7 +313,7 @@ export function GuidedWritingFlow(props: { readonly session: PilotSession; reado
         <ol className="guided-stepper" aria-label="글쓰기 단계">
           {guidedStepOrder.map((step, index) => (
             <li className={index <= currentIndex ? "guided-step active" : "guided-step"} key={step}>
-              <button aria-current={step === currentStep ? "step" : undefined} className="guided-step-button" disabled={completed} type="button" onClick={() => saveCurrentAndEnter(step)}>
+              <button aria-current={step === currentStep ? "step" : undefined} className="guided-step-button" type="button" onClick={() => saveCurrentAndEnter(step)}>
                 {index + 1}. {guidedStepSpecs[step].label}
               </button>
             </li>

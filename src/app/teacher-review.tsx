@@ -11,6 +11,7 @@ import { Button, Field, Surface, TextInput } from "./ui.js";
 type StatusFilter = "all" | StudentWorkStatus;
 
 type StudentProcessRow = {
+  readonly isCurrentlyAssigned: boolean;
   readonly session: PilotSession | null;
   readonly status: StudentWorkStatus;
   readonly student: StudentAccount;
@@ -47,10 +48,19 @@ const reviewStatusForRow = (row: StudentProcessRow): TeacherReviewStatus => row.
 const initialAssignmentId = (state: PilotState): string =>
   state.assignments.find((assignment) => assignment.id === state.activeAssignmentId)?.id ?? state.assignments[0]?.id ?? "";
 
+const anonymousIdForStudent = (student: StudentAccount): string =>
+  student.anonymousId ?? `anon-${student.classGroupId}-${String(student.studentNumber).padStart(3, "0")}`;
+
+const sessionBelongsToStudent = (session: PilotSession, student: StudentAccount): boolean =>
+  session.student.accountId === student.id || session.student.anonymousId === student.id || session.student.anonymousId === anonymousIdForStudent(student);
+
+const hasSessionForAssignment = (state: PilotState, student: StudentAccount, assignmentId: string): boolean =>
+  state.sessions.some((session) => session.assignment.id === assignmentId && sessionBelongsToStudent(session, student));
+
 const assignmentsForClassGroup = (state: PilotState, classGroupId: string): readonly Assignment[] => {
   if (classGroupId === allClassGroupsId) return state.assignments;
   const classStudents = state.students.filter((student) => student.classGroupId === classGroupId);
-  return state.assignments.filter((assignment) => classStudents.some((student) => isAssignmentAssignedToStudent(assignment, student)));
+  return state.assignments.filter((assignment) => classStudents.some((student) => isAssignmentAssignedToStudent(assignment, student) || hasSessionForAssignment(state, student, assignment.id)));
 };
 
 const classGroupLabel = (classGroup: ClassGroup | null): string => classGroup?.name ?? "전체 반";
@@ -60,7 +70,7 @@ const studentsForAssignment = (state: PilotState, assignment: Assignment | null,
     ? state.students
     : state.students.filter((student) => student.classGroupId === classGroupId);
   if (assignment === null) return classFilteredStudents;
-  return classFilteredStudents.filter((student) => isAssignmentAssignedToStudent(assignment, student));
+  return classFilteredStudents.filter((student) => isAssignmentAssignedToStudent(assignment, student) || hasSessionForAssignment(state, student, assignment.id));
 };
 
 export function TeacherReview(props: {
@@ -85,7 +95,12 @@ export function TeacherReview(props: {
   const assignmentStudents = studentsForAssignment(props.state, selectedAssignment, selectedClassGroupId);
   const studentRows = assignmentStudents.map((student): StudentProcessRow => {
     const session = sessionForStudent(props.state, student.id, effectiveAssignmentId);
-    return { session, status: sessionStatus(props.state, student.id, effectiveAssignmentId), student };
+    return {
+      isCurrentlyAssigned: selectedAssignment === null ? false : isAssignmentAssignedToStudent(selectedAssignment, student),
+      session,
+      status: sessionStatus(props.state, student.id, effectiveAssignmentId),
+      student
+    };
   });
   const statusCounts: Readonly<Record<StatusFilter, number>> = {
     all: studentRows.length,
@@ -197,6 +212,7 @@ export function TeacherReview(props: {
                   <strong>{row.student.displayName}</strong>
                   <span className="student-status-meta">{row.student.studentNumber}번 · {row.student.participantCode}</span>
                   <span className={statusClassNames[row.status]}>{statusLabels[row.status]}</span>
+                  {row.isCurrentlyAssigned ? null : <span className="assignment-archive-badge">배정 취소됨</span>}
                   {row.session === null ? null : <span className={`review-status-badge ${row.session.teacherReview.status}`}>{teacherReviewLabels[row.session.teacherReview.status]}</span>}
                 </div>
                 <Button onClick={() => setSelectedStudentId(row.student.id)}>{row.student.displayName} 과정 보기</Button>

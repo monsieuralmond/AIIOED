@@ -1,4 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createSession } from "../session/session.js";
 import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
@@ -56,5 +58,21 @@ describe("GuidedWritingFlow completion", () => {
     const artwork = screen.getByLabelText("완성된 글 미리보기");
     expect(within(artwork).queryByRole("heading", { name: "최종 글" })).not.toBeInTheDocument();
     expect(within(artwork).getByText(/큐비트라는 특별한 정보 단위/u)).toBeInTheDocument();
+  });
+
+  it("lets students move back to earlier guided writing steps after submission", () => {
+    function StatefulGuidedFlow(): ReactElement {
+      const [session, setSession] = useState(() => completedGuidedSession());
+      return <GuidedWritingFlow session={session} setSession={(updater) => setSession((current) => updater(current))} />;
+    }
+
+    render(<StatefulGuidedFlow />);
+
+    expect(screen.getByRole("heading", { name: "글이 완성되었습니다" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "1. 소재" }));
+
+    expect(screen.getByRole("heading", { name: "소재 정하기" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "글이 완성되었습니다" })).not.toBeInTheDocument();
   });
 });

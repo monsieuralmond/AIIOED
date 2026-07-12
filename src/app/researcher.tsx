@@ -43,12 +43,6 @@ const assignmentProgress = (state: PilotState, assignment: Assignment): Assignme
   };
 };
 
-const canOpenStudentPreview = (state: PilotState, assignment: Assignment): boolean => {
-  const progress = assignmentProgress(state, assignment);
-  const hasSession = state.sessions.some((session) => session.assignment.id === assignment.id);
-  return progress.assignedStudentCount > 0 || hasSession || progress.inProgressCount > 0 || progress.submittedCount > 0;
-};
-
 const assignmentMatchesSearch = (assignment: Assignment, classGroup: ClassGroup | undefined, normalizedSearch: string): boolean => {
   if (normalizedSearch.length === 0) return true;
   const searchableText = [
@@ -191,7 +185,6 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                 const isActive = assignment.id === props.activeAssignment?.id;
                 const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
                 const progress = assignmentProgress(props.state, assignment);
-                const canPreview = canOpenStudentPreview(props.state, assignment);
                 return (
                   <article aria-label={`${assignment.title} 과제`} className={isActive ? "prompt-row active" : "prompt-row"} key={assignment.id}>
                     <div>
@@ -216,7 +209,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                     <div className="prompt-row-actions">
                       <Button variant="ghost" onClick={() => props.onEditAssignment(assignment.id)}>수정</Button>
                       <Button variant="secondary" onClick={() => openPreview(assignment)}>미리보기</Button>
-                      <Button disabled={!canPreview} variant="secondary" onClick={() => props.onStudent(assignment.id)}>학생 화면 보기</Button>
+                      <Button variant="secondary" onClick={() => props.onStudent(assignment.id)}>학생 화면 보기</Button>
                       <Button disabled={progress.assignedStudentCount === 0 || savingAssignmentId === assignment.id} variant="secondary" onClick={() => unassign(assignment)}>{savingAssignmentId === assignment.id ? "저장 중" : "배정 취소"}</Button>
                       <Button disabled={savingAssignmentId === assignment.id} variant="primary" onClick={() => openAssign(assignment)}>배정</Button>
                     </div>

@@ -96,4 +96,22 @@ describe("TeacherReview", () => {
     expect(screen.getByRole("article", { name: "박서연 상태" })).toBeInTheDocument();
     expect(screen.queryByRole("article", { name: "김민서 상태" })).not.toBeInTheDocument();
   });
+
+  it("keeps unassigned students visible when they have a saved session for the selected assignment", () => {
+    const student = sampleStudents[0];
+    if (student === undefined) throw new Error("Missing sample student.");
+    const session = submitFinal(createSession(sampleAssignment, student), "배정 취소 전에 제출한 글입니다.");
+    const state: PilotState = {
+      ...createInitialPilotState(),
+      assignments: [{ ...sampleAssignment, assignedStudentIds: [] }],
+      sessions: [session]
+    };
+
+    render(<TeacherReview state={state} onBack={vi.fn()} onResetSession={vi.fn(async () => null)} onUpdateReview={vi.fn<(sessionId: string, input: TeacherReviewUpdate) => void>()} />);
+
+    expect(screen.getByText("전체 반 · 1명 중 1명 제출")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "김민서 상태" })).toBeInTheDocument();
+    expect(screen.getByText("배정 취소됨")).toBeInTheDocument();
+    expect(screen.getByText("배정 취소 전에 제출한 글입니다.")).toBeInTheDocument();
+  });
 });

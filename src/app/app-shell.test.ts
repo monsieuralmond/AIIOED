@@ -154,7 +154,9 @@ describe("App shell", () => {
     await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
     fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "과제 보기" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "과제 시작" })).toBeEnabled();
+    expect(screen.getByText("시작 전")).toBeInTheDocument();
     expect(screen.getByText(sampleTeacher.displayName)).toBeInTheDocument();
     expect(screen.queryByText(sampleStudent.displayName)).not.toBeInTheDocument();
     expect(window.localStorage.getItem("reading-coach-lab:browser-session:v1")).toBeNull();
@@ -167,7 +169,7 @@ describe("App shell", () => {
     expect(screen.queryByRole("button", { name: "과제 시작" })).not.toBeInTheDocument();
   });
 
-  it("opens an existing student session instead of resetting teacher preview to the first stage", async () => {
+  it("opens teacher student preview at the first assignment screen even when a progressed session exists", async () => {
     const sampleStudent = sampleStudents[0];
     if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
     const canonicalAnonymousId = "anon-restored-from-db-001";
@@ -205,9 +207,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [progressedSession] }), { status: 200 });
       }
-      if (url.endsWith("/api/session/start")) {
-        return new Response(JSON.stringify({ error: "teacher preview must reuse the existing student session" }), { status: 500 });
-      }
+      if (url.endsWith("/api/session/start")) return new Response(JSON.stringify({ error: "teacher preview must not start a server session" }), { status: 500 });
       return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -222,13 +222,16 @@ describe("App shell", () => {
     await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
     fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "과제 시작" })).toBeEnabled();
+    expect(screen.getByText("시작 전")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "초안 쓰기" })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
     expect(window.localStorage.getItem("reading-coach-lab:browser-session:v1")).toBeNull();
     expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
   });
 
-  it("previews the latest progressed student session even when the first assigned student has not started", async () => {
+  it("opens teacher student preview from the first screen even when another assigned student has progressed", async () => {
     const firstStudent = sampleStudents[0];
     const progressedStudent = sampleStudents[1];
     if (firstStudent === undefined || progressedStudent === undefined) throw new Error("Missing sample student fixture.");
@@ -267,9 +270,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [progressedSession] }), { status: 200 });
       }
-      if (url.endsWith("/api/session/start")) {
-        return new Response(JSON.stringify({ error: "teacher preview must not start the first assigned student" }), { status: 500 });
-      }
+      if (url.endsWith("/api/session/start")) return new Response(JSON.stringify({ error: "teacher preview must not start a server session" }), { status: 500 });
       return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -284,12 +285,15 @@ describe("App shell", () => {
     await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
     fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "과제 시작" })).toBeEnabled();
+    expect(screen.getByText("시작 전")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "초안 쓰기" })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
     expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
   });
 
-  it("previews an existing student session even after the assignment roster was cleared", async () => {
+  it("lets teacher preview an unassigned assignment from the student first screen", async () => {
     const sampleStudent = sampleStudents[0];
     if (sampleStudent === undefined) throw new Error("Missing sample student fixture.");
     const unassignedAssignment = { ...sampleAssignment, assignedStudentIds: [] };
@@ -328,9 +332,7 @@ describe("App shell", () => {
       if (url.endsWith("/api/session/list")) {
         return new Response(JSON.stringify({ sessions: [progressedSession] }), { status: 200 });
       }
-      if (url.endsWith("/api/session/start")) {
-        return new Response(JSON.stringify({ error: "teacher preview must reuse the existing student session" }), { status: 500 });
-      }
+      if (url.endsWith("/api/session/start")) return new Response(JSON.stringify({ error: "teacher preview must not start a server session" }), { status: 500 });
       return new Response(JSON.stringify({ error: "unexpected request" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -345,7 +347,10 @@ describe("App shell", () => {
     await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
     fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "과제 시작" })).toBeEnabled();
+    expect(screen.getByText("시작 전")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "초안 쓰기" })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
     expect(window.sessionStorage.getItem("reading-coach-lab:browser-actor:v1")).toContain("\"role\":\"teacher\"");
   });
@@ -418,6 +423,8 @@ describe("App shell", () => {
     await waitFor(() => expect(studentPreviewButtonForAssignment(guidedAssignment.title)).not.toBeDisabled());
     fireEvent.click(studentPreviewButtonForAssignment(guidedAssignment.title));
 
+    await waitFor(() => expect(screen.getByRole("heading", { name: "배정된 과제" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "과제 시작" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "소재 정하기" })).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("소재"), { target: { value: "해저케이블" } });
     fireEvent.click(screen.getByRole("button", { name: "다음 단계" }));

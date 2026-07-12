@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import { enterStudentCredentials, enterTeacher, openAdminExport, switchToTeacher } from "./helpers.js";
 
 const completeStudentWriting = async (page: import("@playwright/test").Page): Promise<void> => {
+  const startButton = page.getByRole("button", { name: "과제 시작" });
+  if (await startButton.count() > 0) await startButton.first().click();
   await page.getByRole("button", { name: "이해했어요" }).click();
   await page.getByPlaceholder("코치에게 물어보기").fill("근거를 어떻게 확인할까?");
   await page.getByRole("button", { name: "보내기" }).click();
@@ -47,6 +49,15 @@ test("teacher can assign, monitor, and review a student's process record", async
   await expect(page.getByLabel("과제 선택")).toBeVisible();
   await expect(page.getByRole("heading", { name: "플라스틱 사용을 줄여야 할까?" })).toBeVisible();
   await expect(page.getByRole("article", { name: "김민서 상태" }).getByText("제출 완료", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "과제 목록" }).click();
+  const submittedAssignment = page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" });
+  await submittedAssignment.getByRole("button", { name: "배정 취소" }).click();
+  await page.getByRole("button", { name: "학생 현황" }).click();
+  await expect(page.getByRole("article", { name: "김민서 상태" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "김민서 상태" })).toContainText("배정 취소됨");
+  await expect(page.getByRole("article", { name: "김민서 상태" }).getByText("제출 완료", { exact: true })).toBeVisible();
+
   await page.getByRole("button", { name: "제출 완료 1" }).click();
   await expect(page.getByRole("article", { name: "김민서 상태" })).toBeVisible();
   await expect(page.getByRole("article", { name: "이준 상태" })).toHaveCount(0);

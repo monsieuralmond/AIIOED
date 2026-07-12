@@ -1204,6 +1204,18 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
 .status-badge.not-started {
   background: var(--surface-muted);
 }
+.assignment-archive-badge {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  width: max-content;
+}
 .review-status-badge {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
