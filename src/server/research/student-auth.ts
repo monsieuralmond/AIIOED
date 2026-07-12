@@ -73,7 +73,7 @@ export const authenticateStudent = async (payload: unknown): Promise<StudentAuth
   }
   const assignments = await db.get<readonly AssignmentRow[]>(
     "assignments",
-    `select=id,class_group_id,created_by_teacher_id,research_condition,research_mode,assignment&class_group_id=eq.${encode(student.class_group_id)}&order=created_at.desc`
+    "select=id,class_group_id,created_by_teacher_id,research_condition,research_mode,assignment&order=created_at.desc"
   );
   const loginId = student.login_id ?? input.loginId.trim();
   const studentAccount = {
@@ -90,7 +90,7 @@ export const authenticateStudent = async (payload: unknown): Promise<StudentAuth
     ? []
     : await db.get<readonly SessionRow[]>(
       "sessions",
-      `select=*&class_group_id=eq.${encode(student.class_group_id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&assignment_id=${inList(assignedAssignments.map((assignment) => assignment.id))}&order=updated_at.desc`
+      `select=*&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&assignment_id=${inList(assignedAssignments.map((assignment) => assignment.id))}&order=updated_at.desc`
     );
   return {
     assignments: assignedAssignments,

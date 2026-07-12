@@ -29,7 +29,9 @@ describe("ResearcherList", () => {
       onStudent: vi.fn()
     }));
 
-    expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
+    const row = screen.getByRole("article", { name: `${sampleAssignment.title} 과제` });
+    expect(within(row).getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
+    expect(within(screen.getByLabelText("연구자 메뉴")).queryByRole("button", { name: "학생 화면 보기" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "로그 보기" })).not.toBeInTheDocument();
     expect(screen.getByText("2명")).toBeInTheDocument();
   });
@@ -54,8 +56,36 @@ describe("ResearcherList", () => {
       onStudent: vi.fn()
     }));
 
-    expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
+    const row = screen.getByRole("article", { name: `${sampleAssignment.title} 과제` });
+    expect(within(row).getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled();
     expect(screen.getByText("1명")).toBeInTheDocument();
+  });
+
+  it("opens the student preview for the selected assignment row", () => {
+    const onStudent = vi.fn();
+    const activeAssignment = { ...sampleAssignment, id: "assignment-active", title: "최근 과제" };
+    const olderAssignment = { ...sampleAssignment, id: "assignment-older", title: "이전 과제" };
+
+    render(createElement(ResearcherList, {
+      activeAssignment,
+      state: {
+        ...createInitialPilotState(),
+        activeAssignmentId: activeAssignment.id,
+        assignments: [olderAssignment, activeAssignment],
+        sessions: []
+      },
+      onAccounts: vi.fn(),
+      onAssign: vi.fn(),
+      onCreate: vi.fn(),
+      onEditAssignment: vi.fn(),
+      onReview: vi.fn(),
+      onStudent
+    }));
+
+    const olderRow = screen.getByRole("article", { name: "이전 과제 과제" });
+    fireEvent.click(within(olderRow).getByRole("button", { name: "학생 화면 보기" }));
+
+    expect(onStudent).toHaveBeenCalledWith("assignment-older");
   });
 
   it("saves an empty assignment roster when the teacher cancels assignment from a row", () => {
@@ -111,6 +141,53 @@ describe("ResearcherList", () => {
 
     expect(onAssign).toHaveBeenCalledWith(expect.objectContaining({
       assignedStudentIds: [sampleStudents[0]?.id]
+    }));
+  });
+
+  it("keeps existing class assignments when assigning another class", () => {
+    const onAssign = vi.fn();
+    const firstClass = sampleClassGroups[0];
+    const firstStudent = sampleStudents[0];
+    if (firstClass === undefined || firstStudent === undefined) throw new Error("Missing sample fixture.");
+    const secondClass = { id: "class-two", name: "2반", studentIds: ["student-s003"], teacherId: firstClass.teacherId };
+    const secondStudent = {
+      classGroupId: secondClass.id,
+      displayName: "박서연",
+      id: "student-s003",
+      loginId: "s003",
+      participantCode: "S003",
+      password: "test",
+      studentNumber: 3
+    };
+    const assignment = { ...sampleAssignment, assignedStudentIds: [firstStudent.id] };
+
+    render(createElement(ResearcherList, {
+      activeAssignment: assignment,
+      state: {
+        ...createInitialPilotState(),
+        activeAssignmentId: assignment.id,
+        assignments: [assignment],
+        classGroups: [firstClass, secondClass],
+        sessions: [],
+        students: [firstStudent, secondStudent]
+      },
+      onAccounts: vi.fn(),
+      onAssign,
+      onCreate: vi.fn(),
+      onEditAssignment: vi.fn(),
+      onReview: vi.fn(),
+      onStudent: vi.fn()
+    }));
+
+    const row = screen.getByRole("article", { name: `${sampleAssignment.title} 과제` });
+    fireEvent.click(within(row).getByRole("button", { name: "배정" }));
+    const dialog = screen.getByRole("dialog", { name: "과제 배정" });
+    fireEvent.change(within(dialog).getByLabelText("배정할 반"), { target: { value: secondClass.id } });
+    fireEvent.click(within(dialog).getByLabelText("3번 박서연"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "배정 저장" }));
+
+    expect(onAssign).toHaveBeenCalledWith(expect.objectContaining({
+      assignedStudentIds: [firstStudent.id, secondStudent.id]
     }));
   });
 });

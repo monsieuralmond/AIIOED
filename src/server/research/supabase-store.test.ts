@@ -136,7 +136,10 @@ describe("Supabase research store", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       if (url.includes("/students?")) return new Response(JSON.stringify([studentRow]), { status: 200 });
-      if (url.includes("/assignments?")) return new Response(JSON.stringify([assignmentRow]), { status: 200 });
+      if (url.includes("/assignments?")) {
+        expect(url).not.toContain("class_group_id=eq.");
+        return new Response(JSON.stringify([assignmentRow]), { status: 200 });
+      }
       if (url.includes("/sessions?select=*&assignment_id")) return new Response(JSON.stringify([]), { status: 200 });
       if (init?.method === "POST" && url.includes("/sessions?on_conflict=")) return new Response(JSON.stringify([]), { status: 201 });
       if (url.includes("/sessions?assignment_id=")) return new Response(JSON.stringify([canonicalRow]), { status: 200 });
@@ -151,5 +154,97 @@ describe("Supabase research store", () => {
     const sessionWrites = fetchMock.mock.calls.filter((call) => call[1]?.method === "POST" && String(call[0]).includes("/sessions?on_conflict="));
     expect(sessionWrites).toHaveLength(1);
     expect(JSON.parse(String(sessionWrites[0]?.[1]?.body))).toMatchObject({ session_id: expect.stringMatching(/^session-/) });
+  });
+
+  it("starts a session for a student assigned through a different representative class", async () => {
+    const assignmentRow = {
+      id: "assignment-multi-class",
+      assignment: { id: "assignment-multi-class", title: "Multi", assignedStudentIds: ["student-two"] },
+      class_group_id: "class-one",
+      created_by_teacher_id: "teacher-test",
+      research_condition: "single_group_baseline",
+      research_mode: "writing_coach"
+    };
+    const studentRow = {
+      class_group_id: "class-two",
+      id: "student-two",
+      login_id: "student-two",
+      participant_code_hash: "hash",
+      password_hash: null,
+      student_anonymous_id: "anon-two",
+      student_number: 2
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/students?")) return new Response(JSON.stringify([studentRow]), { status: 200 });
+      if (url.includes("/assignments?")) return new Response(JSON.stringify([assignmentRow]), { status: 200 });
+      if (url.includes("/sessions?select=*&assignment_id")) return new Response(JSON.stringify([]), { status: 200 });
+      if (init?.method === "POST" && url.includes("/sessions?on_conflict=")) {
+        const body = JSON.parse(String(init.body));
+        return new Response(JSON.stringify([{
+          ...body,
+          completed_at: null,
+          created_at: "2026-07-05T00:00:00.000Z",
+          research_locked: false,
+          updated_at: "2026-07-05T00:00:00.000Z"
+        }]), { status: 201 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const store = createSupabaseResearchStore({ serviceRoleKey: "service-role-test", url: "https://example.supabase.co" });
+
+    const result = await store.startSession({ participantCode: "S002", assignmentId: "assignment-multi-class" });
+
+    expect(result.context.classGroupId).toBe("class-two");
+    const sessionWrites = fetchMock.mock.calls.filter((call) => call[1]?.method === "POST" && String(call[0]).includes("/sessions?on_conflict="));
+    expect(JSON.parse(String(sessionWrites[0]?.[1]?.body))).toMatchObject({ class_group_id: "class-two" });
+  });
+
+  it("rejects session resume after the student is no longer assigned", async () => {
+    const sessionRow = {
+      assignment_id: "assignment-unassigned",
+      assignment_snapshot: { id: "assignment-unassigned", title: "Old" },
+      class_group_id: "class-two",
+      completed_at: null,
+      created_at: "2026-07-05T00:00:00.000Z",
+      current_stage: "reading",
+      metadata: {},
+      research_condition: "single_group_baseline",
+      research_locked: false,
+      research_mode: "writing_coach",
+      session_id: "session-unassigned",
+      status: "in_progress",
+      student_anonymous_id: "anon-two",
+      updated_at: "2026-07-05T00:00:00.000Z"
+    };
+    const studentRow = {
+      class_group_id: "class-two",
+      id: "student-two",
+      login_id: "student-two",
+      participant_code_hash: "hash",
+      password_hash: null,
+      student_anonymous_id: "anon-two",
+      student_number: 2
+    };
+    const assignmentRow = {
+      id: "assignment-unassigned",
+      assignment: { id: "assignment-unassigned", title: "Old", assignedStudentIds: [] },
+      class_group_id: "class-one",
+      created_by_teacher_id: "teacher-test",
+      research_condition: "single_group_baseline",
+      research_mode: "writing_coach"
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/sessions?session_id=eq.session-unassigned")) return new Response(JSON.stringify([sessionRow]), { status: 200 });
+      if (url.includes("/students?student_anonymous_id=eq.anon-two")) return new Response(JSON.stringify([studentRow]), { status: 200 });
+      if (url.includes("/assignments?id=eq.assignment-unassigned")) return new Response(JSON.stringify([assignmentRow]), { status: 200 });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const store = createSupabaseResearchStore({ serviceRoleKey: "service-role-test", url: "https://example.supabase.co" });
+
+    await expect(store.resumeSession("session-unassigned")).rejects.toMatchObject({ statusCode: 403 });
   });
 });

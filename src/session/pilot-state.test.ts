@@ -178,6 +178,38 @@ describe("local pilot state", () => {
     expect(() => startStudentSession(state, secondStudent.id, firstOnlyAssignment.id)).toThrow("학생에게 배정되지 않은 과제입니다.");
   });
 
+  it("keeps one assignment assigned to students in multiple classes", () => {
+    const initial = createInitialPilotState();
+    const teacher = initial.teachers[0];
+    const firstStudent = initial.students[0];
+    if (teacher === undefined || firstStudent === undefined) throw new Error("fixture data missing");
+    const withSecondClass = createClassGroup(initial, { name: "2반", teacherId: teacher.id });
+    const secondClass = withSecondClass.classGroups.find((classGroup) => classGroup.name === "2반");
+    if (secondClass === undefined) throw new Error("second class missing");
+    const withSecondStudent = createStudentAccount(withSecondClass, {
+      classGroupId: secondClass.id,
+      displayName: "박서연",
+      loginId: "s003",
+      participantCode: "S003",
+      password: "test",
+      studentNumber: 3
+    });
+    const secondClassStudent = withSecondStudent.students.find((student) => student.classGroupId === secondClass.id);
+    if (secondClassStudent === undefined) throw new Error("second class student missing");
+    const multiClassAssignment = {
+      ...sampleAssignment,
+      assignedStudentIds: [firstStudent.id, secondClassStudent.id],
+      id: "assignment-multi-class"
+    };
+
+    const state = saveAssignmentInState(withSecondStudent, multiClassAssignment);
+
+    expect(state.assignments.find((assignment) => assignment.id === multiClassAssignment.id)?.assignedStudentIds).toEqual([firstStudent.id, secondClassStudent.id]);
+    expect(assignmentsForStudent(state, firstStudent).map((assignment) => assignment.id)).toContain(multiClassAssignment.id);
+    expect(assignmentsForStudent(state, secondClassStudent).map((assignment) => assignment.id)).toContain(multiClassAssignment.id);
+    expect(startStudentSession(state, secondClassStudent.id, multiClassAssignment.id).session.assignment.id).toBe(multiClassAssignment.id);
+  });
+
   it("reports not-started, in-progress, and submitted student statuses", () => {
     const initial = createInitialPilotState();
     const firstStudent = initial.students[0];
@@ -279,6 +311,36 @@ describe("local pilot state", () => {
     expect(exported.classGroups).toHaveLength(0);
     expect(exported.students).toHaveLength(0);
     expect(exported.assignments[0]?.classGroupId).toBeUndefined();
+  });
+
+  it("deletes one class without clearing another class assigned to the same assignment", () => {
+    const initial = createInitialPilotState();
+    const firstStudent = initial.students[0];
+    if (firstStudent === undefined) throw new Error("fixture student missing");
+    const withSecondClass = createClassGroup(initial, { name: "2반", teacherId: initial.teacher.id });
+    const secondClass = withSecondClass.classGroups.find((classGroup) => classGroup.name === "2반");
+    if (secondClass === undefined) throw new Error("second class missing");
+    const withSecondStudent = createStudentAccount(withSecondClass, {
+      classGroupId: secondClass.id,
+      displayName: "다른 반 학생",
+      loginId: "other-student",
+      participantCode: "S-OTHER",
+      password: "other-pass",
+      studentNumber: 9
+    });
+    const secondClassStudent = withSecondStudent.students.find((student) => student.classGroupId === secondClass.id);
+    if (secondClassStudent === undefined) throw new Error("second class student missing");
+    const multiClassAssignment = {
+      ...sampleAssignment,
+      assignedStudentIds: [firstStudent.id, secondClassStudent.id]
+    };
+    const withMultiClassAssignment = saveAssignmentInState(withSecondStudent, multiClassAssignment);
+
+    const deleted = deleteClassGroup(withMultiClassAssignment, "class-pilot");
+
+    expect(deleted.assignments[0]?.classGroupId).toBeUndefined();
+    expect(deleted.assignments[0]?.assignedStudentIds).toEqual([secondClassStudent.id]);
+    expect(assignmentsForStudent(deleted, secondClassStudent).map((assignment) => assignment.id)).toEqual([sampleAssignment.id]);
   });
 
   it("deletes an assignment with its linked sessions and selects a remaining assignment", () => {

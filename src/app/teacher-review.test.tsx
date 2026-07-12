@@ -61,4 +61,39 @@ describe("TeacherReview", () => {
     expect(reset).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "제출 기록 리셋" })).toBeInTheDocument();
   });
+
+  it("filters student progress by class group", () => {
+    const classTwo = { id: "class-two", name: "2반", studentIds: ["student-s003"], teacherId: "teacher-research" };
+    const classTwoStudent = {
+      classGroupId: classTwo.id,
+      displayName: "박서연",
+      id: "student-s003",
+      loginId: "s003",
+      participantCode: "S003",
+      password: "test",
+      studentNumber: 3
+    };
+    const classTwoAssignment = {
+      ...sampleAssignment,
+      assignedStudentIds: [classTwoStudent.id],
+      classGroupId: classTwo.id,
+      id: "assignment-class-two",
+      title: "2반 과제"
+    };
+    const state: PilotState = {
+      ...createInitialPilotState(),
+      assignments: [sampleAssignment, classTwoAssignment],
+      classGroups: [...createInitialPilotState().classGroups, classTwo],
+      students: [...createInitialPilotState().students, classTwoStudent]
+    };
+
+    render(<TeacherReview state={state} onBack={vi.fn()} onResetSession={vi.fn(async () => null)} onUpdateReview={vi.fn<(sessionId: string, input: TeacherReviewUpdate) => void>()} />);
+
+    fireEvent.change(screen.getByLabelText("반 선택"), { target: { value: classTwo.id } });
+
+    expect(screen.getByRole("heading", { name: "2반 과제" })).toBeInTheDocument();
+    expect(screen.getByText("2반 · 1명 중 0명 제출")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "박서연 상태" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "김민서 상태" })).not.toBeInTheDocument();
+  });
 });

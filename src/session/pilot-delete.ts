@@ -7,12 +7,17 @@ const selectedActorAfterDelete = (selectedActor: SelectedActor | null, role: Sel
   return accountIds.includes(selectedActor.accountId) ? null : selectedActor;
 };
 
-const unassignClassGroup = (assignment: Assignment, classGroupId: string): Assignment => {
-  if (assignment.classGroupId !== classGroupId) return assignment;
-  const { assignedStudentIds: removedAssignedStudentIds, classGroupId: removedClassGroupId, ...unassignedAssignment } = assignment;
+const unassignClassGroup = (assignment: Assignment, classGroupId: string, removedStudentIds: ReadonlySet<string>): Assignment => {
+  const assignedStudentIds = assignment.assignedStudentIds?.filter((studentId) => !removedStudentIds.has(studentId));
+  if (assignment.classGroupId !== classGroupId) {
+    return assignedStudentIds === undefined ? assignment : { ...assignment, assignedStudentIds };
+  }
+  const { assignedStudentIds: removedAssignedStudentIds, classGroupId: removedClassGroupId, ...assignmentWithoutClass } = assignment;
   void removedAssignedStudentIds;
   void removedClassGroupId;
-  return unassignedAssignment;
+  return assignedStudentIds === undefined || assignedStudentIds.length === 0
+    ? assignmentWithoutClass
+    : { ...assignmentWithoutClass, assignedStudentIds };
 };
 
 export const deleteAssignment = (state: PilotState, assignmentId: string): PilotState => {
@@ -49,10 +54,11 @@ export const deleteStudentAccount = (state: PilotState, studentId: string): Pilo
 export const deleteClassGroup = (state: PilotState, classGroupId: string): PilotState => {
   if (!state.classGroups.some((classGroup) => classGroup.id === classGroupId)) throw new PilotStateError("삭제할 반을 찾을 수 없습니다.");
   const removedStudentIds = state.students.filter((student) => student.classGroupId === classGroupId).map((student) => student.id);
+  const removedStudentIdSet = new Set(removedStudentIds);
   const sessions = state.sessions.filter((session) => session.student.accountId === undefined || !removedStudentIds.includes(session.student.accountId));
   return {
     ...state,
-    assignments: state.assignments.map((assignment) => unassignClassGroup(assignment, classGroupId)),
+    assignments: state.assignments.map((assignment) => unassignClassGroup(assignment, classGroupId, removedStudentIdSet)),
     classGroups: state.classGroups.filter((classGroup) => classGroup.id !== classGroupId),
     selectedActor: selectedActorAfterDelete(state.selectedActor, "student", removedStudentIds),
     sessions,

@@ -11,8 +11,9 @@ test("researcher list exposes create, preview, and log actions", async ({ page }
   await expect(page.getByRole("button", { name: "배정" }).first()).toBeVisible();
   const rail = page.getByLabel("연구자 메뉴");
   await expect(rail.getByRole("button", { name: "학생 현황" })).toBeVisible();
-  await expect(rail.getByRole("button", { name: "학생 화면 보기" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "학생 화면 보기" })).toHaveCount(0);
   await expect(rail.getByRole("button", { name: "로그 보기" })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" }).getByRole("button", { name: "학생 화면 보기" })).toBeVisible();
   await expect(page.getByText("학생 화면 열기")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "진행 현황" })).toHaveCount(0);
   await expect(page.getByLabel("활성 과제").getByRole("button", { name: "로그 보기" })).toHaveCount(0);
@@ -48,8 +49,8 @@ test("teacher previews and assigns from separate assignment row actions", async 
   await page.getByLabel("배정할 반").selectOption({ label: "실험 반" });
   await expect(page.getByRole("dialog", { name: "과제 배정" })).toContainText("이 반에 등록된 학생이 없습니다.");
   await page.getByRole("button", { name: "배정 저장" }).click();
-  await expect(sampleAssignment.getByRole("definition").first()).toHaveText("0명");
-  await expect(sampleAssignment).toContainText("실험 반");
+  await expect(sampleAssignment.getByRole("definition").first()).toHaveText("2명");
+  await expect(sampleAssignment).toContainText("파일럿 반");
 });
 
 test("teacher edits an existing assignment without creating a duplicate", async ({ page }) => {
@@ -119,7 +120,8 @@ test("mobile teacher shell keeps primary actions visible without a collapsed men
   await enterTeacher(page);
 
   await expect(page.getByRole("button", { name: "학생 현황" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "학생 화면 보기" })).toBeVisible();
+  await expect(page.getByLabel("연구자 메뉴").getByRole("button", { name: "학생 화면 보기" })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" }).getByRole("button", { name: "학생 화면 보기" })).toBeVisible();
   await expect(page.getByRole("button", { name: "로그 보기" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "내 과제 만들기" })).toBeVisible();
   await expect(page.getByRole("button", { name: "역할 바꾸기" })).toBeVisible();

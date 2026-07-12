@@ -36,6 +36,22 @@ test("teacher account manages classes and numbered students", async ({ page }) =
   await expect(page.getByRole("table", { name: "학생 계정 목록" })).toContainText("pw-08");
 
   await page.getByRole("button", { name: "과제로 돌아가기" }).click();
+  const sampleAssignment = page.getByRole("article", { name: "플라스틱 사용을 줄여야 할까? 과제" });
+  await sampleAssignment.getByRole("button", { name: "배정", exact: true }).click();
+  const sampleAssignmentDialog = page.getByRole("dialog", { name: "과제 배정" });
+  await sampleAssignmentDialog.getByLabel("배정할 반").selectOption({ label: "3반" });
+  await sampleAssignmentDialog.getByRole("button", { name: "전체 선택" }).click();
+  await sampleAssignmentDialog.getByRole("button", { name: "배정 저장" }).click();
+  await page.getByRole("button", { name: "학생 현황" }).click();
+  await page.getByLabel("반 선택").selectOption({ label: "파일럿 반" });
+  await expect(page.getByRole("heading", { name: "플라스틱 사용을 줄여야 할까?" })).toBeVisible();
+  await expect(page.getByText("파일럿 반 · 2명 중 0명 제출")).toBeVisible();
+  await expect(page.getByRole("article", { name: "김민서 상태" })).toBeVisible();
+  await page.getByLabel("반 선택").selectOption({ label: "3반" });
+  await expect(page.getByText("3반 · 4명 중 0명 제출")).toBeVisible();
+  await expect(page.getByRole("article", { name: "연구학생 8 상태" })).toBeVisible();
+  await page.getByRole("button", { name: "과제 목록" }).click();
+
   await page.getByRole("button", { name: "내 과제 만들기" }).click();
   await page.getByLabel("과제 제목").fill("3반 배정 과제");
   await page.getByLabel("배정할 반").selectOption({ label: "3반" });
@@ -49,6 +65,14 @@ test("teacher account manages classes and numbered students", async ({ page }) =
   const assignmentDialog = page.getByRole("dialog", { name: "과제 배정" });
   await assignmentDialog.getByRole("button", { name: "전체 선택" }).click();
   await assignmentDialog.getByRole("button", { name: "배정 저장" }).click();
+
+  await page.getByRole("button", { name: "학생 현황" }).click();
+  await page.getByLabel("반 선택").selectOption({ label: "3반" });
+  await expect(page.getByRole("heading", { name: "3반 배정 과제" })).toBeVisible();
+  await expect(page.getByText("3반 · 4명 중 0명 제출")).toBeVisible();
+  await expect(page.getByRole("article", { name: "최하늘 상태" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "연구학생 8 상태" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "김민서 상태" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "역할 바꾸기" }).click();
   await enterStudentCredentials(page, { loginId: "class3-08", participantCode: "CLASS3-08", password: "pw-08" });

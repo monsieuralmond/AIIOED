@@ -55,6 +55,7 @@ describe("Supabase research schema contract", () => {
     const resetSql = migrationSql("013_archive_before_teacher_session_reset.sql");
     const quotaFixSql = migrationSql("014_fix_ai_request_quota_ambiguity.sql");
     const writingUnlockSql = migrationSql("015_unlock_submitted_writing_sessions.sql");
+    const assignmentClassDeleteSql = migrationSql("016_preserve_assignments_when_deleting_classes.sql");
 
     expect(syncSql).toContain("create or replace function public.sync_research_session(payload jsonb)");
     expect(syncSql).toContain("for update");
@@ -105,5 +106,8 @@ describe("Supabase research schema contract", () => {
     expect(writingUnlockSql).toContain("target.research_mode = 'understanding_calibration'");
     expect(writingUnlockSql).toContain("reset_research_session_archives_before_delete");
     expect(writingUnlockSql).toContain("submitted_writing_sessions_unlocked");
+    expect(assignmentClassDeleteSql).toContain("foreign key (class_group_id) references public.classes(id) on delete set null");
+    expect(assignmentClassDeleteSql).toContain("update public.assignments set class_group_id = null");
+    expect(assignmentClassDeleteSql).toContain("016_preserve_assignments_when_deleting_classes");
   });
 });

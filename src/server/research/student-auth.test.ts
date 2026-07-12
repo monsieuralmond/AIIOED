@@ -94,6 +94,42 @@ describe("student authentication", () => {
     expect(response.sessions).toEqual([]);
   });
 
+  it("returns assignments assigned across a different representative class", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const table = tableFromUrl(String(input));
+      if (table === "students") {
+        return new Response(JSON.stringify([{
+          class_group_id: "class-two",
+          display_label: "박서연",
+          id: "student-2",
+          initial_participant_code: "2",
+          login_id: "2",
+          password_hash: credentialHash("2"),
+          student_anonymous_id: "anon-class-two-002",
+          student_number: 2
+        }]), { status: 200 });
+      }
+      if (table === "assignments") {
+        expect(String(input)).not.toContain("class_group_id=eq.");
+        return new Response(JSON.stringify([{
+          assignment: { ...sampleAssignment, assignedStudentIds: ["student-2"], classGroupId: "class-one", title: "두 반 배정 과제" },
+          class_group_id: "class-one",
+          created_by_teacher_id: "teacher-test",
+          id: "assignment-multi-class",
+          research_condition: ResearchConditions.singleGroupBaseline,
+          research_mode: ResearchModes.writingCoach
+        }]), { status: 200 });
+      }
+      if (table === "sessions") return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: "unexpected table" }), { status: 404 });
+    }));
+
+    const response = await authenticateStudent({ loginId: "2", password: "2" });
+
+    expect(response.assignments).toHaveLength(1);
+    expect(response.assignments[0]?.id).toBe("assignment-multi-class");
+  });
+
   it("returns the authenticated student's previous sessions for assigned tasks", async () => {
     const assignment = { ...sampleAssignment, assignedStudentIds: ["student-1"], classGroupId: "class-test", id: "assignment-test", title: "새 과제" };
     const session = createSession(assignment);

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { sessionForStudent, sessionStatus } from "../session/session.js";
-import type { Assignment, PilotSession, PilotState, StudentAccount, StudentWorkStatus, TeacherReviewStatus, TeacherReviewUpdate } from "../shared/types.js";
+import { isAssignmentAssignedToStudent } from "../shared/assignment-access.js";
+import type { Assignment, ClassGroup, PilotSession, PilotState, StudentAccount, StudentWorkStatus, TeacherReviewStatus, TeacherReviewUpdate } from "../shared/types.js";
 import { TeacherProcessRecord } from "./teacher-process-record.js";
 import { reviewFilterLabels, reviewFilters, teacherReviewLabels } from "./teacher-review-status.js";
 import type { ReviewFilter } from "./teacher-review-status.js";
@@ -28,6 +29,7 @@ const statusClassNames: Readonly<Record<StudentWorkStatus, string>> = {
 };
 
 const statusFilters: readonly StatusFilter[] = ["all", "not_started", "in_progress", "submitted"];
+const allClassGroupsId = "__all_class_groups__";
 
 const statusFilterLabels: Readonly<Record<StatusFilter, string>> = {
   all: "전체",
@@ -45,9 +47,20 @@ const reviewStatusForRow = (row: StudentProcessRow): TeacherReviewStatus => row.
 const initialAssignmentId = (state: PilotState): string =>
   state.assignments.find((assignment) => assignment.id === state.activeAssignmentId)?.id ?? state.assignments[0]?.id ?? "";
 
-const studentsForAssignment = (state: PilotState, assignment: Assignment | null): readonly StudentAccount[] => {
-  if (assignment === null || assignment.classGroupId === undefined) return state.students;
-  return state.students.filter((student) => student.classGroupId === assignment.classGroupId);
+const assignmentsForClassGroup = (state: PilotState, classGroupId: string): readonly Assignment[] => {
+  if (classGroupId === allClassGroupsId) return state.assignments;
+  const classStudents = state.students.filter((student) => student.classGroupId === classGroupId);
+  return state.assignments.filter((assignment) => classStudents.some((student) => isAssignmentAssignedToStudent(assignment, student)));
+};
+
+const classGroupLabel = (classGroup: ClassGroup | null): string => classGroup?.name ?? "전체 반";
+
+const studentsForAssignment = (state: PilotState, assignment: Assignment | null, classGroupId: string): readonly StudentAccount[] => {
+  const classFilteredStudents = classGroupId === allClassGroupsId
+    ? state.students
+    : state.students.filter((student) => student.classGroupId === classGroupId);
+  if (assignment === null) return classFilteredStudents;
+  return classFilteredStudents.filter((student) => isAssignmentAssignedToStudent(assignment, student));
 };
 
 export function TeacherReview(props: {
@@ -57,17 +70,19 @@ export function TeacherReview(props: {
   readonly onUpdateReview: (sessionId: string, input: TeacherReviewUpdate) => void;
 }): ReactElement {
   const [selectedStudentId, setSelectedStudentId] = useState(props.state.students[0]?.id ?? "");
+  const [selectedClassGroupId, setSelectedClassGroupId] = useState(allClassGroupsId);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(initialAssignmentId(props.state));
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all_reviews");
   const [studentSearch, setStudentSearch] = useState("");
   const [resetMessage, setResetMessage] = useState("");
   const [resettingSessionId, setResettingSessionId] = useState<string | null>(null);
-  const fallbackAssignmentId = initialAssignmentId(props.state);
-  const effectiveAssignmentId = props.state.assignments.some((assignment) => assignment.id === selectedAssignmentId) ? selectedAssignmentId : fallbackAssignmentId;
-  const selectedAssignment = props.state.assignments.find((assignment) => assignment.id === effectiveAssignmentId) ?? null;
-  const selectedClassGroup = selectedAssignment?.classGroupId === undefined ? null : props.state.classGroups.find((classGroup) => classGroup.id === selectedAssignment.classGroupId) ?? null;
-  const assignmentStudents = studentsForAssignment(props.state, selectedAssignment);
+  const assignmentOptions = assignmentsForClassGroup(props.state, selectedClassGroupId);
+  const fallbackAssignmentId = assignmentOptions.find((assignment) => assignment.id === props.state.activeAssignmentId)?.id ?? assignmentOptions[0]?.id ?? "";
+  const effectiveAssignmentId = assignmentOptions.some((assignment) => assignment.id === selectedAssignmentId) ? selectedAssignmentId : fallbackAssignmentId;
+  const selectedAssignment = assignmentOptions.find((assignment) => assignment.id === effectiveAssignmentId) ?? null;
+  const selectedClassGroup = selectedClassGroupId === allClassGroupsId ? null : props.state.classGroups.find((classGroup) => classGroup.id === selectedClassGroupId) ?? null;
+  const assignmentStudents = studentsForAssignment(props.state, selectedAssignment, selectedClassGroupId);
   const studentRows = assignmentStudents.map((student): StudentProcessRow => {
     const session = sessionForStudent(props.state, student.id, effectiveAssignmentId);
     return { session, status: sessionStatus(props.state, student.id, effectiveAssignmentId), student };
@@ -114,22 +129,43 @@ export function TeacherReview(props: {
           <header className="student-status-heading">
             <div>
               <h2>{selectedAssignment?.title ?? "과제 없음"}</h2>
-              <p>{selectedClassGroup?.name ?? "전체 학생"} · {studentRows.length}명 중 {statusCounts.submitted}명 제출</p>
+              <p>{classGroupLabel(selectedClassGroup)} · {studentRows.length}명 중 {statusCounts.submitted}명 제출</p>
             </div>
           </header>
           <div className="student-status-tools">
+            <Field label="반 선택">
+              <select
+                className="ui-control"
+                disabled={props.state.classGroups.length === 0}
+                value={selectedClassGroupId}
+                onChange={(event) => {
+                  setSelectedClassGroupId(event.currentTarget.value);
+                  setSelectedAssignmentId("");
+                  setSelectedStudentId("");
+                  setStatusFilter("all");
+                  setReviewFilter("all_reviews");
+                  setStudentSearch("");
+                }}
+              >
+                <option value={allClassGroupsId}>전체 반</option>
+                {props.state.classGroups.map((classGroup) => (
+                  <option key={classGroup.id} value={classGroup.id}>{classGroup.name}</option>
+                ))}
+              </select>
+            </Field>
             <Field label="과제 선택">
               <select
                 className="ui-control"
-                disabled={props.state.assignments.length === 0}
+                disabled={assignmentOptions.length === 0}
                 value={effectiveAssignmentId}
                 onChange={(event) => {
                   setSelectedAssignmentId(event.currentTarget.value);
+                  setSelectedStudentId("");
                   setStatusFilter("all");
                   setReviewFilter("all_reviews");
                 }}
               >
-                {props.state.assignments.map((assignment) => (
+                {assignmentOptions.map((assignment) => (
                   <option key={assignment.id} value={assignment.id}>{assignment.title}</option>
                 ))}
               </select>

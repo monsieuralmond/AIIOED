@@ -44,7 +44,7 @@ test("researcher creates and assigns an understanding calibration assignment", a
   await assignmentDialog.getByRole("button", { name: "전체 선택" }).click();
   await assignmentDialog.getByRole("button", { name: "배정 저장" }).click();
   await expect(createdAssignment.getByRole("definition").first()).toHaveText("2명");
-  await page.getByRole("button", { name: "학생 화면 보기" }).click();
+  await createdAssignment.getByRole("button", { name: "학생 화면 보기" }).click();
   await expect(page.getByTestId("understanding-calibration-flow")).toContainText("양자컴퓨터");
 });
 
@@ -66,7 +66,7 @@ test("student completes the understanding calibration flow and stores research r
   await calibrationAssignmentDialog.getByRole("button", { name: "전체 선택" }).click();
   await calibrationAssignmentDialog.getByRole("button", { name: "배정 저장" }).click();
   await expect(activeCalibrationAssignment.getByRole("definition").first()).toHaveText("2명");
-  await page.getByRole("button", { name: "학생 화면 보기" }).click();
+  await activeCalibrationAssignment.getByRole("button", { name: "학생 화면 보기" }).click();
 
   const chooseRating = async (label: string, value: string): Promise<void> => {
     await page.getByRole("group", { name: label }).getByRole("button", { name: `${label} ${value}점` }).click();

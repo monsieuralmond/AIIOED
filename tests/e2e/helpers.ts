@@ -37,7 +37,7 @@ export const expectStudentWorkspace = async (page: Page): Promise<void> => {
   const startButton = page.getByRole("button", { name: "과제 시작" });
   const taskButton = page.getByRole("button", { name: "과제 보기" });
   await taskButton.or(startButton).first().waitFor({ state: "visible" });
-  if (await startButton.count() > 0) await startButton.click();
+  if (await startButton.count() > 0) await startButton.first().click();
   await taskButton.waitFor({ state: "visible" });
 };
 

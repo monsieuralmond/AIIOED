@@ -62,6 +62,18 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
 
   const sessionContext = async (sessionId: string): Promise<SessionRow> => single(await db.get<readonly SessionRow[]>("sessions", `session_id=eq.${encode(sessionId)}&limit=1`), "Unknown session.");
 
+  const assertCurrentAssignmentMembership = async (session: SessionRow): Promise<void> => {
+    const [student, assignment] = await Promise.all([
+      single(await db.get<readonly StudentRow[]>("students", `student_anonymous_id=eq.${encode(session.student_anonymous_id)}&limit=1`), "Unknown session."),
+      single(await db.get<readonly AssignmentRow[]>("assignments", `id=eq.${encode(session.assignment_id)}&limit=1`), "Unknown session.")
+    ]);
+    const assigned = isAssignmentAssignedToStudent(
+      { ...assignment.assignment, assignedStudentIds: assignment.assignment.assignedStudentIds ?? [], classGroupId: assignment.class_group_id },
+      { classGroupId: student.class_group_id, id: student.id }
+    );
+    if (!assigned) throw new ApiError(403, "This assignment is no longer assigned to this participant.");
+  };
+
   const childContext = async (sessionId: string): Promise<ChildContext> => {
     const session = await sessionContext(sessionId);
     return {
@@ -236,12 +248,14 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
 
     async resumeSession(sessionId): Promise<SessionStartResult> {
       const row = await sessionContext(sessionId);
+      await assertCurrentAssignmentMembership(row);
       const session = await rowToSession(db, row);
       return { assignment: row.assignment_snapshot, context: contextFromSession(row), session };
     },
 
     async resumeSessionForChat(sessionId): Promise<SessionStartResult> {
       const row = await sessionContext(sessionId);
+      await assertCurrentAssignmentMembership(row);
       const session = await rowToChatSession(db, row);
       return { assignment: row.assignment_snapshot, context: contextFromSession(row), session };
     },
@@ -265,8 +279,8 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         throw new ApiError(401, "Student credentials are invalid.");
       }
       const assignmentQuery = input.assignmentId === undefined
-        ? `class_group_id=eq.${encode(student.class_group_id)}&order=created_at.desc`
-        : `id=eq.${encode(input.assignmentId)}&class_group_id=eq.${encode(student.class_group_id)}&limit=1`;
+        ? "order=created_at.desc"
+        : `id=eq.${encode(input.assignmentId)}&limit=1`;
       const assignments = await db.get<readonly AssignmentRow[]>("assignments", assignmentQuery);
       const assignment = assignments.find((row) => isAssignmentAssignedToStudent({ ...row.assignment, assignedStudentIds: row.assignment.assignedStudentIds ?? [], classGroupId: row.class_group_id }, { classGroupId: student.class_group_id, id: student.id }));
       if (assignment === undefined) throw new ApiError(404, "No assignment is assigned to this participant.");
@@ -274,7 +288,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       if (isPasswordCredentialStart && !teacherPreviewAuthorized) {
         if (student.password_hash === null || credentialHash(inputPassword) !== student.password_hash) throw new ApiError(401, "Student credentials are invalid.");
       }
-      const assignedAssignment = { ...assignment.assignment, assignedStudentIds: assignment.assignment.assignedStudentIds ?? [], classGroupId: assignment.class_group_id };
+      const assignedAssignment = { ...assignment.assignment, assignedStudentIds: assignment.assignment.assignedStudentIds ?? [], classGroupId: student.class_group_id };
       const previousSessions = await db.get<readonly SessionRow[]>(
         "sessions",
         `select=*&assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&order=updated_at.desc`
@@ -297,7 +311,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
       const insertedRows = await db.upsertIgnoringDuplicates<readonly SessionRow[]>("sessions", {
         assignment_id: assignment.id,
         assignment_snapshot: assignedAssignment,
-        class_group_id: assignment.class_group_id,
+        class_group_id: student.class_group_id,
         current_stage: session.currentStage,
         metadata: session.metadata,
         research_condition: assignment.research_condition,

@@ -56,7 +56,8 @@ export function AssignmentAssignDialog(props: {
     setSaveError("");
     setSavePending(true);
     try {
-      const errorMessage = await props.onAssign({ ...props.assignment, assignedStudentIds: selectedStudentIds.filter((studentId) => classStudents.some((student) => student.id === studentId)), classGroupId: selectedClassGroup.id });
+      const validStudentIds = new Set(props.students.map((student) => student.id));
+      const errorMessage = await props.onAssign({ ...props.assignment, assignedStudentIds: selectedStudentIds.filter((studentId) => validStudentIds.has(studentId)) });
       if (typeof errorMessage === "string" && errorMessage.length > 0) {
         setSaveError(errorMessage);
         setSavePending(false);
@@ -74,7 +75,7 @@ export function AssignmentAssignDialog(props: {
     ));
   };
   const selectEveryClassStudent = (): void => {
-    setSelectedStudentIds(classStudents.map((student) => student.id));
+    setSelectedStudentIds((current) => [...new Set([...current, ...classStudents.map((student) => student.id)])]);
   };
   const clearClassStudents = (): void => {
     const classStudentIds = new Set(classStudents.map((student) => student.id));
@@ -89,10 +90,7 @@ export function AssignmentAssignDialog(props: {
       <section className="preview-requirements" aria-label="배정 대상">
         <Field label="배정할 반">
           <select className="ui-control" value={classGroupId} onChange={(event) => {
-            const nextClassId = event.currentTarget.value;
-            setClassGroupId(nextClassId);
-            const nextClassStudentIds = props.students.filter((student) => student.classGroupId === nextClassId).map((student) => student.id);
-            setSelectedStudentIds((current) => current.filter((studentId) => nextClassStudentIds.includes(studentId)));
+            setClassGroupId(event.currentTarget.value);
           }}>
             {props.classGroups.map((classGroup) => <option key={classGroup.id} value={classGroup.id}>{classGroup.name}</option>)}
           </select>

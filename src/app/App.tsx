@@ -283,7 +283,8 @@ export function App(): ReactElement {
     pilotStateRef.current = nextState;
     setPilotState(nextState);
     try {
-      await persistTeacherRosterDelta(nextState, { assignments: [nextAssignment] });
+      const savedAssignment = requireAssignment(nextState, nextAssignment.id);
+      await persistTeacherRosterDelta(nextState, { assignments: [savedAssignment] });
     } catch (error) {
       pilotStateRef.current = previousState;
       setPilotState(previousState);
@@ -340,14 +341,15 @@ export function App(): ReactElement {
     student: { ...previewSession.student, accountId: student.id, displayName: student.displayName }
   });
 
-  const openStudent = async (): Promise<void> => {
-    if (activeAssignment === null) return;
+  const openStudent = async (assignmentId: string): Promise<void> => {
+    const previewAssignment = visibleTeacherState.assignments.find((assignment) => assignment.id === assignmentId) ?? null;
+    if (previewAssignment === null) return;
     if (useLocalResearchStorage) {
-      setPilotState((state) => startStudentSession(state, firstStudent(state).id, activeAssignment.id).state);
+      setPilotState((state) => startStudentSession(state, firstStudent(state).id, previewAssignment.id).state);
       openRoute("student");
       return;
     }
-    const previewTarget = latestStudentPreviewTarget(activeAssignment);
+    const previewTarget = latestStudentPreviewTarget(previewAssignment);
     if (previewTarget === null) {
       console.error("Student preview failed: no assigned student for this assignment.");
       return;
@@ -360,7 +362,7 @@ export function App(): ReactElement {
     }
     try {
       const result = await startTeacherPreviewSession({
-        assignmentId: activeAssignment.id,
+        assignmentId: previewAssignment.id,
         ...(student.loginId === undefined ? {} : { loginId: student.loginId }),
         participantCode: student.participantCode
       });
@@ -703,7 +705,7 @@ export function App(): ReactElement {
   };
 
   const renderTeacherRoute = (): ReactElement | null => {
-    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={visibleTeacherState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={openStudent} />;
+    const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={visibleTeacherState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={(assignmentId) => { void openStudent(assignmentId); }} />;
     const newAssignmentTemplate = (): Assignment => ({
       assignmentMode: "full_process",
       essayType: "주장 글쓰기",

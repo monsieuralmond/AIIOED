@@ -14,7 +14,7 @@ type ResearcherListProps = {
   readonly onEditAssignment: (assignmentId: string) => void;
   readonly onReview: () => void;
   readonly onAssign: (assignment: Assignment) => Promise<string | null | void> | string | null | void;
-  readonly onStudent: () => void;
+  readonly onStudent: (assignmentId: string) => void;
   readonly onExport?: () => void;
 };
 
@@ -41,6 +41,12 @@ const assignmentProgress = (state: PilotState, assignment: Assignment): Assignme
     inProgressCount: sessions.filter((session) => session.finalSubmission === null && session.status !== "completed" && session.status !== "submitted").length,
     submittedCount: sessions.filter((session) => session.finalSubmission !== null).length
   };
+};
+
+const canOpenStudentPreview = (state: PilotState, assignment: Assignment): boolean => {
+  const progress = assignmentProgress(state, assignment);
+  const hasSession = state.sessions.some((session) => session.assignment.id === assignment.id);
+  return progress.assignedStudentCount > 0 || hasSession || progress.inProgressCount > 0 || progress.submittedCount > 0;
 };
 
 const assignmentMatchesSearch = (assignment: Assignment, classGroup: ClassGroup | undefined, normalizedSearch: string): boolean => {
@@ -77,14 +83,6 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
   const gradeFilters = uniqueStrings(assignments.map((assignment) => assignment.gradeLevel));
   const normalizedSearch = normalizeFilterText(searchQuery);
   const activeFilterCount = (normalizedSearch.length > 0 ? 1 : 0) + selectedCategories.length + (selectedGradeLevel === "all" ? 0 : 1);
-  const activeProgress = props.activeAssignment === null ? null : assignmentProgress(props.state, props.activeAssignment);
-  const activeHasSession = props.activeAssignment !== null && props.state.sessions.some((session) => session.assignment.id === props.activeAssignment?.id);
-  const canOpenStudentPreview = activeProgress !== null && (
-    activeProgress.assignedStudentCount > 0 ||
-    activeHasSession ||
-    activeProgress.inProgressCount > 0 ||
-    activeProgress.submittedCount > 0
-  );
   const filteredAssignments = assignments.filter((assignment) => {
     const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
     const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(assignmentCategory(assignment));
@@ -139,7 +137,6 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
         <Button className="rail-item active" variant="ghost">과제 둘러보기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onCreate}>내 과제 만들기</Button>
         <Button className="rail-item" variant="ghost" onClick={props.onReview}>학생 현황</Button>
-        <Button className="rail-item" disabled={!canOpenStudentPreview} variant="ghost" onClick={props.onStudent}>학생 화면 보기</Button>
         {props.onExport === undefined ? null : <Button className="rail-item" variant="ghost" onClick={props.onExport}>로그 보기</Button>}
         <Button className="rail-item" variant="ghost" onClick={props.onAccounts}>계정 관리</Button>
       </aside>
@@ -194,6 +191,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                 const isActive = assignment.id === props.activeAssignment?.id;
                 const classGroup = props.state.classGroups.find((item) => item.id === assignment.classGroupId);
                 const progress = assignmentProgress(props.state, assignment);
+                const canPreview = canOpenStudentPreview(props.state, assignment);
                 return (
                   <article aria-label={`${assignment.title} 과제`} className={isActive ? "prompt-row active" : "prompt-row"} key={assignment.id}>
                     <div>
@@ -218,6 +216,7 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
                     <div className="prompt-row-actions">
                       <Button variant="ghost" onClick={() => props.onEditAssignment(assignment.id)}>수정</Button>
                       <Button variant="secondary" onClick={() => openPreview(assignment)}>미리보기</Button>
+                      <Button disabled={!canPreview} variant="secondary" onClick={() => props.onStudent(assignment.id)}>학생 화면 보기</Button>
                       <Button disabled={progress.assignedStudentCount === 0 || savingAssignmentId === assignment.id} variant="secondary" onClick={() => unassign(assignment)}>{savingAssignmentId === assignment.id ? "저장 중" : "배정 취소"}</Button>
                       <Button disabled={savingAssignmentId === assignment.id} variant="primary" onClick={() => openAssign(assignment)}>배정</Button>
                     </div>

@@ -20,6 +20,9 @@ const loginControls = (name: LoginFormName): { readonly form: HTMLElement; reado
   };
 };
 
+const studentPreviewButtonForAssignment = (assignmentTitle: string): HTMLElement =>
+  within(screen.getByRole("article", { name: `${assignmentTitle} 과제` })).getByRole("button", { name: "학생 화면 보기" });
+
 describe("App shell", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -148,8 +151,8 @@ describe("App shell", () => {
     fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
     fireEvent.submit(loginControls("교사 로그인").form);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+    await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
+    fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "과제 보기" })).toBeInTheDocument());
     expect(screen.getByText(sampleTeacher.displayName)).toBeInTheDocument();
@@ -216,8 +219,8 @@ describe("App shell", () => {
     fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
     fireEvent.click(loginControls("교사 로그인").submit);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+    await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
+    fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
@@ -278,8 +281,8 @@ describe("App shell", () => {
     fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
     fireEvent.click(loginControls("교사 로그인").submit);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+    await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
+    fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
@@ -339,8 +342,8 @@ describe("App shell", () => {
     fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
     fireEvent.click(loginControls("교사 로그인").submit);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+    await waitFor(() => expect(studentPreviewButtonForAssignment(sampleAssignment.title)).not.toBeDisabled());
+    fireEvent.click(studentPreviewButtonForAssignment(sampleAssignment.title));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "초안 쓰기" })).toBeInTheDocument());
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/session/start"), expect.anything());
@@ -412,8 +415,8 @@ describe("App shell", () => {
     fireEvent.change(loginControls("교사 로그인").password, { target: { value: sampleTeacher.password } });
     fireEvent.click(loginControls("교사 로그인").submit);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "학생 화면 보기" })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole("button", { name: "학생 화면 보기" }));
+    await waitFor(() => expect(studentPreviewButtonForAssignment(guidedAssignment.title)).not.toBeDisabled());
+    fireEvent.click(studentPreviewButtonForAssignment(guidedAssignment.title));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "소재 정하기" })).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("소재"), { target: { value: "해저케이블" } });

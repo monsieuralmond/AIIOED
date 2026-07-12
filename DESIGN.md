@@ -108,7 +108,7 @@ All spacing derives from 4px.
 ### Teacher Assignment List
 - **Structure**: side rail, assignment category tabs, filter column, assignment list, progress summary.
 - **Rule**: the screen starts with the assignment list itself. Do not add a decorative hero or redundant explainer strip above the operational list.
-- **Navigation rule**: student preview and log navigation live in the side rail. Do not duplicate a separate progress action inside the assignment list because student status already covers that path.
+- **Navigation rule**: teacher navigation such as student status, logs, and account management lives in the side rail. Student preview is assignment-specific and therefore lives inside each assignment row; never put a global student preview button in the side rail because it can only guess at the target assignment.
 
 ### Form Field
 - **Structure**: label, input or textarea, helper/error.

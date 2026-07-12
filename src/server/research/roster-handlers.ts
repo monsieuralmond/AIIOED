@@ -26,6 +26,7 @@ type RosterScope = {
   readonly assignmentIds: ReadonlySet<string>;
   readonly classIds: ReadonlySet<string>;
   readonly revision: string;
+  readonly studentIds: ReadonlySet<string>;
 };
 
 type RosterTeacherInput = RosterUpsertInput["teachers"][number];
@@ -39,6 +40,15 @@ const unique = (values: readonly string[]): readonly string[] => [...new Set(val
 
 const hasProvidedPassword = <T extends { readonly password?: string | undefined }>(item: T): item is T & { readonly password: string } =>
   item.password !== undefined && item.password.length > 0;
+
+const assignedStudentIdsFromPayload = (payload: Record<string, unknown>, assignmentId: string): readonly string[] => {
+  const assignedStudentIds = payload["assignedStudentIds"];
+  if (assignedStudentIds === undefined) return [];
+  if (!Array.isArray(assignedStudentIds)) throw new ApiError(400, `Assignment assignedStudentIds must be an array: ${assignmentId}`);
+  const invalidStudentId = assignedStudentIds.find((studentId) => typeof studentId !== "string" || studentId.length === 0);
+  if (invalidStudentId !== undefined) throw new ApiError(400, `Assignment assignedStudentIds must contain only student ids: ${assignmentId}`);
+  return assignedStudentIds;
+};
 
 const teacherPatchBody = (item: RosterTeacherInput): Record<string, string> => ({
   display_name: item.displayName,
@@ -139,7 +149,8 @@ const rosterScopeForTeacher = async (db: SupabaseRestClient, teacherId: string):
   return {
     assignmentIds: new Set(assignments.map((assignment) => assignment.id)),
     classIds: new Set(classIds),
-    revision: revisionHash({ assignments, classes, students, teachers })
+    revision: revisionHash({ assignments, classes, students, teachers }),
+    studentIds: new Set(students.map((student) => student.id))
   };
 };
 
@@ -153,7 +164,8 @@ const rosterScopeForAdmin = async (db: SupabaseRestClient): Promise<RosterScope>
   return {
     assignmentIds: new Set(assignments.map((assignment) => assignment.id)),
     classIds: new Set(classes.map((classGroup) => classGroup.id)),
-    revision: revisionHash({ assignments, classes, students, teachers })
+    revision: revisionHash({ assignments, classes, students, teachers }),
+    studentIds: new Set(students.map((student) => student.id))
   };
 };
 
@@ -194,6 +206,12 @@ const validateRosterOwnership = async (db: SupabaseRestClient, input: RosterUpse
 
   const invalidStudentClass = input.students.find((student) => !allowedClassIds.has(student.classGroupId));
   if (invalidStudentClass !== undefined) throw new ApiError(403, `Student class does not belong to this teacher: ${invalidStudentClass.id}`);
+
+  const allowedStudentIds = new Set([...scope.studentIds, ...incomingStudentIds]);
+  const invalidAssignmentStudent = input.assignments
+    .flatMap((assignment) => assignedStudentIdsFromPayload(assignment.payload, assignment.id).map((studentId) => ({ assignmentId: assignment.id, studentId })))
+    .find(({ studentId }) => !allowedStudentIds.has(studentId));
+  if (invalidAssignmentStudent !== undefined) throw new ApiError(403, `Assigned student does not belong to this teacher: ${invalidAssignmentStudent.studentId}`);
 
   await assertNoLockedResearchDataDeletion(db, input, existingStudents);
 };
@@ -274,6 +292,7 @@ const applyRosterDeltaRows = async (db: SupabaseRestClient, input: RosterUpsertI
   await deleteRowsByIds(db, "students", "id", input.deletedStudentIds);
   await deleteRowsByIds(db, "students", "class_group_id", input.deletedClassIds);
   await deleteRowsByIds(db, "assignments", "id", input.deletedAssignmentIds);
+  if (input.deletedClassIds.length > 0) await db.patch<unknown>("assignments", `class_group_id=${inList(input.deletedClassIds)}`, { class_group_id: null });
   await deleteRowsByIds(db, "classes", "id", input.deletedClassIds);
   await deleteRowsByIds(db, "teachers", "id", input.deletedTeacherIds);
 

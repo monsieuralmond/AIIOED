@@ -173,7 +173,7 @@ export const selectActor = (state: PilotState, actor: SelectedActor | null): Pil
 
 export const saveAssignmentInState = (state: PilotState, assignment: Assignment): PilotState => {
   const normalizedAssignment = normalizeAssignmentResearchMode(assignment);
-  const validStudentIds = new Set(state.students.filter((student) => student.classGroupId === normalizedAssignment.classGroupId).map((student) => student.id));
+  const validStudentIds = new Set(state.students.map((student) => student.id));
   const assignedStudentIds = normalizedAssignment.assignedStudentIds?.filter((studentId) => validStudentIds.has(studentId)) ?? [];
   const assignmentWithRoster = { ...normalizedAssignment, assignedStudentIds };
   const existingIndex = state.assignments.findIndex((item) => item.id === normalizedAssignment.id);
