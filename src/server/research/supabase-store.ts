@@ -1,5 +1,6 @@
 import { createSession } from "../../session/session.js";
 import { isAssignmentAssignedToStudent } from "../../shared/assignment-access.js";
+import { ResearchModes } from "../../shared/research.js";
 import type { ChatTurn, CoachResponseType, PilotSession } from "../../shared/types.js";
 import { ApiError } from "./http.js";
 import { credentialHash } from "./credentials.js";
@@ -34,6 +35,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 const isSubmittedSessionRow = (row: Pick<SessionRow, "completed_at" | "status">): boolean =>
   row.completed_at !== null || row.status === "submitted" || row.status === "completed";
+
+const locksAfterSubmission = (researchMode: string): boolean =>
+  researchMode === ResearchModes.understandingCalibration;
 
 const deleteResultFromRpc = (value: unknown): Pick<DeleteResult, "deleted" | "logId"> => {
   if (!isRecord(value)) throw new ApiError(500, "Delete result was not returned.");
@@ -275,7 +279,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         "sessions",
         `select=*&assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&order=updated_at.desc`
       );
-      if (previousSessions.some(isSubmittedSessionRow)) throw new ApiError(409, "이미 제출한 과제입니다.");
+      if (locksAfterSubmission(assignment.research_mode) && previousSessions.some(isSubmittedSessionRow)) throw new ApiError(409, "이미 제출한 과제입니다.");
       const existingSession = previousSessions[0];
       if (existingSession !== undefined) {
         const session = await rowToSession(db, existingSession);
@@ -306,7 +310,7 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
         "sessions",
         `assignment_id=eq.${encode(assignment.id)}&student_anonymous_id=eq.${encode(student.student_anonymous_id)}&limit=1`
       ), "Session was not created.");
-      if (isSubmittedSessionRow(row)) throw new ApiError(409, "이미 제출한 과제입니다.");
+      if (locksAfterSubmission(row.research_mode) && isSubmittedSessionRow(row)) throw new ApiError(409, "이미 제출한 과제입니다.");
       return {
         assignment: assignedAssignment,
         context: contextFromSession(row),
@@ -328,8 +332,8 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     async updateStage(input): Promise<SessionContext> {
       const current = await sessionContext(input.sessionId);
       assertSessionWritable(current);
-      const locksResearch = input.status === "submitted" || input.status === "completed";
-      const query = "session_id=eq." + encode(input.sessionId) + "&research_locked=eq.false";
+      const locksResearch = locksAfterSubmission(current.research_mode) && (input.status === "submitted" || input.status === "completed");
+      const query = "session_id=eq." + encode(input.sessionId) + (locksAfterSubmission(current.research_mode) ? "&research_locked=eq.false" : "");
       const body = {
         ...(input.completedAt === undefined ? {} : { completed_at: input.completedAt }),
         current_stage: input.currentStage,

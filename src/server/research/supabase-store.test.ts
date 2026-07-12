@@ -32,7 +32,7 @@ describe("Supabase research store", () => {
     expect(String(call[0])).toContain("/rest/v1/rpc/sync_research_session");
   });
 
-  it("uses an unlocked-row predicate when directly locking a submitted session", async () => {
+  it("uses an unlocked-row predicate when directly locking a submitted understanding-calibration session", async () => {
     const sessionRow = {
       assignment_id: "assignment-lock",
       assignment_snapshot: {},
@@ -43,7 +43,7 @@ describe("Supabase research store", () => {
       metadata: {},
       research_condition: "single_group_baseline",
       research_locked: false,
-      research_mode: "writing_coach",
+      research_mode: "understanding_calibration",
       session_id: "session-lock",
       status: "in_progress",
       student_anonymous_id: "anon-lock",
@@ -63,6 +63,40 @@ describe("Supabase research store", () => {
     expect(String(patchCall[0])).toContain("research_locked=eq.false");
     if (patchCall[1] === undefined || typeof patchCall[1] !== "object" || typeof patchCall[1].body !== "string") throw new Error("Session lock PATCH body was not captured.");
     expect(JSON.parse(patchCall[1].body)).toMatchObject({ research_locked: true, status: "submitted" });
+  });
+
+  it("does not lock a submitted writing-coach session so it can be reopened", async () => {
+    const sessionRow = {
+      assignment_id: "assignment-writing",
+      assignment_snapshot: {},
+      class_group_id: "class-writing",
+      completed_at: null,
+      created_at: "2026-07-05T00:00:00.000Z",
+      current_stage: "writing",
+      metadata: {},
+      research_condition: "single_group_baseline",
+      research_locked: false,
+      research_mode: "writing_coach",
+      session_id: "session-writing",
+      status: "in_progress",
+      student_anonymous_id: "anon-writing",
+      updated_at: "2026-07-05T00:00:00.000Z"
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (init?.method === "PATCH") return new Response(JSON.stringify([{ ...sessionRow, current_stage: "submitted", status: "submitted" }]), { status: 200 });
+      return new Response(JSON.stringify([sessionRow]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const store = createSupabaseResearchStore({ serviceRoleKey: "service-role-test", url: "https://example.supabase.co" });
+
+    await store.updateStage({ currentStage: "submitted", sessionId: "session-writing", status: "submitted" });
+
+    const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    if (patchCall === undefined) throw new Error("Session PATCH was not made.");
+    expect(String(patchCall[0])).not.toContain("research_locked=eq.false");
+    if (patchCall[1] === undefined || typeof patchCall[1] !== "object" || typeof patchCall[1].body !== "string") throw new Error("Session PATCH body was not captured.");
+    expect(JSON.parse(patchCall[1].body)).toMatchObject({ status: "submitted" });
+    expect(JSON.parse(patchCall[1].body)).not.toHaveProperty("research_locked");
   });
 
   it("does not overwrite the canonical session id when concurrent starts hit the uniqueness conflict", async () => {

@@ -10,6 +10,7 @@ import {
   sessionIdFrom,
   sessionTokenFrom
 } from "./handlers-test-utils.js";
+import { ResearchModes } from "../../shared/research.js";
 
 describe("research API handlers", () => {
   beforeEach(() => {
@@ -74,10 +75,11 @@ describe("research API handlers", () => {
     });
   });
 
-  it("rejects restarting an assignment after the same participant has submitted it", async () => {
+  it("rejects restarting an understanding-calibration assignment after the same participant has submitted it", async () => {
     const store = new MemoryResearchStore();
+    store.assignmentModesById.set("assignment-understanding", ResearchModes.understandingCalibration);
     const handlers = createResearchApiHandlers(() => store);
-    const started = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+    const started = await handlers.sessionStart({ assignmentId: "assignment-understanding", participantCode: "S001" }, emptyRequest());
 
     await handlers.updateStage({
       completedAt: "2026-07-08T00:00:00.000Z",
@@ -86,15 +88,35 @@ describe("research API handlers", () => {
       status: "submitted"
     }, requestWithSessionToken(sessionTokenFrom(started)));
 
-    await expect(handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest())).rejects.toMatchObject({
+    await expect(handlers.sessionStart({ assignmentId: "assignment-understanding", participantCode: "S001" }, emptyRequest())).rejects.toMatchObject({
       statusCode: 409
     });
   });
 
-  it("rejects direct session writes after the submitted stage is locked", async () => {
+  it("returns a submitted writing-coach session so students can revise or review it", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);
     const started = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const sessionToken = sessionTokenFrom(started);
+
+    await handlers.updateStage({
+      completedAt: "2026-07-08T00:00:00.000Z",
+      currentStage: "completed",
+      sessionId,
+      status: "submitted"
+    }, requestWithSessionToken(sessionToken));
+
+    const reopened = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+
+    expect(sessionIdFrom(reopened)).toBe(sessionId);
+  });
+
+  it("rejects direct writes after an understanding-calibration submitted stage is locked", async () => {
+    const store = new MemoryResearchStore();
+    store.assignmentModesById.set("assignment-understanding", ResearchModes.understandingCalibration);
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ assignmentId: "assignment-understanding", participantCode: "S001" }, emptyRequest());
     const sessionId = sessionIdFrom(started);
     const sessionToken = sessionTokenFrom(started);
 
@@ -113,6 +135,30 @@ describe("research API handlers", () => {
       timestamp: "2026-07-08T00:01:00.000Z",
       type: "late_write"
     }, requestWithSessionToken(sessionToken))).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("allows direct writes after a submitted writing-coach stage for later revision records", async () => {
+    const store = new MemoryResearchStore();
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ assignmentId: "assignment-selected", participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const sessionToken = sessionTokenFrom(started);
+
+    await handlers.updateStage({
+      completedAt: "2026-07-08T00:00:00.000Z",
+      currentStage: "submitted",
+      sessionId,
+      status: "submitted"
+    }, requestWithSessionToken(sessionToken));
+
+    await expect(handlers.event({
+      id: "event-after-writing-submit",
+      payload: { action: "reviewed_after_submit" },
+      sessionId,
+      stage: "submitted",
+      timestamp: "2026-07-08T00:01:00.000Z",
+      type: "late_writing_review"
+    }, requestWithSessionToken(sessionToken))).resolves.toEqual({ ok: true });
   });
 
   it("passes teacher identity when a teacher starts a student preview session", async () => {

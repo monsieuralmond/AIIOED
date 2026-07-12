@@ -20,7 +20,7 @@ describe("local pilot state", () => {
     expect(secondStarted.state.sessions).toHaveLength(2);
   });
 
-  it("starts a fresh session when the same student re-enters an assignment", () => {
+  it("reopens the existing session when the same student re-enters a writing assignment", () => {
     const initial = createInitialPilotState();
     const student = initial.students[0];
     if (student === undefined) throw new Error("fixture student missing");
@@ -30,20 +30,41 @@ describe("local pilot state", () => {
 
     expect(firstStarted.session.student.accountId).toBe(student.id);
     expect(secondStarted.session.student.accountId).toBe(student.id);
-    expect(firstStarted.session.sessionId).not.toBe(secondStarted.session.sessionId);
-    expect(secondStarted.state.sessions).toHaveLength(2);
+    expect(firstStarted.session.sessionId).toBe(secondStarted.session.sessionId);
+    expect(secondStarted.state.sessions).toHaveLength(1);
     expect(activeSession(secondStarted.state)?.sessionId).toBe(secondStarted.session.sessionId);
   });
 
-  it("prevents the same student from restarting a submitted assignment", () => {
+  it("prevents the same student from restarting a submitted understanding-calibration assignment", () => {
+    const understandingAssignment = {
+      ...sampleAssignment,
+      id: "assignment-understanding",
+      researchMode: ResearchModes.understandingCalibration
+    };
+    const initial = {
+      ...createInitialPilotState(),
+      assignments: [understandingAssignment]
+    };
+    const student = initial.students[0];
+    if (student === undefined) throw new Error("fixture student missing");
+
+    const firstStarted = startStudentSession(initial, student.id, understandingAssignment.id);
+    const submittedState = updatePilotSession(firstStarted.state, submitFinal(firstStarted.session, "이미 제출한 글입니다."));
+
+    expect(() => startStudentSession(submittedState, student.id, understandingAssignment.id)).toThrow("이미 제출한 과제입니다.");
+  });
+
+  it("reopens a submitted writing assignment for later revision", () => {
     const initial = createInitialPilotState();
     const student = initial.students[0];
     if (student === undefined) throw new Error("fixture student missing");
 
     const firstStarted = startStudentSession(initial, student.id, sampleAssignment.id);
     const submittedState = updatePilotSession(firstStarted.state, submitFinal(firstStarted.session, "이미 제출한 글입니다."));
+    const reopened = startStudentSession(submittedState, student.id, sampleAssignment.id);
 
-    expect(() => startStudentSession(submittedState, student.id, sampleAssignment.id)).toThrow("이미 제출한 과제입니다.");
+    expect(reopened.session.sessionId).toBe(firstStarted.session.sessionId);
+    expect(reopened.state.sessions).toHaveLength(1);
   });
 
   it("defaults legacy assignments to writing-coach research sessions", () => {

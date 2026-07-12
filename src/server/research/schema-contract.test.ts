@@ -54,6 +54,7 @@ describe("Supabase research schema contract", () => {
     const securitySql = migrationSql("012_secure_privileged_research_rpcs.sql");
     const resetSql = migrationSql("013_archive_before_teacher_session_reset.sql");
     const quotaFixSql = migrationSql("014_fix_ai_request_quota_ambiguity.sql");
+    const writingUnlockSql = migrationSql("015_unlock_submitted_writing_sessions.sql");
 
     expect(syncSql).toContain("create or replace function public.sync_research_session(payload jsonb)");
     expect(syncSql).toContain("for update");
@@ -99,5 +100,9 @@ describe("Supabase research schema contract", () => {
     expect(quotaFixSql).toContain("create or replace function public.reserve_ai_request");
     expect(quotaFixSql).toContain("on conflict on constraint ai_request_buckets_pkey");
     expect(quotaFixSql).toContain("ai_request_quota_ambiguity_fixed");
+    expect(writingUnlockSql).toContain("015_unlock_submitted_writing_sessions");
+    expect(writingUnlockSql).toContain("where research_mode in ('writing_coach', 'guided_writing')");
+    expect(writingUnlockSql).toContain("target.research_mode = 'understanding_calibration'");
+    expect(writingUnlockSql).toContain("submitted_writing_sessions_unlocked");
   });
 });

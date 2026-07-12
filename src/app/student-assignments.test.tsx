@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createInitialPilotState, createSession, submitFinal } from "../session/session.js";
 import { sampleAssignment, sampleStudents } from "../shared/fixtures.js";
+import { ResearchModes } from "../shared/research.js";
 import { StudentAssignments } from "./student-assignments.js";
 
 const sampleStudent = () => {
@@ -40,14 +41,15 @@ describe("StudentAssignments", () => {
     expect(previewText.endsWith("...")).toBe(true);
   });
 
-  it("disables the start button when the assigned task has already been submitted", () => {
+  it("disables the start button when an understanding-calibration task has already been submitted", () => {
     const student = sampleStudent();
-    const submittedSession = submitFinal(createSession(sampleAssignment, student), "제출한 글입니다.");
+    const assignment = { ...sampleAssignment, researchMode: ResearchModes.understandingCalibration };
+    const submittedSession = submitFinal(createSession(assignment, student), "제출한 글입니다.");
     const onStart = vi.fn();
 
     render(
       <StudentAssignments
-        assignments={[sampleAssignment]}
+        assignments={[assignment]}
         state={{ ...createInitialPilotState(), sessions: [submittedSession] }}
         student={student}
         onStart={onStart}
@@ -56,5 +58,26 @@ describe("StudentAssignments", () => {
 
     expect(screen.getByRole("button", { name: "제출 완료" })).toBeDisabled();
     expect(onStart).not.toHaveBeenCalled();
+  });
+
+  it("lets students reopen a submitted writing-coach task", () => {
+    const student = sampleStudent();
+    const assignment = { ...sampleAssignment, researchMode: ResearchModes.writingCoach };
+    const submittedSession = submitFinal(createSession(assignment, student), "제출한 글입니다.");
+    const onStart = vi.fn();
+
+    render(
+      <StudentAssignments
+        assignments={[assignment]}
+        state={{ ...createInitialPilotState(), sessions: [submittedSession] }}
+        student={student}
+        onStart={onStart}
+      />
+    );
+
+    const reopenButton = screen.getByRole("button", { name: "다시 열기" });
+    expect(reopenButton).toBeEnabled();
+    fireEvent.click(reopenButton);
+    expect(onStart).toHaveBeenCalledWith(assignment.id);
   });
 });

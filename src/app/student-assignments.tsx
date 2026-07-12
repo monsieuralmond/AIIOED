@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { sessionStatus } from "../session/session.js";
+import { ResearchModes } from "../shared/research.js";
 import type { Assignment, PilotState, StudentAccount, StudentWorkStatus } from "../shared/types.js";
 import { Button, Surface } from "./ui.js";
 
@@ -37,7 +38,9 @@ type AssignedTaskProps = {
 function AssignedTask(props: AssignedTaskProps): ReactElement {
   const status = sessionStatus(props.state, props.student.id, props.assignment.id);
   const submitted = status === "submitted";
-  const startDisabled = props.pending || submitted;
+  const locksAfterSubmission = props.assignment.researchMode === ResearchModes.understandingCalibration;
+  const startDisabled = props.pending || (submitted && locksAfterSubmission);
+  const actionLabel = submitted && !locksAfterSubmission ? "다시 열기" : submitted ? "제출 완료" : props.pending ? "시작 중" : "과제 시작";
   return (
     <>
       <article className="assigned-task-row" aria-label={`${props.assignment.title} 과제`}>
@@ -52,7 +55,7 @@ function AssignedTask(props: AssignedTaskProps): ReactElement {
         </div>
         <div className="assigned-task-actions">
           <Button disabled={startDisabled} variant="primary" onClick={() => { if (!startDisabled) void props.onStart(props.assignment.id); }}>
-            {submitted ? "제출 완료" : props.pending ? "시작 중" : "과제 시작"}
+            {actionLabel}
           </Button>
           {props.startError.length > 0 ? <p className="student-start-error" role="alert">{props.startError}</p> : null}
         </div>

@@ -1,5 +1,6 @@
 import { sampleAssignment, sampleClassGroups, sampleStudents, sampleTeacher, sampleTeachers } from "../shared/fixtures.js";
 import { isAssignmentAssignedToStudent } from "../shared/assignment-access.js";
+import { ResearchModes } from "../shared/research.js";
 import type { Assignment, ClassGroup, PilotSession, PilotState, SelectedActor, StudentAccount, StudentWorkStatus, TeacherAccount } from "../shared/types.js";
 import { normalizeAssignmentResearchMode } from "./research-session.js";
 import { createSession } from "./session.js";
@@ -191,7 +192,19 @@ export const startStudentSession = (state: PilotState, studentId: string, assign
   const student = requireStudent(state, studentId);
   const assignment = requireAssignment(state, assignmentId);
   if (!assignmentsForStudent(state, student).some((item) => item.id === assignmentId)) throw new PilotStateError("학생에게 배정되지 않은 과제입니다.");
-  if (sessionStatus(state, student.id, assignmentId) === "submitted") throw new PilotStateError("이미 제출한 과제입니다.");
+  const existingSession = sessionForStudent(state, student.id, assignmentId);
+  if (existingSession !== null) {
+    if (assignment.researchMode === ResearchModes.understandingCalibration && sessionStatus(state, student.id, assignmentId) === "submitted") {
+      throw new PilotStateError("이미 제출한 과제입니다.");
+    }
+    return {
+      session: existingSession,
+      state: {
+        ...state,
+        activeAssignmentId: assignmentId
+      }
+    };
+  }
   const session = createSession(assignment, student);
   return {
     session,

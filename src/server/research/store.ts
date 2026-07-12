@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Assignment, ChatTurn, CoachResponseType, PilotSession, Stage } from "../../shared/types.js";
+import { ResearchModes } from "../../shared/research.js";
 import { ApiError } from "./http.js";
 import type { ResearchCondition, ResearchMode } from "../../shared/research.js";
 
@@ -179,14 +180,18 @@ export type ResearchStore = {
 export const participantCodeHash = (participantCode: string): string =>
   createHash("sha256").update(participantCode.trim().toUpperCase()).digest("hex");
 
-export const assertSessionWritable = (context: {
-  readonly researchLocked: boolean;
+type SessionWritableContext = {
+  readonly researchMode?: ResearchMode;
+  readonly researchLocked?: boolean;
+  readonly research_mode?: ResearchMode;
+  readonly research_locked?: boolean;
   readonly status: string;
-} | {
-  readonly research_locked: boolean;
-  readonly status: string;
-}): void => {
-  const researchLocked = "researchLocked" in context ? context.researchLocked : context.research_locked;
+};
+
+export const assertSessionWritable = (context: SessionWritableContext): void => {
+  const researchMode = context.researchMode ?? context.research_mode;
+  if (researchMode !== ResearchModes.understandingCalibration) return;
+  const researchLocked = context.researchLocked ?? context.research_locked ?? false;
   if (researchLocked || context.status === "submitted" || context.status === "completed") {
     throw new ApiError(409, "제출된 연구 데이터는 더 이상 수정할 수 없습니다.");
   }

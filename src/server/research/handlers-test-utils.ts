@@ -2,7 +2,8 @@ import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import { createSession } from "../../session/session.js";
 import { sampleAssignment } from "../../shared/fixtures.js";
-import { ResearchConditions } from "../../shared/research.js";
+import { ResearchConditions, ResearchModes } from "../../shared/research.js";
+import type { ResearchMode } from "../../shared/research.js";
 import type { PilotSession } from "../../shared/types.js";
 import { issueAdminToken, issueTeacherToken } from "./auth.js";
 import { ApiError } from "./http.js";
@@ -73,6 +74,7 @@ export class MemoryResearchStore implements ResearchStore {
   readonly exportRequests: Parameters<ResearchStore["exportData"]>[0][] = [];
   readonly listSessionRequests: Parameters<ResearchStore["listSessions"]>[0][] = [];
   readonly resetRequests: Parameters<ResearchStore["resetStudentSession"]>[0][] = [];
+  readonly assignmentModesById = new Map<string, ResearchMode>();
   syncSessionDelta?: NonNullable<ResearchStore["syncSessionDelta"]>;
   private readonly turnsByRequestRole = new Map<string, StoredChatTurn>();
   chatInsertCount = 0;
@@ -177,7 +179,10 @@ export class MemoryResearchStore implements ResearchStore {
 
   async startSession(input: Parameters<ResearchStore["startSession"]>[0]): Promise<SessionStartResult> {
     this.startedSessions.push(input);
-    const assignment = input.assignmentId === undefined ? sampleAssignment : { ...sampleAssignment, id: input.assignmentId };
+    const researchMode = input.assignmentId === undefined
+      ? sampleAssignment.researchMode ?? ResearchModes.writingCoach
+      : this.assignmentModesById.get(input.assignmentId) ?? sampleAssignment.researchMode ?? ResearchModes.writingCoach;
+    const assignment = input.assignmentId === undefined ? sampleAssignment : { ...sampleAssignment, id: input.assignmentId, researchMode };
     const studentKey = input.participantCode ?? input.loginId ?? "student";
     const studentAnonymousId = `anon-${studentKey}`;
     const alreadySubmitted = [...this.sessions.values()].some((session) =>
@@ -185,11 +190,11 @@ export class MemoryResearchStore implements ResearchStore {
       session.student.anonymousId === studentAnonymousId &&
       (session.completedAt !== undefined || session.status === "submitted" || session.status === "completed")
     );
-    if (alreadySubmitted) throw new ApiError(409, "이미 제출한 과제입니다.");
     const existingSession = [...this.sessions.values()].find((session) =>
       session.assignment.id === assignment.id &&
       session.student.anonymousId === studentAnonymousId
     );
+    if (alreadySubmitted && existingSession?.researchMode === ResearchModes.understandingCalibration) throw new ApiError(409, "이미 제출한 과제입니다.");
     if (existingSession !== undefined) return { assignment: existingSession.assignment, context: this.context(existingSession), session: existingSession };
     const session = {
       ...createSession(assignment),
@@ -222,7 +227,7 @@ export class MemoryResearchStore implements ResearchStore {
       currentStage: session.currentStage,
       researchCondition: session.researchCondition,
       researchMode: session.researchMode,
-      researchLocked: session.status === "submitted" || session.status === "completed",
+      researchLocked: session.researchMode === ResearchModes.understandingCalibration && (session.status === "submitted" || session.status === "completed"),
       sessionId: session.sessionId,
       status: session.status,
       studentAnonymousId: session.student.anonymousId
