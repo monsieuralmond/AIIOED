@@ -93,4 +93,34 @@ describe("unified AI route", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("allows writing coach calls without session auth so active writing work is not blocked by a stale browser token", async () => {
+    const handler = createUnifiedAiJsonHandler(config);
+    const outline = {
+      claim: "양자컴퓨터를 설명한다",
+      counterargument: "",
+      evidence: ["큐비트"],
+      question: "자료 메모",
+      reasoning: "정보 처리 방식이 다르기 때문이다."
+    };
+
+    await expect(handler({
+      kind: "coach",
+      payload: {
+        assignment: {
+          gradeLevel: "초등 고학년",
+          id: "assignment-writing-ai-auth",
+          passage: "양자컴퓨터는 큐비트를 활용한다.",
+          question: "쉽게 설명하는 글을 쓰세요.",
+          targetLength: "400자",
+          title: "양자컴퓨터"
+        },
+        draft: "양자컴퓨터는",
+        message: "다음 문장을 어떻게 이어가면 좋을까?",
+        outline
+      }
+    }, emptyRequest())).resolves.toMatchObject({
+      text: expect.any(String)
+    });
+  });
 });
