@@ -39,6 +39,11 @@ const isSubmittedSessionRow = (row: Pick<SessionRow, "completed_at" | "status">)
 const locksAfterSubmission = (researchMode: string): boolean =>
   researchMode === ResearchModes.understandingCalibration;
 
+const isMissingSyncRpcError = (error: unknown): boolean =>
+  error instanceof ApiError &&
+  error.message.includes("sync_research_session") &&
+  (error.statusCode === 404 || error.message.includes("Could not find the function") || error.message.includes("function") || error.message.includes("schema cache"));
+
 const deleteResultFromRpc = (value: unknown): Pick<DeleteResult, "deleted" | "logId"> => {
   if (!isRecord(value)) throw new ApiError(500, "Delete result was not returned.");
   const deleted = value["deleted"];
@@ -94,6 +99,64 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
   const chatTurnByRequest = async (sessionId: string, requestId: string, role: ChatTurn["role"]): Promise<ChatTurnRow | undefined> => {
     const rows = await db.get<readonly ChatTurnRow[]>("chat_turns", `session_id=eq.${encode(sessionId)}&request_id=eq.${encode(requestId)}&role=eq.${role}&limit=1`);
     return rows[0];
+  };
+
+  const syncSessionDeltaWithoutRpc = async (input: SessionDelta): Promise<void> => {
+    const target = await sessionContext(input.sessionId);
+    const context = contextFromSession(target);
+    assertSessionWritable(context);
+    const child = childContextFromSessionContext(context);
+    const chatTurnRows = input.chatTurns.map((turn) => ({
+      ...child,
+      created_at: turn.timestamp,
+      id: turn.id,
+      request_id: turn.requestId ?? null,
+      response_type: turn.responseType ?? null,
+      role: turn.role,
+      stage: input.currentStage,
+      text: turn.text
+    }));
+    if (chatTurnRows.length > 0) await db.upsertIgnoringDuplicates<readonly ChatTurnRow[]>("chat_turns", chatTurnRows, "id");
+
+    const eventRows = input.events.map((event) => ({
+      ...child,
+      created_at: event.timestamp,
+      id: event.id,
+      payload: event.payload,
+      stage: event.stage,
+      type: event.type
+    }));
+    if (eventRows.length > 0) await db.upsertIgnoringDuplicates<readonly unknown[]>("events", eventRows, "id");
+
+    const artifactRows = input.artifacts.map((artifact) => ({
+      ...child,
+      created_at: artifact.createdAt,
+      id: artifact.id,
+      kind: artifact.kind,
+      payload: artifact.payload,
+      stage: artifact.stage,
+      updated_at: artifact.updatedAt ?? artifact.createdAt
+    }));
+    if (artifactRows.length > 0) await db.upsert<readonly unknown[]>("artifacts", artifactRows, "id");
+
+    const measureRows = input.measures.map((measure) => ({
+      ...child,
+      created_at: measure.collectedAt,
+      id: measure.id,
+      kind: measure.kind,
+      payload: measure.payload,
+      stage: measure.stage
+    }));
+    if (measureRows.length > 0) await db.upsertIgnoringDuplicates<readonly unknown[]>("measures", measureRows, "id");
+
+    const locksResearch = locksAfterSubmission(context.researchMode) && (input.status === "submitted" || input.status === "completed");
+    await db.patch<readonly SessionRow[]>("sessions", `session_id=eq.${encode(input.sessionId)}`, {
+      ...(input.completedAt === undefined ? {} : { completed_at: input.completedAt }),
+      current_stage: input.currentStage,
+      research_locked: context.researchLocked || locksResearch,
+      status: input.status,
+      updated_at: new Date().toISOString()
+    });
   };
 
   return {
@@ -338,9 +401,14 @@ export const createSupabaseResearchStore = (config: SupabaseConfig): ResearchSto
     },
 
     async syncSessionDelta(input: SessionDelta): Promise<void> {
-      await db.rpc("sync_research_session", {
-        payload: input
-      });
+      try {
+        await db.rpc("sync_research_session", {
+          payload: input
+        });
+      } catch (error) {
+        if (!isMissingSyncRpcError(error)) throw error;
+        await syncSessionDeltaWithoutRpc(input);
+      }
     },
 
     async updateStage(input): Promise<SessionContext> {

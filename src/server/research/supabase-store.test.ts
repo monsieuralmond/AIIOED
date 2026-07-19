@@ -32,6 +32,76 @@ describe("Supabase research store", () => {
     expect(String(call[0])).toContain("/rest/v1/rpc/sync_research_session");
   });
 
+  it("falls back to direct REST writes when the atomic session sync RPC is missing", async () => {
+    const sessionRow = {
+      assignment_id: "assignment-guided",
+      assignment_snapshot: {},
+      class_group_id: "class-guided",
+      completed_at: null,
+      created_at: "2026-07-05T00:00:00.000Z",
+      current_stage: "guided_writing",
+      metadata: {},
+      research_condition: "single_group_baseline",
+      research_locked: false,
+      research_mode: "guided_writing",
+      session_id: "session-guided",
+      status: "in_progress",
+      student_anonymous_id: "anon-guided",
+      updated_at: "2026-07-05T00:00:00.000Z"
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/rpc/sync_research_session")) {
+        return new Response(JSON.stringify({ message: "Could not find the function public.sync_research_session(payload) in the schema cache" }), { status: 404 });
+      }
+      if (url.includes("/sessions?session_id=eq.session-guided&limit=1")) return new Response(JSON.stringify([sessionRow]), { status: 200 });
+      if (url.includes("/chat_turns") || url.includes("/events") || url.includes("/artifacts") || url.includes("/measures")) {
+        return new Response(init?.body?.toString() ?? "[]", { status: 200 });
+      }
+      if (url.includes("/sessions?session_id=eq.session-guided") && init?.method === "PATCH") {
+        return new Response(JSON.stringify([{ ...sessionRow, current_stage: "guided_writing", updated_at: "2026-07-05T00:01:00.000Z" }]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const input: SessionDelta = {
+      artifacts: [{
+        createdAt: "2026-07-05T00:00:01.000Z",
+        id: "artifact-guided-step",
+        kind: "guided_writing_step",
+        payload: { step: "sources", text: "자료 내용" },
+        stage: "guided_sources"
+      }],
+      chatTurns: [{
+        id: "chat-guided",
+        role: "student",
+        text: "이어 쓸 문장을 도와줘",
+        timestamp: "2026-07-05T00:00:02.000Z"
+      }],
+      currentStage: "guided_writing",
+      events: [{
+        id: "event-guided",
+        payload: { step: "sources" },
+        stage: "guided_sources",
+        timestamp: "2026-07-05T00:00:03.000Z",
+        type: "guided_step_saved"
+      }],
+      measures: [],
+      sessionId: "session-guided",
+      status: "in_progress"
+    };
+    const store = createSupabaseResearchStore({ serviceRoleKey: "service-role-test", url: "https://example.supabase.co" });
+    if (store.syncSessionDelta === undefined) throw new Error("Supabase store must expose session sync.");
+
+    await store.syncSessionDelta(input);
+
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/rest/v1/rpc/sync_research_session"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/rest/v1/artifacts"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/rest/v1/chat_turns"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/rest/v1/events"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/rest/v1/sessions?session_id=eq.session-guided") && call[1]?.method === "PATCH")).toBe(true);
+  });
+
   it("uses an unlocked-row predicate when directly locking a submitted understanding-calibration session", async () => {
     const sessionRow = {
       assignment_id: "assignment-lock",
