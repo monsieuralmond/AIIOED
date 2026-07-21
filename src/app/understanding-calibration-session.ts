@@ -170,6 +170,18 @@ export const appendCalibrationRecords = (session: PilotSession, input: Calibrati
   };
 };
 
+export const appendCalibrationEventsOnly = (
+  session: PilotSession,
+  input: { readonly events: readonly NewEvent[]; readonly stage: Stage }
+): PilotSession => {
+  const timestamp = nowIso();
+  return {
+    ...session,
+    events: [...session.events, ...input.events.map((item) => createEvent(session, input.stage, item, timestamp))],
+    updatedAt: timestamp
+  };
+};
+
 export const makeFinalReflectionCompletionUpdate = (input: FinalReflectionCompletionInput): CalibrationSessionUpdate => ({
   artifacts: [{
     kind: "final_reflection",

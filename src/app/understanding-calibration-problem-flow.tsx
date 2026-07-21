@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { UnderstandingCalibrationStage } from "../shared/research.js";
 import { UnderstandingCalibrationStages } from "../shared/research.js";
 import type { PilotSession } from "../shared/types.js";
-import { ChatLog, StageFrame, SurveyResponseGroup } from "./understanding-calibration-components.js";
+import { ChatLog, IrreversibleTransitionDialog, StageFrame, SurveyResponseGroup } from "./understanding-calibration-components.js";
 import {
   emptyRatings,
   emptyTextResponses,
@@ -22,7 +22,7 @@ import {
 } from "./understanding-calibration-data.js";
 import type { IndependentProblem } from "./understanding-calibration-data.js";
 import { durationForProblemAnswer, startedEventForProblem } from "./understanding-calibration-problem-events.js";
-import { appendCalibrationRecords, makeFinalReflectionCompletionUpdate } from "./understanding-calibration-session.js";
+import { appendCalibrationEventsOnly, appendCalibrationRecords, makeFinalReflectionCompletionUpdate } from "./understanding-calibration-session.js";
 
 type FlowProps = {
   readonly problems: readonly IndependentProblem[];
@@ -30,6 +30,40 @@ type FlowProps = {
   readonly setSession: (updater: (session: PilotSession) => PilotSession) => void;
   readonly stage: UnderstandingCalibrationStage;
   readonly topic: string;
+};
+
+type PendingTransition = {
+  readonly actionKey: string;
+  readonly confirmLabel?: string;
+  readonly message: string;
+  readonly stage: UnderstandingCalibrationStage;
+  readonly title?: string;
+};
+
+type IrreversibleTransitionEventType =
+  | "irreversible_transition_cancelled"
+  | "irreversible_transition_confirmed"
+  | "irreversible_transition_prompt_shown";
+
+const recordIrreversibleTransitionEvent = (
+  setSession: FlowProps["setSession"],
+  transition: PendingTransition,
+  type: IrreversibleTransitionEventType
+): void => {
+  setSession((session) =>
+    appendCalibrationEventsOnly(session, {
+      events: [{
+        type,
+        payload: {
+          actionKey: transition.actionKey,
+          fromStage: transition.stage,
+          message: transition.message,
+          title: transition.title ?? "다음으로 넘어갈까요?"
+        }
+      }],
+      stage: transition.stage
+    })
+  );
 };
 
 const startedAtForProblem = (session: PilotSession, problem: IndependentProblem): string => {
@@ -42,6 +76,7 @@ const startedAtForProblem = (session: PilotSession, problem: IndependentProblem)
 
 function ProblemAnswerStage(props: FlowProps & { readonly problem: IndependentProblem }): ReactElement {
   const [answer, setAnswer] = useState("");
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const trimmed = answer.trim();
 
   const submitAnswer = (): void => {
@@ -103,6 +138,31 @@ function ProblemAnswerStage(props: FlowProps & { readonly problem: IndependentPr
     });
   };
 
+  const requestSubmitAnswer = (): void => {
+    const transition: PendingTransition = {
+      actionKey: `submit_problem_${props.problem.number}`,
+      confirmLabel: "제출할래요",
+      message: "제출하면 이 답은 다시 볼 수도, 고칠 수도 없습니다. 지금 답을 제출할까요?",
+      stage: props.problem.stage,
+      title: "답을 제출할까요?"
+    };
+    recordIrreversibleTransitionEvent(props.setSession, transition, "irreversible_transition_prompt_shown");
+    setPendingTransition(transition);
+  };
+
+  const cancelSubmitAnswer = (): void => {
+    if (pendingTransition !== null) recordIrreversibleTransitionEvent(props.setSession, pendingTransition, "irreversible_transition_cancelled");
+    setPendingTransition(null);
+  };
+
+  const confirmSubmitAnswer = (): void => {
+    const transition = pendingTransition;
+    if (transition === null) return;
+    recordIrreversibleTransitionEvent(props.setSession, transition, "irreversible_transition_confirmed");
+    setPendingTransition(null);
+    submitAnswer();
+  };
+
   return (
     <StageFrame
       disabled={trimmed.length === 0}
@@ -111,7 +171,7 @@ function ProblemAnswerStage(props: FlowProps & { readonly problem: IndependentPr
       stage={props.problem.stage}
       subtitle="AI 없이 지금 떠오르는 생각을 자신의 말로 써 보세요. 제출하면 이 답은 다시 고칠 수 없습니다."
       title={`문제 ${props.problem.number} / ${props.problems.length}`}
-      onPrimary={submitAnswer}
+      onPrimary={requestSubmitAnswer}
     >
       <article className="understanding-question-card" aria-label={`${props.problem.title} 문제`}>
         <h2>{props.problem.title}</h2>
@@ -121,6 +181,15 @@ function ProblemAnswerStage(props: FlowProps & { readonly problem: IndependentPr
         <span>내 답변</span>
         <textarea aria-label={`${props.problem.title} 답변`} value={answer} onChange={(event) => setAnswer(event.currentTarget.value)} />
       </label>
+      {pendingTransition === null ? null : (
+        <IrreversibleTransitionDialog
+          confirmLabel={pendingTransition.confirmLabel}
+          message={pendingTransition.message}
+          title={pendingTransition.title}
+          onCancel={cancelSubmitAnswer}
+          onConfirm={confirmSubmitAnswer}
+        />
+      )}
     </StageFrame>
   );
 }
@@ -129,6 +198,7 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
   const postSurveyItems = surveyItemsForTopic(props.problem.postSurveyItems, props.topic);
   const [ratings, setRatings] = useState(() => emptyRatings(postSurveyItems));
   const [textResponses, setTextResponses] = useState(() => emptyTextResponses(postSurveyItems));
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
 
   const submitConfidence = (): void => {
     const nextProblem = nextProblemAfter(props.problems, props.problem);
@@ -185,6 +255,30 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
     );
   };
 
+  const requestSubmitConfidence = (): void => {
+    const transition: PendingTransition = {
+      actionKey: `submit_problem_${props.problem.number}_confidence`,
+      message: "제출하면 방금 답에 대한 확인 내용을 다시 고칠 수 없습니다. 다음으로 넘어갈까요?",
+      stage: props.problem.confidenceStage,
+      title: "확인 내용을 제출할까요?"
+    };
+    recordIrreversibleTransitionEvent(props.setSession, transition, "irreversible_transition_prompt_shown");
+    setPendingTransition(transition);
+  };
+
+  const cancelSubmitConfidence = (): void => {
+    if (pendingTransition !== null) recordIrreversibleTransitionEvent(props.setSession, pendingTransition, "irreversible_transition_cancelled");
+    setPendingTransition(null);
+  };
+
+  const confirmSubmitConfidence = (): void => {
+    const transition = pendingTransition;
+    if (transition === null) return;
+    recordIrreversibleTransitionEvent(props.setSession, transition, "irreversible_transition_confirmed");
+    setPendingTransition(null);
+    submitConfidence();
+  };
+
   return (
     <StageFrame
       disabled={!surveyResponsesComplete(postSurveyItems, ratings, textResponses)}
@@ -193,7 +287,7 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
       stage={props.problem.confidenceStage}
       subtitle="방금 제출한 답에 대해 지금 느끼는 생각을 표시해 주세요."
       title={`문제 ${props.problem.number} / ${props.problems.length} 직후 확인`}
-      onPrimary={submitConfidence}
+      onPrimary={requestSubmitConfidence}
     >
       <SurveyResponseGroup
         items={postSurveyItems}
@@ -202,6 +296,15 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
         onRatingChange={(id, value) => setRatings((current) => updateRating(current, id, value))}
         onTextChange={(id, value) => setTextResponses((current) => updateTextResponse(current, id, value))}
       />
+      {pendingTransition === null ? null : (
+        <IrreversibleTransitionDialog
+          confirmLabel={pendingTransition.confirmLabel}
+          message={pendingTransition.message}
+          title={pendingTransition.title}
+          onCancel={cancelSubmitConfidence}
+          onConfirm={confirmSubmitConfidence}
+        />
+      )}
     </StageFrame>
   );
 }
@@ -279,6 +382,7 @@ function FinalReflectionStage(props: FlowProps): ReactElement {
   const finalReflectionItems = finalReflectionSurveyItemsForModule(props.session.modules.understandingCalibration);
   const [ratings, setRatings] = useState(() => emptyRatings(finalReflectionItems));
   const [textResponses, setTextResponses] = useState(() => emptyTextResponses(finalReflectionItems));
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
 
   const complete = (): void => {
     props.setSession((session) =>
@@ -291,6 +395,31 @@ function FinalReflectionStage(props: FlowProps): ReactElement {
     );
   };
 
+  const requestComplete = (): void => {
+    const transition: PendingTransition = {
+      actionKey: "complete_understanding_calibration",
+      confirmLabel: "완료할래요",
+      message: "완료하면 이 활동은 제출된 상태로 저장됩니다. 마지막 생각을 모두 남겼나요?",
+      stage: UnderstandingCalibrationStages.finalReflection,
+      title: "활동을 완료할까요?"
+    };
+    recordIrreversibleTransitionEvent(props.setSession, transition, "irreversible_transition_prompt_shown");
+    setPendingTransition(transition);
+  };
+
+  const cancelComplete = (): void => {
+    if (pendingTransition !== null) recordIrreversibleTransitionEvent(props.setSession, pendingTransition, "irreversible_transition_cancelled");
+    setPendingTransition(null);
+  };
+
+  const confirmComplete = (): void => {
+    const transition = pendingTransition;
+    if (transition === null) return;
+    recordIrreversibleTransitionEvent(props.setSession, transition, "irreversible_transition_confirmed");
+    setPendingTransition(null);
+    complete();
+  };
+
   return (
     <StageFrame
       disabled={!surveyResponsesComplete(finalReflectionItems, ratings, textResponses)}
@@ -299,7 +428,7 @@ function FinalReflectionStage(props: FlowProps): ReactElement {
       stage={UnderstandingCalibrationStages.finalReflection}
       subtitle="다시 본 대화를 바탕으로 마지막 생각을 남겨 주세요."
       title={props.topic}
-      onPrimary={complete}
+      onPrimary={requestComplete}
     >
       <SurveyResponseGroup
         items={finalReflectionItems}
@@ -308,6 +437,15 @@ function FinalReflectionStage(props: FlowProps): ReactElement {
         onRatingChange={(id, value) => setRatings((current) => updateRating(current, id, value))}
         onTextChange={(id, value) => setTextResponses((current) => updateTextResponse(current, id, value))}
       />
+      {pendingTransition === null ? null : (
+        <IrreversibleTransitionDialog
+          confirmLabel={pendingTransition.confirmLabel}
+          message={pendingTransition.message}
+          title={pendingTransition.title}
+          onCancel={cancelComplete}
+          onConfirm={confirmComplete}
+        />
+      )}
     </StageFrame>
   );
 }

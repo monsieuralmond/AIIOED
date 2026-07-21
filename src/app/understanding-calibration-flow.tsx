@@ -3,11 +3,12 @@ import type { ReactElement } from "react";
 import { requestSessionCalibrationChat } from "../session/research-api-client.js";
 import { loadBrowserSessionIdentity } from "../session/browser-session.js";
 import { UnderstandingCalibrationStages } from "../shared/research.js";
+import type { UnderstandingCalibrationStage } from "../shared/research.js";
 import type { CalibrationChatRequest } from "../shared/calibration-ai.js";
 import type { PilotSession } from "../shared/types.js";
 import { updateSessionLlmMetadata } from "../session/session.js";
 import { Button, WarningBanner } from "./ui.js";
-import { ChatInput, ChatLog, StageFrame, SurveyResponseGroup } from "./understanding-calibration-components.js";
+import { ChatInput, ChatLog, IrreversibleTransitionDialog, StageFrame, SurveyResponseGroup } from "./understanding-calibration-components.js";
 import { chatCompletedPayload, durationSince, lastEventTimestamp } from "./understanding-calibration-events.js";
 import {
   emptyRatings,
@@ -25,13 +26,22 @@ import {
 } from "./understanding-calibration-data.js";
 import { startedEventForProblem } from "./understanding-calibration-problem-events.js";
 import { UnderstandingCalibrationProblemFlow } from "./understanding-calibration-problem-flow.js";
-import { appendCalibrationRecords, makeCalibrationChatTurn } from "./understanding-calibration-session.js";
+import { appendCalibrationEventsOnly, appendCalibrationRecords, makeCalibrationChatTurn } from "./understanding-calibration-session.js";
 import { UnderstandingCalibrationCompletedStage } from "./understanding-calibration-completed-stage.js";
 
 type FailedChatRequest = {
   readonly message: string;
   readonly previewRequest?: CalibrationChatRequest;
   readonly requestId: string;
+};
+
+type PendingTransition = {
+  readonly actionKey: string;
+  readonly confirmLabel?: string;
+  readonly message: string;
+  readonly stage: UnderstandingCalibrationStage;
+  readonly title?: string;
+  readonly onConfirm: () => void;
 };
 
 export function UnderstandingCalibrationFlow(props: { readonly session: PilotSession; readonly setSession: (updater: (session: PilotSession) => PilotSession) => void }): ReactElement {
@@ -53,6 +63,7 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   const [chatPending, setChatPending] = useState(false);
   const [chatError, setChatError] = useState("");
   const [failedChatRequest, setFailedChatRequest] = useState<FailedChatRequest | null>(null);
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const chatTurnsRef = useRef(props.session.chatTurns);
 
   useEffect(() => {
@@ -70,6 +81,41 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
       researchCondition: props.session.researchCondition,
       topic
     };
+  };
+
+  const recordTransitionEvent = (type: "irreversible_transition_cancelled" | "irreversible_transition_confirmed" | "irreversible_transition_prompt_shown", transition: PendingTransition): void => {
+    props.setSession((session) =>
+      appendCalibrationEventsOnly(session, {
+        events: [{
+          type,
+          payload: {
+            actionKey: transition.actionKey,
+            fromStage: transition.stage,
+            message: transition.message,
+            title: transition.title ?? "다음으로 넘어갈까요?"
+          }
+        }],
+        stage: transition.stage
+      })
+    );
+  };
+
+  const requestTransition = (transition: PendingTransition): void => {
+    recordTransitionEvent("irreversible_transition_prompt_shown", transition);
+    setPendingTransition(transition);
+  };
+
+  const cancelTransition = (): void => {
+    if (pendingTransition !== null) recordTransitionEvent("irreversible_transition_cancelled", pendingTransition);
+    setPendingTransition(null);
+  };
+
+  const confirmTransition = (): void => {
+    const transition = pendingTransition;
+    if (transition === null) return;
+    recordTransitionEvent("irreversible_transition_confirmed", transition);
+    setPendingTransition(null);
+    transition.onConfirm();
   };
 
   const savePreSurvey = (): void => {
@@ -221,7 +267,12 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   if (stage === UnderstandingCalibrationStages.chat) {
     const hasAssistantResponse = props.session.chatTurns.some((turn) => turn.role === "assistant");
     return (
-      <StageFrame disabled={chatPending || !hasAssistantResponse} layout="split" primaryLabel="다음 활동 전 확인" sessionTitle={props.session.assignment.title} stage={stage} subtitle="글을 읽고 더 확인하고 싶은 내용이 있으면 AI에게 자유롭게 질문해 보세요. 확인이 끝나면 다음 활동으로 이동하세요." title={topic} onPrimary={completeChat}>
+      <StageFrame disabled={chatPending || !hasAssistantResponse} layout="split" primaryLabel="다음 활동 전 확인" sessionTitle={props.session.assignment.title} stage={stage} subtitle="글을 읽고 더 확인하고 싶은 내용이 있으면 AI에게 자유롭게 질문해 보세요. 확인이 끝나면 다음 활동으로 이동하세요." title={topic} onPrimary={() => requestTransition({
+        actionKey: "complete_ai_chat",
+        message: "다음 화면으로 넘어가면 AI에게 질문하던 화면으로 다시 돌아올 수 없습니다. 충분히 확인했나요?",
+        stage,
+        onConfirm: completeChat
+      })}>
         <div className="calibration-study-layout">
           <article className="understanding-passage calibration-study-passage"><h2>지문</h2><p>{passage}</p></article>
           <section aria-label="AI와 대화" className="calibration-chat-panel">
@@ -242,13 +293,27 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
             <ChatInput disabled={chatPending} value={chatInput} onChange={setChatInput} onSubmit={() => { void sendChat(); }} />
           </section>
         </div>
+        {pendingTransition === null ? null : (
+          <IrreversibleTransitionDialog
+            confirmLabel={pendingTransition.confirmLabel}
+            message={pendingTransition.message}
+            title={pendingTransition.title}
+            onCancel={cancelTransition}
+            onConfirm={confirmTransition}
+          />
+        )}
       </StageFrame>
     );
   }
 
   if (stage === UnderstandingCalibrationStages.predictionSurvey) {
     return (
-      <StageFrame disabled={!surveyResponsesComplete(predictionSurveyItems, predictionRatings, predictionTextResponses)} primaryLabel="문제 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="다음 활동을 하기 전에 지금 느낌을 표시해 주세요." title="다음 활동 전 확인" onPrimary={savePrediction}>
+      <StageFrame disabled={!surveyResponsesComplete(predictionSurveyItems, predictionRatings, predictionTextResponses)} primaryLabel="문제 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="다음 활동을 하기 전에 지금 느낌을 표시해 주세요." title="다음 활동 전 확인" onPrimary={() => requestTransition({
+        actionKey: "start_independent_problems",
+        message: "문제를 시작하면 앞 화면으로 돌아갈 수 없습니다. 지금 느낌을 모두 표시했나요?",
+        stage,
+        onConfirm: savePrediction
+      })}>
         <SurveyResponseGroup
           items={predictionSurveyItemsForTopic}
           ratings={predictionRatings}
@@ -256,6 +321,15 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
           onRatingChange={(id, value) => setPredictionRatings((ratings) => updateRating(ratings, id, value))}
           onTextChange={(id, value) => setPredictionTextResponses((responses) => updateTextResponse(responses, id, value))}
         />
+        {pendingTransition === null ? null : (
+          <IrreversibleTransitionDialog
+            confirmLabel={pendingTransition.confirmLabel}
+            message={pendingTransition.message}
+            title={pendingTransition.title}
+            onCancel={cancelTransition}
+            onConfirm={confirmTransition}
+          />
+        )}
       </StageFrame>
     );
   }

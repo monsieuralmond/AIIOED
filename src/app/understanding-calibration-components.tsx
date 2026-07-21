@@ -53,6 +53,27 @@ export function StageFrame(props: StageFrameProps): ReactElement {
   );
 }
 
+export function IrreversibleTransitionDialog(props: {
+  readonly confirmLabel?: string | undefined;
+  readonly message: string;
+  readonly title?: string | undefined;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): ReactElement {
+  return (
+    <div className="confirm-backdrop">
+      <section aria-label="이동 확인" aria-modal="true" className="confirm-dialog irreversible-transition-dialog" role="dialog">
+        <h2>{props.title ?? "다음으로 넘어갈까요?"}</h2>
+        <p>{props.message}</p>
+        <div className="confirm-actions">
+          <Button variant="secondary" onClick={props.onCancel}>아직 더 볼래요</Button>
+          <Button variant="primary" onClick={props.onConfirm}>{props.confirmLabel ?? "다음으로 갈래요"}</Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 type LikertGroupProps = {
   readonly items: readonly LikertItem[];
   readonly ratings: Readonly<Record<string, number>>;

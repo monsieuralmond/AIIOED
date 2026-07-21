@@ -87,7 +87,10 @@ export type UnderstandingCalibrationEventType =
   | "reflection_submitted"
   | "chat_review_started"
   | "chat_review_submitted"
-  | "final_reflection_submitted";
+  | "final_reflection_submitted"
+  | "irreversible_transition_cancelled"
+  | "irreversible_transition_confirmed"
+  | "irreversible_transition_prompt_shown";
 
 export type UnderstandingTransferChoice = {
   readonly id: string;

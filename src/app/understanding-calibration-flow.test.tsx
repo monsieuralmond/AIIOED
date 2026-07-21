@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, enterStage } from "../session/session.js";
@@ -43,6 +43,14 @@ function FlowHarness(): ReactElement {
   const [session, setSession] = useState<PilotSession>(() =>
     enterStage(createSession(calibrationAssignment(), firstStudent()), UnderstandingCalibrationStages.chat)
   );
+  return <UnderstandingCalibrationFlow session={session} setSession={(updater) => setSession((currentSession) => updater(currentSession))} />;
+}
+
+function FlowHarnessWithSession(props: { readonly initialSession: PilotSession; readonly onSessionChange?: (session: PilotSession) => void }): ReactElement {
+  const [session, setSession] = useState<PilotSession>(() => props.initialSession);
+  useEffect(() => {
+    props.onSessionChange?.(session);
+  }, [props, session]);
   return <UnderstandingCalibrationFlow session={session} setSession={(updater) => setSession((currentSession) => updater(currentSession))} />;
 }
 
@@ -98,5 +106,62 @@ describe("UnderstandingCalibrationFlow chat", () => {
     expect(secondRequest.requestId).toBe(firstRequest.requestId);
     expect(screen.getAllByText("큐비트가 뭐예요?")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "같은 질문 다시 보내기" })).not.toBeInTheDocument();
+  });
+
+  it("asks students to confirm before leaving the AI chat screen", async () => {
+    const sessionUpdates: PilotSession[] = [];
+    const initialSession = {
+      ...enterStage(createSession(calibrationAssignment(), firstStudent()), UnderstandingCalibrationStages.chat),
+      chatTurns: [{
+        id: "assistant-turn-existing",
+        role: "assistant" as const,
+        text: "양자컴퓨터는 큐비트를 사용합니다.",
+        timestamp: "2026-07-21T00:00:00.000Z"
+      }]
+    };
+
+    render(<FlowHarnessWithSession initialSession={initialSession} onSessionChange={(session) => sessionUpdates.push(session)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "다음 활동 전 확인" }));
+
+    expect(screen.getByRole("dialog", { name: "이동 확인" })).toBeInTheDocument();
+    expect(screen.getByText("다음 화면으로 넘어가면 AI에게 질문하던 화면으로 다시 돌아올 수 없습니다. 충분히 확인했나요?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "아직 더 볼래요" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "이동 확인" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "다음 활동 전 확인" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "다음 활동 전 확인" }));
+    fireEvent.click(screen.getByRole("button", { name: "다음으로 갈래요" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "문제 시작" })).toBeInTheDocument());
+    const latestSession = sessionUpdates.at(-1);
+    expect(latestSession?.events.map((event) => event.type)).toEqual(expect.arrayContaining([
+      "irreversible_transition_prompt_shown",
+      "irreversible_transition_cancelled",
+      "irreversible_transition_confirmed",
+      "calibration_chat_completed"
+    ]));
+  });
+
+  it("asks students to confirm before submitting an independent problem answer", async () => {
+    const initialSession = enterStage(createSession(calibrationAssignment(), firstStudent()), UnderstandingCalibrationStages.problem1);
+    render(<FlowHarnessWithSession initialSession={initialSession} />);
+
+    fireEvent.change(screen.getByLabelText(/답변/u), { target: { value: "양자컴퓨터는 큐비트를 이용해 여러 가능성을 다루는 컴퓨터입니다." } });
+    fireEvent.click(screen.getByRole("button", { name: "제출" }));
+
+    expect(screen.getByRole("dialog", { name: "이동 확인" })).toBeInTheDocument();
+    expect(screen.getByText("제출하면 이 답은 다시 볼 수도, 고칠 수도 없습니다. 지금 답을 제출할까요?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "아직 더 볼래요" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "이동 확인" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "제출" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "제출" }));
+    fireEvent.click(screen.getByRole("button", { name: "제출할래요" }));
+
+    await waitFor(() => expect(screen.getByText("문제 1 / 4 직후 확인")).toBeInTheDocument());
   });
 });
