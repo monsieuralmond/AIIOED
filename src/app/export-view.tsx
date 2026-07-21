@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { requestDatabaseExport } from "../session/research-api-client.js";
-import type { DatabaseExportBundle } from "../session/research-api-client.js";
+import { requestDatabaseExport, requestDeploymentHealth } from "../session/research-api-client.js";
+import type { DatabaseExportBundle, DeploymentHealthResponse } from "../session/research-api-client.js";
 import {
   exportCalibrationAttritionRows,
   exportCalibrationChatTurnRows,
@@ -36,6 +36,18 @@ type DatabaseExportStatus =
   | { readonly type: "done"; readonly fileCount: number }
   | { readonly type: "failed"; readonly message: string };
 
+type BackupStatus =
+  | { readonly type: "idle" }
+  | { readonly type: "exporting" }
+  | { readonly type: "done"; readonly generatedAt: string }
+  | { readonly type: "failed"; readonly message: string };
+
+type HealthStatus =
+  | { readonly type: "idle" }
+  | { readonly type: "checking" }
+  | { readonly type: "done"; readonly health: DeploymentHealthResponse }
+  | { readonly type: "failed"; readonly message: string };
+
 const databaseExportFiles: readonly (keyof DatabaseExportBundle)[] = ["session-wide.csv", "item-long.csv", "raw-events.csv", "benchmark.jsonl", "events.csv", "chat-turns.csv", "artifacts.csv", "measures.csv", "data-quality.csv", "raw-json.json"];
 
 const downloadFile = (fileName: keyof DatabaseExportBundle, value: DatabaseExportBundle[keyof DatabaseExportBundle]): void => {
@@ -50,7 +62,9 @@ const downloadFile = (fileName: keyof DatabaseExportBundle, value: DatabaseExpor
 };
 
 export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly state: PilotState; readonly onBack: () => void }): ReactElement {
+  const [backupStatus, setBackupStatus] = useState<BackupStatus>({ type: "idle" });
   const [databaseExportStatus, setDatabaseExportStatus] = useState<DatabaseExportStatus>({ type: "idle" });
+  const [healthStatus, setHealthStatus] = useState<HealthStatus>({ type: "idle" });
   const dataset = stringifyDataset(props.state, props.fileSync);
   const labelingCsv = stringifyLabelingCsv(props.state);
   const researchEventsCsv = stringifyResearchEventsCsv(props.state);
@@ -103,6 +117,23 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
       throw error;
     }
   };
+  const createClassroomBackup = async (): Promise<void> => {
+    setBackupStatus({ type: "exporting" });
+    try {
+      await requestDatabaseExport({ completedOnly: false });
+      setBackupStatus({ generatedAt: new Date().toISOString(), type: "done" });
+    } catch (error) {
+      setBackupStatus({ message: error instanceof Error ? error.message : "백업 생성에 실패했습니다.", type: "failed" });
+    }
+  };
+  const runHealthCheck = async (): Promise<void> => {
+    setHealthStatus({ type: "checking" });
+    try {
+      setHealthStatus({ health: await requestDeploymentHealth(), type: "done" });
+    } catch (error) {
+      setHealthStatus({ message: error instanceof Error ? error.message : "점검에 실패했습니다.", type: "failed" });
+    }
+  };
   return (
     <main className="export-page">
       <h1>연구 로그</h1>
@@ -132,6 +163,12 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
         </header>
         <div className="export-actions">
           <Button variant="secondary" onClick={props.onBack}>관리자 화면</Button>
+          <Button disabled={healthStatus.type === "checking"} variant="secondary" onClick={() => void runHealthCheck()}>
+            {healthStatus.type === "checking" ? "수업 전 점검 중" : "수업 전 점검"}
+          </Button>
+          <Button disabled={backupStatus.type === "exporting"} variant="secondary" onClick={() => void createClassroomBackup()}>
+            {backupStatus.type === "exporting" ? "백업 생성 중" : "수업 종료 백업 생성"}
+          </Button>
           <Button disabled={databaseExportStatus.type === "exporting"} variant="primary" onClick={() => void downloadDatabaseExport()}>
             {databaseExportStatus.type === "exporting" ? "DB export 준비 중" : "DB export 다운로드"}
           </Button>
@@ -157,6 +194,29 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
       </section>
       {databaseExportStatus.type === "done" ? <p className="sync-status">DB export 파일 {databaseExportStatus.fileCount}개를 내려받았습니다.</p> : null}
       {databaseExportStatus.type === "failed" ? <p className="sync-status">DB export 실패 - {databaseExportStatus.message}</p> : null}
+      {backupStatus.type === "done" ? <p className="sync-status">수업 종료 백업을 생성했습니다. 생성 시각: {new Date(backupStatus.generatedAt).toLocaleString("ko-KR")}</p> : null}
+      {backupStatus.type === "failed" ? <p className="sync-status">수업 종료 백업 실패 - {backupStatus.message}</p> : null}
+      {healthStatus.type === "failed" ? <p className="sync-status">수업 전 점검 실패 - {healthStatus.message}</p> : null}
+      {healthStatus.type === "done" ? (
+        <section aria-label="수업 전 점검 결과" className="labeling-preview">
+          <h2>수업 전 점검 결과</h2>
+          <p>{healthStatus.health.ok ? "정상입니다. 수업을 시작해도 됩니다." : "확인이 필요한 항목이 있습니다."}</p>
+          <table>
+            <thead>
+              <tr><th>항목</th><th>상태</th><th>메시지</th></tr>
+            </thead>
+            <tbody>
+              {healthStatus.health.checks.map((item) => (
+                <tr key={item.name}>
+                  <td>{item.name}</td>
+                  <td>{item.ok ? "정상" : "확인 필요"}</td>
+                  <td>{item.message ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
       <section aria-label="라벨링 행 미리보기" className="labeling-preview">
         <h2>라벨링 행 미리보기</h2>
         {previewRows.length === 0 ? (

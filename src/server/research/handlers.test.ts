@@ -272,6 +272,42 @@ describe("research API handlers", () => {
     }, requestWithSessionToken(sessionToken))).resolves.toEqual({ ok: true });
   });
 
+  it("adds a raw audit event to session sync writes before handing them to the store", async () => {
+    const store = new MemoryResearchStore();
+    const capturedEvents: Array<{ readonly payload: Record<string, unknown>; readonly type: string }> = [];
+    store.syncSessionDelta = async (input) => {
+      capturedEvents.push(...input.events);
+    };
+    const handlers = createResearchApiHandlers(() => store);
+    const started = await handlers.sessionStart({ participantCode: "S001" }, emptyRequest());
+    const sessionId = sessionIdFrom(started);
+    const sessionToken = sessionTokenFrom(started);
+
+    await handlers.sessionSync({
+      artifacts: [],
+      chatTurns: [],
+      currentStage: "reading",
+      events: [{
+        id: "event-student-action",
+        payload: { value: "kept" },
+        stage: "reading",
+        timestamp: "2026-07-05T00:00:00.000Z",
+        type: "student_action"
+      }],
+      measures: [],
+      sessionId,
+      status: "in_progress"
+    }, requestWithSessionToken(sessionToken));
+
+    expect(capturedEvents).toEqual([
+      expect.objectContaining({ id: "event-student-action", type: "student_action" }),
+      expect.objectContaining({
+        payload: expect.objectContaining({ eventCount: 1, status: "in_progress" }),
+        type: "session_sync_received"
+      })
+    ]);
+  });
+
   it("requires a teacher token before listing sessions", async () => {
     const store = new MemoryResearchStore();
     const handlers = createResearchApiHandlers(() => store);

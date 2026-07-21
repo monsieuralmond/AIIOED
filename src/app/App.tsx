@@ -4,8 +4,8 @@ import { unavailableFileSync } from "../session/file-sync.js";
 import { activeSession, assignmentsForStudent, createClassGroup, createSession, createStudentAccount, createTeacherAccount, deleteAssignment, deleteClassGroup, deleteStudentAccount, deleteTeacherAccount, PilotStateError, requireAssignment, saveAssignmentInState, selectActor, startStudentSession, studentByCredentials, studentByParticipantCode, teacherByCredentials, updatePilotSession, updateTeacherReview } from "../session/session.js";
 import type { CreateClassGroupInput, CreateStudentInput, CreateTeacherInput } from "../session/session.js";
 import { clearBrowserActorIdentity, clearBrowserAdminAuth, clearBrowserSessionIdentity, clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, saveBrowserActorIdentity, saveBrowserAdminAuth, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "../session/browser-session.js";
-import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resetTeacherStudentSession, resumeResearchSession, startResearchSessionWithParticipantCode, syncRosterDeltaToDatabase, syncSessionDelta } from "../session/research-api-client.js";
-import type { RosterSyncDelta } from "../session/research-api-client.js";
+import { ResearchApiClientError, authenticateAdminWithDatabase, authenticateStudentWithDatabase, authenticateTeacherWithDatabase, currentRosterAuthHeaders, loadAdminSessionsFromDatabase, loadPendingSessionSnapshot, loadRosterFromDatabase, loadTeacherSessionsFromDatabase, resetTeacherStudentSession, resumeResearchSession, startResearchSessionWithParticipantCode, subscribeSessionPersistenceStatus, syncRosterDeltaToDatabase, syncSessionDelta } from "../session/research-api-client.js";
+import type { RosterSyncDelta, SessionPersistenceStatus } from "../session/research-api-client.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { Assignment, FileSyncStatus, PilotSession, PilotState, SelectedActor, StudentAccount, TeacherReviewUpdate } from "../shared/types.js";
 import { AccountManagement } from "./account-management.js";
@@ -90,6 +90,24 @@ function TeacherAccountSettingsMenu(props: {
   );
 }
 
+function SessionPersistenceBanner(props: { readonly status: SessionPersistenceStatus }): ReactElement | null {
+  if (props.status.type === "idle") return null;
+  if (props.status.type === "saved") {
+    return <div className="session-save-status session-save-status-saved" role="status">저장됨</div>;
+  }
+  if (props.status.type === "saving") {
+    return <div className="session-save-status" role="status">저장 중...</div>;
+  }
+  if (props.status.type === "queued") {
+    return <div className="session-save-status" role="status">저장 대기 중...</div>;
+  }
+  return (
+    <div className="session-save-status session-save-status-failed" role="alert">
+      저장 실패. 브라우저에 임시 보관했고 다시 시도합니다. {props.status.message}
+    </div>
+  );
+}
+
 export function App(): ReactElement {
   const [pilotState, setPilotState] = useState<PilotState>(initialAppState);
   const [route, setRoute] = useState(initialRoute);
@@ -98,6 +116,7 @@ export function App(): ReactElement {
   const [teacherPreviewSession, setTeacherPreviewSession] = useState<PilotSession | null>(null);
   const [rosterReady, setRosterReady] = useState(false);
   const [, setRosterRevision] = useState<string | null>(null);
+  const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<SessionPersistenceStatus>({ type: "idle" });
   const rosterRevisionRef = useRef<string | null>(null);
   const rosterSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const submissionSyncInFlightRef = useRef<string | null>(null);
@@ -110,9 +129,36 @@ export function App(): ReactElement {
   const teacherRoute = route === "create" || route === "review" || route === "accounts";
   const adminRoute = route === "admin" || route === "export";
 
+  const isNewerSessionSnapshot = (candidate: PilotSession, baseline: PilotSession): boolean => {
+    if (candidate.sessionId !== baseline.sessionId) return false;
+    const candidateTime = Date.parse(candidate.updatedAt);
+    const baselineTime = Date.parse(baseline.updatedAt);
+    if (Number.isFinite(candidateTime) && Number.isFinite(baselineTime) && candidateTime > baselineTime) return true;
+    return candidate.events.length > baseline.events.length ||
+      candidate.artifacts.length > baseline.artifacts.length ||
+      candidate.measures.length > baseline.measures.length ||
+      candidate.chatTurns.length > baseline.chatTurns.length ||
+      candidate.draftSnapshots.length > baseline.draftSnapshots.length;
+  };
+
+  const sessionRecoveredWithLocalSnapshot = (serverSession: PilotSession): PilotSession => {
+    const localSnapshot = loadPendingSessionSnapshot(serverSession.sessionId);
+    if (localSnapshot === null || !isNewerSessionSnapshot(localSnapshot, serverSession)) return serverSession;
+    void syncSessionDelta(serverSession, localSnapshot).catch(reportSessionSyncError);
+    return localSnapshot;
+  };
+
   useEffect(() => {
     pilotStateRef.current = pilotState;
   }, [pilotState]);
+
+  useEffect(() => {
+    if (session === null) {
+      setSessionPersistenceStatus({ type: "idle" });
+      return;
+    }
+    return subscribeSessionPersistenceStatus(session.sessionId, setSessionPersistenceStatus);
+  }, [session?.sessionId]);
 
   const openRoute = (next: Route): void => {
     if (next !== "create") setEditingAssignmentId(null);
@@ -198,7 +244,7 @@ export function App(): ReactElement {
         const sessionWithAccount: PilotSession = actorIdentity?.role === "student"
           ? { ...result.session, student: { ...result.session.student, accountId: actorIdentity.accountId } }
           : result.session;
-        setPilotState((state) => stateWithServerSession(state, sessionWithAccount));
+        setPilotState((state) => stateWithServerSession(state, sessionRecoveredWithLocalSnapshot(sessionWithAccount)));
         openRoute("student");
       })
       .catch(() => {
@@ -427,7 +473,7 @@ export function App(): ReactElement {
       };
       const nextActor: SelectedActor = { accountId: student.id, role: "student" };
       saveBrowserActorIdentity(nextActor);
-      setPilotState((state) => selectActor(stateWithServerSession(state, sessionWithAccount), nextActor));
+      setPilotState((state) => selectActor(stateWithServerSession(state, sessionRecoveredWithLocalSnapshot(sessionWithAccount)), nextActor));
       openRoute("student");
       return true;
     } catch (error) {
@@ -545,7 +591,12 @@ export function App(): ReactElement {
 
   const renderStudentWorkspace = (): ReactElement => {
     if (session === null) throw new Error("Student workspace requires an active persisted session.");
-    return renderWorkspaceForSession(session, setSession);
+    return (
+      <>
+        <SessionPersistenceBanner status={sessionPersistenceStatus} />
+        {renderWorkspaceForSession(session, setSession)}
+      </>
+    );
   };
 
   const actorName = (selectedActor: SelectedActor | null): string | undefined => {
@@ -580,7 +631,7 @@ export function App(): ReactElement {
           studentAnonymousId: result.studentAnonymousId
         });
         if (result.sessionToken !== undefined) saveBrowserSessionToken(result.sessionToken);
-        setPilotState((state) => stateWithServerSession(state, { ...result.session, student: { ...result.session.student, accountId: student.id, displayName: student.displayName } }));
+        setPilotState((state) => stateWithServerSession(state, sessionRecoveredWithLocalSnapshot({ ...result.session, student: { ...result.session.student, accountId: student.id, displayName: student.displayName } })));
         openRoute("student");
         return true;
       } catch (error) {

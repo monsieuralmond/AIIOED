@@ -15,7 +15,7 @@ import {
   sessionDeltaSchema,
   stageUpdateSchema
 } from "./schemas.js";
-import { assertSessionWritable } from "./store.js";
+import { assertSessionWritable, serverId } from "./store.js";
 import type { ResearchStore } from "./store.js";
 import { createSupabaseResearchStore } from "./supabase-store.js";
 import { loadRoster, upsertRoster, upsertRosterDelta } from "./roster-handlers.js";
@@ -150,9 +150,13 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   },
 
   health: async (_payload, request) => {
-    const auth = teacherAuthFromRequest(request);
-    if (auth === null) throw new ApiError(401, "Teacher authorization is required.");
-    requireTeacherAuth(request, auth.teacherId);
+    const adminAuth = adminAuthFromRequest(request);
+    if (adminAuth !== null) requireAdminAuth(request);
+    else {
+      const auth = teacherAuthFromRequest(request);
+      if (auth === null) throw new ApiError(401, "Teacher authorization is required.");
+      requireTeacherAuth(request, auth.teacherId);
+    }
     return researchDeploymentHealth();
   },
 
@@ -252,49 +256,69 @@ export const createResearchApiHandlers = (storeFactory: () => ResearchStore = st
   sessionSync: async (payload, request) => {
     const input = sessionDeltaSchema.parse(payload);
     requireSessionIdAuth(request, input.sessionId);
+    const inputWithAudit = {
+      ...input,
+      events: [
+        ...input.events,
+        {
+          id: serverId("event"),
+          payload: {
+            artifactCount: input.artifacts.length,
+            chatTurnCount: input.chatTurns.length,
+            currentStage: input.currentStage,
+            eventCount: input.events.length,
+            measureCount: input.measures.length,
+            status: input.status
+          },
+          stage: input.currentStage,
+          timestamp: new Date().toISOString(),
+          type: "session_sync_received"
+        }
+      ]
+    };
     const store = storeFactory();
     if (store.syncSessionDelta !== undefined) {
-      await store.syncSessionDelta(input);
+      await store.syncSessionDelta(inputWithAudit);
       return { ok: true };
     }
-    const { context } = await store.resumeSession(input.sessionId);
+    const { context } = await store.resumeSession(inputWithAudit.sessionId);
     requireSessionAuth(request, context);
     assertSessionWritable(context);
-    for (const turn of input.chatTurns) {
+    for (const turn of inputWithAudit.chatTurns) {
       await store.insertChatTurn({
         id: turn.id,
         ...(turn.requestId === undefined ? {} : { requestId: turn.requestId }),
         ...(turn.responseType === undefined ? {} : { responseType: turn.responseType }),
         role: turn.role,
-        sessionId: input.sessionId,
+        sessionId: inputWithAudit.sessionId,
         stage: context.currentStage,
         text: turn.text,
         timestamp: turn.timestamp
       });
     }
-    for (const event of input.events) await store.insertEvent({ ...event, sessionId: input.sessionId });
-    for (const artifact of input.artifacts) await store.insertArtifact({
+    for (const event of inputWithAudit.events) await store.insertEvent({ ...event, sessionId: inputWithAudit.sessionId });
+    for (const artifact of inputWithAudit.artifacts) await store.insertArtifact({
       id: artifact.id,
       kind: artifact.kind,
       payload: artifact.payload,
-      sessionId: input.sessionId,
+      sessionId: inputWithAudit.sessionId,
       stage: artifact.stage,
       timestamp: artifact.createdAt,
       ...(artifact.updatedAt === undefined ? {} : { updatedAt: artifact.updatedAt })
     });
-    for (const measure of input.measures) await store.insertMeasure({
+    for (const measure of inputWithAudit.measures) await store.insertMeasure({
       id: measure.id,
       kind: measure.kind,
       payload: measure.payload,
-      sessionId: input.sessionId,
+      sessionId: inputWithAudit.sessionId,
       stage: measure.stage,
       timestamp: measure.collectedAt
     });
     await store.updateStage({
-      currentStage: input.currentStage,
-      sessionId: input.sessionId,
-      ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),
-      status: input.status
+      currentStage: inputWithAudit.currentStage,
+      sessionId: inputWithAudit.sessionId,
+      ...(inputWithAudit.completedAt === undefined ? {} : { completedAt: inputWithAudit.completedAt }),
+      status: inputWithAudit.status
     });
     return { ok: true };
   },

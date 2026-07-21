@@ -3,7 +3,7 @@ import { createInitialPilotState, createSession, deleteClassGroup } from "./sess
 import { sampleAssignment, sampleStudents, sampleTeacher } from "../shared/fixtures.js";
 import { ResearchConditions, ResearchModes } from "../shared/research.js";
 import type { ChatTurn, PilotEvent } from "../shared/types.js";
-import { authenticateStudentWithDatabase, currentRosterAuthHeaders, loadRosterFromDatabase, requestSessionCalibrationChat, startResearchSessionWithParticipantCode, syncRosterDeltaToDatabase, syncRosterToDatabase, syncSessionDelta } from "./research-api-client.js";
+import { authenticateStudentWithDatabase, currentRosterAuthHeaders, loadPendingSessionSnapshot, loadRosterFromDatabase, requestSessionCalibrationChat, startResearchSessionWithParticipantCode, syncRosterDeltaToDatabase, syncRosterToDatabase, syncSessionDelta } from "./research-api-client.js";
 import { clearBrowserSessionToken, clearBrowserTeacherAuth, loadBrowserActorIdentity, loadBrowserSessionIdentity, loadBrowserSessionToken, loadBrowserTeacherAuth, saveBrowserActorIdentity, saveBrowserSessionIdentity, saveBrowserSessionToken, saveBrowserTeacherAuth } from "./browser-session.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -469,6 +469,27 @@ describe("research API client", () => {
       id: "event-student-message",
       payload: { text: "원문 질문입니다." }
     })]);
+  });
+
+  it("keeps a browser safety snapshot when session sync fails", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> =>
+      new Response(JSON.stringify({ message: "temporary failure" }), { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const student = sampleStudents[0];
+    if (student === undefined) throw new Error("sample student fixture is missing.");
+    const session = createSession({ ...sampleAssignment, researchMode: ResearchModes.guidedWriting }, student);
+    const newEvent: PilotEvent = {
+      id: "event-unsaved",
+      payload: { value: 1 },
+      stage: session.currentStage,
+      timestamp: "2026-07-05T00:01:00.000Z",
+      type: "stage_completed"
+    };
+    const next = { ...session, events: [newEvent] };
+
+    await expect(syncSessionDelta(session, next)).rejects.toMatchObject({ status: 503 });
+
+    expect(loadPendingSessionSnapshot(session.sessionId)?.events).toEqual([expect.objectContaining({ id: "event-unsaved" })]);
   });
 
   it("retries the complete unsaved session delta after an earlier queued sync fails", async () => {

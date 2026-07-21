@@ -82,6 +82,18 @@ export type DatabaseExportBundle = {
   readonly "session-wide.csv": string;
 };
 
+export type DeploymentHealthCheck = {
+  readonly message?: string;
+  readonly name: string;
+  readonly ok: boolean;
+};
+
+export type DeploymentHealthResponse = {
+  readonly checks: readonly DeploymentHealthCheck[];
+  readonly generatedAt: string;
+  readonly ok: boolean;
+};
+
 export type RosterSyncResponse = {
   readonly rosterRevision?: string;
 };
@@ -224,6 +236,13 @@ const isDatabaseExportBundle = (value: unknown): value is DatabaseExportBundle =
   typeof value["raw-events.csv"] === "string" &&
   typeof value["session-wide.csv"] === "string";
 
+const isDeploymentHealthResponse = (value: unknown): value is DeploymentHealthResponse =>
+  isRecord(value) &&
+  Array.isArray(value["checks"]) &&
+  value["checks"].every((item) => isRecord(item) && typeof item["name"] === "string" && typeof item["ok"] === "boolean") &&
+  typeof value["generatedAt"] === "string" &&
+  typeof value["ok"] === "boolean";
+
 const sessionHeaders = (): Readonly<Record<string, string>> => {
   const token = loadBrowserSessionToken();
   return token === null ? {} : { "x-research-session-token": token };
@@ -334,14 +353,20 @@ export const requestSessionCalibrationChat = async (input: {
   return payload;
 };
 
-export const requestDatabaseExport = async (input: { readonly assignmentId?: string; readonly classGroupId?: string } = {}): Promise<DatabaseExportBundle> => {
+export const requestDatabaseExport = async (input: { readonly assignmentId?: string; readonly classGroupId?: string; readonly completedOnly?: boolean } = {}): Promise<DatabaseExportBundle> => {
   const payload = await postJson("/api/export", {
     anonymized: true,
-    completedOnly: true,
+    completedOnly: input.completedOnly ?? true,
     ...(input.assignmentId === undefined ? {} : { assignmentId: input.assignmentId }),
     ...(input.classGroupId === undefined ? {} : { classGroupId: input.classGroupId })
   }, adminHeaders());
   if (!isDatabaseExportBundle(payload)) throw new Error("DB export 응답 형식이 올바르지 않습니다.");
+  return payload;
+};
+
+export const requestDeploymentHealth = async (): Promise<DeploymentHealthResponse> => {
+  const payload = await postJson("/api/admin/health", {}, rosterHeaders());
+  if (!isDeploymentHealthResponse(payload)) throw new Error("점검 응답 형식이 올바르지 않습니다.");
   return payload;
 };
 
@@ -508,6 +533,103 @@ type SessionSyncState = {
 
 const sessionSyncStates = new Map<string, SessionSyncState>();
 
+export type SessionPersistenceStatus =
+  | { readonly type: "idle" }
+  | { readonly type: "queued"; readonly pendingCount: number }
+  | { readonly type: "saving"; readonly pendingCount: number }
+  | { readonly type: "saved"; readonly savedAt: string }
+  | { readonly type: "failed"; readonly message: string; readonly pendingCount: number };
+
+type SessionPersistenceListener = (status: SessionPersistenceStatus) => void;
+
+const sessionPersistenceStatuses = new Map<string, SessionPersistenceStatus>();
+const sessionPersistenceListeners = new Set<SessionPersistenceListener>();
+const safetySnapshotKey = (sessionId: string): string => `reading-coach:safety-session:${sessionId}`;
+const safetySnapshotIndexKey = "reading-coach:safety-session:index";
+
+const sessionSyncStatus = (sessionId: string): SessionPersistenceStatus =>
+  sessionPersistenceStatuses.get(sessionId) ?? { type: "idle" };
+
+const notifySessionPersistenceStatus = (sessionId: string, status: SessionPersistenceStatus): void => {
+  sessionPersistenceStatuses.set(sessionId, status);
+  sessionPersistenceListeners.forEach((listener) => listener(status));
+};
+
+export const subscribeSessionPersistenceStatus = (sessionId: string, listener: SessionPersistenceListener): (() => void) => {
+  sessionPersistenceListeners.add(listener);
+  listener(sessionSyncStatus(sessionId));
+  return () => {
+    sessionPersistenceListeners.delete(listener);
+  };
+};
+
+const safeLocalStorage = (): Storage | null => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const loadSnapshotIndex = (): readonly string[] => {
+  const storage = safeLocalStorage();
+  if (storage === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(safetySnapshotIndexKey) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveSnapshotIndex = (sessionIds: readonly string[]): void => {
+  const storage = safeLocalStorage();
+  if (storage === null) return;
+  try {
+    storage.setItem(safetySnapshotIndexKey, JSON.stringify([...new Set(sessionIds)].slice(-20)));
+  } catch {
+    // If local storage is full, keep the app usable and rely on server writes.
+  }
+};
+
+const savePendingSessionSnapshot = (session: PilotSession): void => {
+  const storage = safeLocalStorage();
+  if (storage === null) return;
+  try {
+    storage.setItem(safetySnapshotKey(session.sessionId), JSON.stringify(session));
+    saveSnapshotIndex([...loadSnapshotIndex().filter((id) => id !== session.sessionId), session.sessionId]);
+  } catch {
+    notifySessionPersistenceStatus(session.sessionId, { message: "브라우저 임시 저장 공간이 부족합니다.", pendingCount: 1, type: "failed" });
+  }
+};
+
+const clearPendingSessionSnapshot = (sessionId: string): void => {
+  const storage = safeLocalStorage();
+  if (storage === null) return;
+  try {
+    storage.removeItem(safetySnapshotKey(sessionId));
+    saveSnapshotIndex(loadSnapshotIndex().filter((id) => id !== sessionId));
+  } catch {
+    // Nothing useful to do here.
+  }
+};
+
+export const loadPendingSessionSnapshot = (sessionId: string): PilotSession | null => {
+  const storage = safeLocalStorage();
+  if (storage === null) return null;
+  try {
+    const raw = storage.getItem(safetySnapshotKey(sessionId));
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPilotSession(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+export const pendingSessionSnapshotIds = (): readonly string[] => loadSnapshotIndex();
+
 const retryableSessionSync = (error: unknown): boolean => error instanceof ResearchApiClientError && [0, 408, 429, 500, 502, 503, 504].includes(error.status);
 
 const waitForRetry = async (attempt: number): Promise<void> => {
@@ -535,21 +657,36 @@ const syncSessionDeltaOnce = async (previous: PilotSession, next: PilotSession):
 const runSessionSyncState = async (state: SessionSyncState): Promise<void> => {
   while (state.lastSynced !== state.latest) {
     const target = state.latest;
+    notifySessionPersistenceStatus(target.sessionId, { pendingCount: 1, type: "saving" });
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         await syncSessionDeltaOnce(state.lastSynced, target);
         state.lastSynced = target;
         break;
       } catch (error) {
-        if (!retryableSessionSync(error) || attempt === 3) throw error;
+        if (!retryableSessionSync(error) || attempt === 3) {
+          notifySessionPersistenceStatus(target.sessionId, {
+            message: error instanceof Error ? error.message : "저장 요청에 실패했습니다.",
+            pendingCount: 1,
+            type: "failed"
+          });
+          throw error;
+        }
+        notifySessionPersistenceStatus(target.sessionId, { pendingCount: 1, type: "queued" });
         await waitForRetry(attempt);
       }
     }
   }
+  clearPendingSessionSnapshot(state.latest.sessionId);
+  notifySessionPersistenceStatus(state.latest.sessionId, { savedAt: new Date().toISOString(), type: "saved" });
 };
 
 export const syncSessionDelta = (previous: PilotSession, next: PilotSession): Promise<void> => {
-  const state = sessionSyncStates.get(next.sessionId) ?? {
+  const existingState = sessionSyncStates.get(next.sessionId);
+  if (existingState === undefined && previous === next) return Promise.resolve();
+  savePendingSessionSnapshot(next);
+  notifySessionPersistenceStatus(next.sessionId, { pendingCount: 1, type: "queued" });
+  const state = existingState ?? {
     lastSynced: previous,
     latest: next,
     promise: Promise.resolve(),

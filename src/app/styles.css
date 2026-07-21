@@ -4280,6 +4280,26 @@ pre {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.session-save-status {
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  padding: 10px var(--page-gutter);
+  text-align: right;
+}
+
+.session-save-status-saved {
+  color: #2f8f46;
+}
+
+.session-save-status-failed {
+  background: #fff8d6;
+  border-color: #e0c84f;
+  color: #25202f;
+  text-align: left;
+}
+
 @keyframes panel-enter {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
