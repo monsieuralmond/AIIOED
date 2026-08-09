@@ -4,7 +4,9 @@ import {
   configuredSurveyItems,
   emptyRatings,
   emptyTextResponses,
+  independentProblemsForAudience,
   independentProblemsForModule,
+  questionSetVersionForAudience,
   predictionSurveyItems,
   predictionSurveyItemsForModule,
   preSurveyItems,
@@ -22,8 +24,8 @@ describe("surveyItemsForTopic", () => {
 
     expect(preItems.map((item) => item.id)).toEqual(preSurveyItems.map((item) => item.id));
     expect(predictionItems.map((item) => item.id)).toEqual(predictionSurveyItems.map((item) => item.id));
-    expect(preItems.map((item) => item.label)).toContain("나는 양자컴퓨터의 개념을 설명할 수 있다.");
-    expect(predictionItems.map((item) => item.label)).toContain("나는 양자컴퓨터의 작동 원리를 설명할 수 있다.");
+    expect(preItems.map((item) => item.label)).toContain("현재 양자컴퓨터 내용을 얼마나 이해하고 있다고 생각합니까?");
+    expect(predictionItems.map((item) => item.label)).toContain("현재 이 내용을 얼마나 이해했다고 생각합니까?");
   });
 });
 
@@ -42,15 +44,16 @@ describe("understanding calibration assignment configuration", () => {
 
   it("uses teacher-configured survey labels and preserves added or deleted items", () => {
     const items = configuredSurveyItems(predictionSurveyItems, [
-      { id: "pred_can_explain_concept", label: "나는 새 주제를 쉬운 말로 설명할 수 있다.", helper: "학생에게는 보조 설명으로 보입니다." },
+      { id: "ready_to_start", label: "나는 새 주제를 쉬운 말로 설명할 수 있다.", helper: "학생에게는 보조 설명으로 보입니다.", responseType: "yes_no" },
       { id: "pred_custom_1", label: "나는 핵심 낱말을 예로 들어 설명할 수 있다." }
     ]);
 
-    expect(items.map((item) => item.id)).toEqual(["pred_can_explain_concept", "pred_custom_1"]);
+    expect(items.map((item) => item.id)).toEqual(["ready_to_start", "pred_custom_1"]);
     expect(items[0]).toEqual({
       helper: "학생에게는 보조 설명으로 보입니다.",
-      id: "pred_can_explain_concept",
-      label: "나는 새 주제를 쉬운 말로 설명할 수 있다."
+      id: "ready_to_start",
+      label: "나는 새 주제를 쉬운 말로 설명할 수 있다.",
+      responseType: "yes_no"
     });
     expect(items[1]?.label).toBe("나는 핵심 낱말을 예로 들어 설명할 수 있다.");
   });
@@ -79,14 +82,35 @@ describe("understanding calibration assignment configuration", () => {
     expect(nextProblemAfter(problems, firstProblem)).toBe(secondProblem);
   });
 
+  it("keeps separate adult and elementary independent problem presets", () => {
+    const adultProblems = independentProblemsForAudience("adult_pilot");
+    const elementaryProblems = independentProblemsForAudience("elementary_pilot");
+
+    expect(adultProblems[0]?.title).toBe("자유 설명");
+    expect(elementaryProblems[0]?.title).toBe("쉽게 설명하기");
+    expect(adultProblems[1]?.prompt).toContain("학생 A");
+    expect(elementaryProblems[1]?.prompt).toContain("친구 A");
+    expect(questionSetVersionForAudience("adult_pilot")).toBe("quantum_adult_v1");
+    expect(questionSetVersionForAudience("elementary_main")).toBe("quantum_elementary_v1");
+  });
+
   it("reads survey and problem configuration from the understanding module", () => {
     const module = {
       independentProblems: [{ number: 2, title: "원리 맞춤", prompt: "작동 원리를 비교해 설명하세요." }],
-      predictionSurveyItems: [{ id: "pred_can_apply_new_case", label: "나는 새 사례에 적용할 수 있다." }],
+      predictionSurveyItems: [{ id: "understanding_0_100", label: "나는 새 사례에 적용할 수 있다.", responseType: "slider_0_100" }],
       version: "1.0"
     } as const;
 
     expect(predictionSurveyItemsForModule(module).at(-1)?.label).toBe("나는 새 사례에 적용할 수 있다.");
     expect(independentProblemsForModule(module)[0]?.title).toBe("원리 맞춤");
+  });
+
+  it("uses elementary defaults when the understanding module is elementary and has no custom problem prompts", () => {
+    const module = {
+      audienceLevel: "elementary_main",
+      version: "1.0"
+    } as const;
+
+    expect(independentProblemsForModule(module)[0]?.title).toBe("쉽게 설명하기");
   });
 });

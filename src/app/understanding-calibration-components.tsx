@@ -54,6 +54,7 @@ export function StageFrame(props: StageFrameProps): ReactElement {
 }
 
 export function IrreversibleTransitionDialog(props: {
+  readonly cancelLabel?: string | undefined;
   readonly confirmLabel?: string | undefined;
   readonly message: string;
   readonly title?: string | undefined;
@@ -66,7 +67,7 @@ export function IrreversibleTransitionDialog(props: {
         <h2>{props.title ?? "다음으로 넘어갈까요?"}</h2>
         <p>{props.message}</p>
         <div className="confirm-actions">
-          <Button variant="secondary" onClick={props.onCancel}>아직 더 볼래요</Button>
+          <Button variant="secondary" onClick={props.onCancel}>{props.cancelLabel ?? "아직 더 볼래요"}</Button>
           <Button variant="primary" onClick={props.onConfirm}>{props.confirmLabel ?? "다음으로 갈래요"}</Button>
         </div>
       </section>
@@ -125,13 +126,57 @@ export function SurveyResponseGroup(props: SurveyResponseGroupProps): ReactEleme
   return (
     <div className="likert-list">
       {props.items.map((item) => {
-        if (surveyResponseType(item) === "text") {
+        const responseType = surveyResponseType(item);
+        if (responseType === "text") {
           return (
             <label className="survey-text-response" key={item.id}>
               <span>{item.label}</span>
               {item.helper === undefined ? null : <p>{item.helper}</p>}
               <textarea value={props.textResponses[item.id] ?? ""} onChange={(event) => props.onTextChange(item.id, event.currentTarget.value)} />
             </label>
+          );
+        }
+        if (responseType === "slider_0_100") {
+          const value = props.ratings[item.id];
+          const sliderValue = value === undefined || value < 0 ? 50 : value;
+          return (
+            <fieldset className="likert-row survey-slider-row" key={item.id}>
+              <legend>{item.label}</legend>
+              {item.helper === undefined ? null : <p>{item.helper}</p>}
+              <div className="survey-slider-control">
+                <input
+                  aria-label={item.label}
+                  max={100}
+                  min={0}
+                  type="range"
+                  value={sliderValue}
+                  onChange={(event) => props.onRatingChange(item.id, Number(event.currentTarget.value))}
+                />
+                <output>{value === undefined || value < 0 ? "선택 전" : `${value}`}</output>
+              </div>
+            </fieldset>
+          );
+        }
+        if (responseType === "yes_no") {
+          return (
+            <fieldset className="likert-row" key={item.id}>
+              <legend>{item.label}</legend>
+              {item.helper === undefined ? null : <p>{item.helper}</p>}
+              <div className="likert-options yes-no-options" role="radiogroup" aria-label={item.label}>
+                {[{ label: "예", value: 1 }, { label: "아니오", value: 0 }].map((choice) => (
+                  <button
+                    aria-label={`${item.label} ${choice.label}`}
+                    aria-pressed={props.ratings[item.id] === choice.value}
+                    className={props.ratings[item.id] === choice.value ? "selected" : ""}
+                    key={choice.value}
+                    type="button"
+                    onClick={() => props.onRatingChange(item.id, choice.value)}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           );
         }
         return (

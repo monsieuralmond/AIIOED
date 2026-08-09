@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Assignment } from "../shared/types.js";
 import { calibrationDraftFromAssignment, resolveCalibrationDraft } from "./calibration-assignment-config.js";
-import { finalReflectionSurveyItems, independentProblems, postProblemSurveyItems, predictionSurveyItems, preSurveyItems } from "./understanding-calibration-data.js";
+import { elementaryIndependentProblems, finalReflectionSurveyItems, independentProblems, postProblemSurveyItems, predictionSurveyItems, preSurveyItems } from "./understanding-calibration-data.js";
 
 const assignment: Assignment = {
   gradeLevel: "초등 고학년",
@@ -86,7 +86,7 @@ describe("calibration assignment config display draft", () => {
     expect(draft.independentProblems[0]?.title).toBe("");
     expect(draft.independentProblems[0]?.postSurveyItems[0]?.label).toBe("");
     expect(draft.finalReflectionSurveyItems[0]?.label).toBe("");
-    expect(draft.predictionSurveyItems.map((item) => item.id)).toEqual(["pred_can_explain_concept", "pred_custom_1"]);
+    expect(draft.predictionSurveyItems.map((item) => item.id)).toEqual([predictionSurveyItems[0]?.id, "pred_custom_1"]);
     expect(draft.predictionSurveyItems[0]?.label).toBe("");
 
     const resolved = resolveCalibrationDraft(draft);
@@ -99,5 +99,27 @@ describe("calibration assignment config display draft", () => {
     expect(resolved.finalReflectionSurveyItems[1]?.label).toBe("마지막으로 새롭게 확인한 내용을 적을 수 있다.");
     expect(resolved.predictionSurveyItems[0]?.label).toBe(predictionSurveyItems[0]?.label);
     expect(resolved.predictionSurveyItems[1]?.label).toBe("나는 새 문항에도 응답할 수 있다.");
+  });
+
+  it("resolves elementary audience assignments with elementary problem defaults and question set version", () => {
+    const draft = calibrationDraftFromAssignment({
+      ...assignment,
+      calibrationConfig: {
+        audienceLevel: "elementary_pilot",
+        sourceText: "양자컴퓨터 지문",
+        topic: "양자컴퓨터"
+      }
+    });
+
+    expect(draft.audienceLevel).toBe("elementary_pilot");
+    expect(draft.questionSetVersion).toBe("quantum_elementary_v1");
+    expect(draft.independentProblems[0]?.title).toBe("");
+
+    const resolved = resolveCalibrationDraft(draft);
+
+    expect(resolved.audienceLevel).toBe("elementary_pilot");
+    expect(resolved.questionSetVersion).toBe("quantum_elementary_v1");
+    expect(resolved.independentProblems[0]?.title).toBe(elementaryIndependentProblems[0]?.title);
+    expect(resolved.independentProblems[1]?.prompt).toContain("친구 A");
   });
 });

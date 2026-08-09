@@ -30,14 +30,19 @@ const isSurveyItem = (value: unknown): boolean => {
   return isString(value["id"]) &&
     isString(value["label"]) &&
     (value["helper"] === undefined || isString(value["helper"])) &&
-    (value["responseType"] === undefined || value["responseType"] === "likert" || value["responseType"] === "text");
+    (value["responseType"] === undefined || value["responseType"] === "likert" || value["responseType"] === "slider_0_100" || value["responseType"] === "text" || value["responseType"] === "yes_no");
 };
 
 export const isSurveyItems = (value: unknown): boolean => Array.isArray(value) && value.every(isSurveyItem);
 
 const isProblemPrompt = (value: unknown): boolean => {
   if (!isRecord(value)) return false;
-  return (value["number"] === 1 || value["number"] === 2 || value["number"] === 3 || value["number"] === 4) && isString(value["title"]) && isString(value["prompt"]);
+  return (value["number"] === 1 || value["number"] === 2 || value["number"] === 3 || value["number"] === 4 || value["number"] === 5) &&
+    isString(value["title"]) &&
+    isString(value["prompt"]) &&
+    (value["constructKey"] === undefined || isString(value["constructKey"])) &&
+    (value["itemRole"] === undefined || isString(value["itemRole"])) &&
+    (value["postSurveyItems"] === undefined || isSurveyItems(value["postSurveyItems"]));
 };
 
 export const isProblemPrompts = (value: unknown): boolean => Array.isArray(value) && value.every(isProblemPrompt);

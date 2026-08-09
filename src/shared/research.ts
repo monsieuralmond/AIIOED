@@ -49,6 +49,7 @@ export type GuidedWritingStage = (typeof GuidedWritingStages)[keyof typeof Guide
 
 export const UnderstandingCalibrationStages = {
   preSurvey: "pre_survey",
+  guide: "calibration_guide",
   reading: "calibration_reading",
   chat: "calibration_chat",
   predictionSurvey: "prediction_survey",
@@ -60,6 +61,10 @@ export const UnderstandingCalibrationStages = {
   problem3Confidence: "problem_3_confidence",
   problem4: "problem_4",
   problem4Confidence: "problem_4_confidence",
+  problem5: "problem_5",
+  problem5Confidence: "problem_5_confidence",
+  selfKnowledge: "self_knowledge",
+  overallSelfEvaluation: "overall_self_evaluation",
   reflectionSurvey: "reflection_survey",
   chatReview: "chat_review",
   finalReflection: "final_reflection",
@@ -70,19 +75,31 @@ export type UnderstandingCalibrationStage = (typeof UnderstandingCalibrationStag
 
 export type UnderstandingCalibrationEventType =
   | "calibration_pre_survey_submitted"
+  | "calibration_guide_started"
   | "calibration_reading_started"
   | "calibration_reading_completed"
   | "calibration_chat_started"
   | "calibration_chat_turn_created"
   | "calibration_chat_failed"
   | "calibration_chat_completed"
+  | "evaluation_gate_cancelled"
+  | "evaluation_gate_confirmed"
+  | "evaluation_gate_opened"
+  | "evaluation_started"
+  | "passage_locked"
+  | "chat_locked"
   | "calibration_prediction_survey_submitted"
+  | "pre_evaluation_submitted"
   | "calibration_chat_review_submitted"
   | "calibration_study_completed"
   | "question_started"
   | "question_submitted"
   | "confidence_started"
   | "confidence_submitted"
+  | "self_knowledge_started"
+  | "self_knowledge_submitted"
+  | "overall_self_evaluation_started"
+  | "overall_self_evaluation_submitted"
   | "reflection_started"
   | "reflection_submitted"
   | "chat_review_started"
@@ -102,11 +119,13 @@ export type UnderstandingSurveyItem = {
   readonly helper?: string;
   readonly id: string;
   readonly label: string;
-  readonly responseType?: "likert" | "text";
+  readonly responseType?: "likert" | "slider_0_100" | "text" | "yes_no";
 };
 
 export type UnderstandingProblemPrompt = {
-  readonly number: 1 | 2 | 3 | 4;
+  readonly constructKey?: string;
+  readonly itemRole?: "core_performance" | "empathy_reasoning" | (string & {});
+  readonly number: 1 | 2 | 3 | 4 | 5;
   readonly postSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly prompt: string;
   readonly title: string;
@@ -114,15 +133,23 @@ export type UnderstandingProblemPrompt = {
 
 export type UnderstandingCalibrationConfig = {
   readonly aiContext?: string;
+  readonly audienceLevel?: "adult_pilot" | "elementary_pilot" | "elementary_main" | (string & {});
   readonly confidencePromptLabel?: string;
+  readonly constructFrameworkVersion?: string;
   readonly errorStatement?: string;
   readonly finalReflectionSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly independentProblems?: readonly UnderstandingProblemPrompt[];
   readonly independentTasks?: readonly string[];
+  readonly ksVersion?: string;
   readonly maxChatMinutes?: number;
   readonly predictionSurveyItems?: readonly UnderstandingSurveyItem[];
+  readonly protocolVersion?: string;
+  readonly questionSetVersion?: string;
   readonly preSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly reflectionSurveyItems?: readonly UnderstandingSurveyItem[];
+  readonly rubricVersion?: string;
+  readonly selfKnowledgePrompt?: string;
+  readonly overallSelfEvaluationPrompt?: string;
   readonly sourceText?: string;
   readonly topic?: string;
   readonly transferChoices?: readonly UnderstandingTransferChoice[];
@@ -130,15 +157,23 @@ export type UnderstandingCalibrationConfig = {
 
 export type UnderstandingCalibrationModule = {
   readonly aiContext?: string;
+  readonly audienceLevel?: "adult_pilot" | "elementary_pilot" | "elementary_main" | (string & {});
   readonly confidencePromptLabel?: string;
+  readonly constructFrameworkVersion?: string;
   readonly errorStatement?: string;
   readonly finalReflectionSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly independentProblems?: readonly UnderstandingProblemPrompt[];
   readonly independentTasks?: readonly string[];
+  readonly ksVersion?: string;
   readonly maxChatMinutes?: number;
   readonly predictionSurveyItems?: readonly UnderstandingSurveyItem[];
+  readonly protocolVersion?: string;
+  readonly questionSetVersion?: string;
   readonly preSurveyItems?: readonly UnderstandingSurveyItem[];
   readonly reflectionSurveyItems?: readonly UnderstandingSurveyItem[];
+  readonly rubricVersion?: string;
+  readonly selfKnowledgePrompt?: string;
+  readonly overallSelfEvaluationPrompt?: string;
   readonly stageRecords?: Readonly<Record<string, UnderstandingCalibrationStageRecord>>;
   readonly sourceText?: string;
   readonly topic?: string;

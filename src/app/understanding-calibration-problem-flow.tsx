@@ -11,8 +11,10 @@ import {
   finalReflectionSurveyItemsForModule,
   reflectionSurveyItemsForModule,
   nextProblemAfter,
+  overallSelfEvaluationItem,
   problemForConfidenceStage,
   problemForStage,
+  selfKnowledgePrompt,
   surveyItemsForTopic,
   surveyResponsesComplete,
   UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
@@ -34,6 +36,7 @@ type FlowProps = {
 
 type PendingTransition = {
   readonly actionKey: string;
+  readonly cancelLabel?: string;
   readonly confirmLabel?: string;
   readonly message: string;
   readonly stage: UnderstandingCalibrationStage;
@@ -94,12 +97,14 @@ function ProblemAnswerStage(props: FlowProps & { readonly problem: IndependentPr
             prompt: props.problem.prompt,
             promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
             questionNumber: props.problem.number,
-            rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION,
-            startedAt: startedAtForProblem(session, props.problem),
-            submittedAt,
-            title: props.problem.title,
-            topic: props.topic,
-            topicId: props.topic
+              rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION,
+              startedAt: startedAtForProblem(session, props.problem),
+              submittedAt,
+              title: props.problem.title,
+              constructKey: props.problem.constructKey,
+              itemRole: props.problem.itemRole,
+              topic: props.topic,
+              topicId: props.topic
           }
         }],
         events: [
@@ -115,6 +120,8 @@ function ProblemAnswerStage(props: FlowProps & { readonly problem: IndependentPr
               rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION,
               submittedAt,
               title: props.problem.title,
+              constructKey: props.problem.constructKey,
+              itemRole: props.problem.itemRole,
               topic: props.topic,
               topicId: props.topic
             }
@@ -226,8 +233,8 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
           },
           ...(nextProblem === undefined
             ? [{
-              type: "reflection_started" as const,
-              stage: UnderstandingCalibrationStages.reflectionSurvey,
+              type: "self_knowledge_started" as const,
+              stage: UnderstandingCalibrationStages.selfKnowledge,
               payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, questionNumber: props.problem.number, topic: props.topic, topicId: props.topic }
             }]
             : [startedEventForProblem(nextProblem)])
@@ -245,11 +252,13 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
             surveyItems: postSurveyItems,
             textResponses,
             title: props.problem.title,
+            constructKey: props.problem.constructKey,
+            itemRole: props.problem.itemRole,
             topic: props.topic,
             topicId: props.topic
           }
         }],
-        nextStage: nextProblem?.stage ?? UnderstandingCalibrationStages.reflectionSurvey,
+        nextStage: nextProblem?.stage ?? UnderstandingCalibrationStages.selfKnowledge,
         stage: props.problem.confidenceStage
       })
     );
@@ -282,7 +291,7 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
   return (
     <StageFrame
       disabled={!surveyResponsesComplete(postSurveyItems, ratings, textResponses)}
-      primaryLabel={props.problem.number === 4 ? "활동 돌아보기" : "다음 문제"}
+      primaryLabel={nextProblemAfter(props.problems, props.problem) === undefined ? "자기 점검" : "다음 문제"}
       sessionTitle={props.session.assignment.title}
       stage={props.problem.confidenceStage}
       subtitle="방금 제출한 답에 대해 지금 느끼는 생각을 표시해 주세요."
@@ -298,6 +307,7 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
       />
       {pendingTransition === null ? null : (
         <IrreversibleTransitionDialog
+          cancelLabel={pendingTransition.cancelLabel}
           confirmLabel={pendingTransition.confirmLabel}
           message={pendingTransition.message}
           title={pendingTransition.title}
@@ -305,6 +315,144 @@ function ConfidenceStage(props: FlowProps & { readonly problem: IndependentProbl
           onConfirm={confirmSubmitConfidence}
         />
       )}
+    </StageFrame>
+  );
+}
+
+function SelfKnowledgeStage(props: FlowProps): ReactElement {
+  const prompt = props.session.modules.understandingCalibration?.selfKnowledgePrompt ?? selfKnowledgePrompt;
+  const [answer, setAnswer] = useState("");
+  const trimmed = answer.trim();
+
+  const submitSelfKnowledge = (): void => {
+    const submittedAt = new Date().toISOString();
+    props.setSession((session) =>
+      appendCalibrationRecords(session, {
+        artifacts: [{
+          kind: "self_knowledge",
+          payload: {
+            answer: trimmed,
+            answerLength: trimmed.length,
+            prompt,
+            promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+            questionNumber: 6,
+            role: "self_knowledge",
+            submittedAt,
+            topic: props.topic,
+            topicId: props.topic
+          }
+        }],
+        events: [
+          {
+            type: "self_knowledge_submitted",
+            payload: {
+              answerLength: trimmed.length,
+              promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+              questionNumber: 6,
+              submittedAt,
+              topic: props.topic,
+              topicId: props.topic
+            }
+          },
+          {
+            type: "overall_self_evaluation_started",
+            stage: UnderstandingCalibrationStages.overallSelfEvaluation,
+            payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, questionNumber: 0, topic: props.topic, topicId: props.topic }
+          }
+        ],
+        nextStage: UnderstandingCalibrationStages.overallSelfEvaluation,
+        stage: UnderstandingCalibrationStages.selfKnowledge
+      })
+    );
+  };
+
+  return (
+    <StageFrame
+      disabled={trimmed.length === 0}
+      primaryLabel="전체 자기평가"
+      sessionTitle={props.session.assignment.title}
+      stage={UnderstandingCalibrationStages.selfKnowledge}
+      subtitle="이 문항은 수행 점수와 분리해 자기 이해를 관찰하기 위한 자료로 저장됩니다."
+      title="자기 점검"
+      onPrimary={submitSelfKnowledge}
+    >
+      <article className="understanding-question-card" aria-label="자기 점검 문항">
+        {prompt.split("\n").map((line, index) => (line.length === 0 ? <br key={`self-blank-${index}`} /> : <p key={`self-${index}`}>{line}</p>))}
+      </article>
+      <label className="understanding-textarea">
+        <span>내 답변</span>
+        <textarea aria-label="자기 점검 답변" value={answer} onChange={(event) => setAnswer(event.currentTarget.value)} />
+      </label>
+    </StageFrame>
+  );
+}
+
+function OverallSelfEvaluationStage(props: FlowProps): ReactElement {
+  const item = {
+    ...overallSelfEvaluationItem,
+    label: props.session.modules.understandingCalibration?.overallSelfEvaluationPrompt ?? overallSelfEvaluationItem.label
+  };
+  const [ratings, setRatings] = useState(() => emptyRatings([item]));
+  const [textResponses, setTextResponses] = useState(() => emptyTextResponses([item]));
+
+  const submitOverallSelfEvaluation = (): void => {
+    const submittedAt = new Date().toISOString();
+    props.setSession((session) =>
+      appendCalibrationRecords(session, {
+        events: [
+          {
+            type: "overall_self_evaluation_submitted",
+            payload: {
+              promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+              ratings,
+              submittedAt,
+              surveyItems: [item],
+              textResponses,
+              topic: props.topic,
+              topicId: props.topic
+            }
+          },
+          {
+            type: "reflection_started",
+            stage: UnderstandingCalibrationStages.reflectionSurvey,
+            payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, questionNumber: 0, topic: props.topic, topicId: props.topic }
+          }
+        ],
+        measures: [{
+          kind: "overall_self_evaluation",
+          payload: {
+            promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
+            ratings,
+            submittedAt,
+            surveyItems: [item],
+            textResponses,
+            topic: props.topic,
+            topicId: props.topic
+          }
+        }],
+        nextStage: UnderstandingCalibrationStages.reflectionSurvey,
+        stage: UnderstandingCalibrationStages.overallSelfEvaluation
+      })
+    );
+  };
+
+  return (
+    <StageFrame
+      disabled={!surveyResponsesComplete([item], ratings, textResponses)}
+      primaryLabel="활동 돌아보기"
+      sessionTitle={props.session.assignment.title}
+      stage={UnderstandingCalibrationStages.overallSelfEvaluation}
+      subtitle="전체 수행에 대한 현재 판단을 남겨 주세요."
+      title="전체 자기평가"
+      onPrimary={submitOverallSelfEvaluation}
+    >
+      <SurveyResponseGroup
+        items={[item]}
+        ratings={ratings}
+        textResponses={textResponses}
+        onRatingChange={(id, value) => setRatings((current) => updateRating(current, id, value))}
+        onTextChange={(id, value) => setTextResponses((current) => updateTextResponse(current, id, value))}
+      />
     </StageFrame>
   );
 }
@@ -320,11 +468,13 @@ function ReflectionSurveyStage(props: FlowProps): ReactElement {
         artifacts: [{ kind: "reflection_survey_text_responses", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, textResponses, topic: props.topic } }],
         events: [
           { type: "reflection_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, questionNumber: 0, reflectionKind: "survey", ratings, textResponses, topic: props.topic, topicId: props.topic } },
-          { type: "chat_review_started", stage: UnderstandingCalibrationStages.chatReview, payload: { questionNumber: 0, totalTurns: session.chatTurns.length, topic: props.topic, topicId: props.topic } }
+          { type: "calibration_study_completed", stage: UnderstandingCalibrationStages.completed, payload: { completedAt: new Date().toISOString(), questionNumber: 0, topic: props.topic, topicId: props.topic } }
         ],
         measures: [{ kind: "reflection_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings, textResponses, topic: props.topic } }],
-        nextStage: UnderstandingCalibrationStages.chatReview,
-        stage: UnderstandingCalibrationStages.reflectionSurvey
+        nextStage: UnderstandingCalibrationStages.completed,
+        stage: UnderstandingCalibrationStages.reflectionSurvey,
+        completedAt: new Date().toISOString(),
+        status: "submitted"
       })
     );
   };
@@ -332,10 +482,10 @@ function ReflectionSurveyStage(props: FlowProps): ReactElement {
   return (
     <StageFrame
       disabled={!surveyResponsesComplete(reflectionItems, ratings, textResponses)}
-      primaryLabel="대화 다시 보기"
+      primaryLabel="완료"
       sessionTitle={props.session.assignment.title}
       stage={UnderstandingCalibrationStages.reflectionSurvey}
-      subtitle="방금 활동을 하며 느낀 점을 표시해 주세요."
+      subtitle="AI 대화와 독립 수행을 마친 뒤 느낀 점을 남겨 주세요."
       title="활동 돌아보기"
       onPrimary={submitReflection}
     >
@@ -455,6 +605,8 @@ export function UnderstandingCalibrationProblemFlow(props: FlowProps): ReactElem
   if (problem !== undefined) return <ProblemAnswerStage {...props} problem={problem} />;
   const confidenceProblem = problemForConfidenceStage(props.problems, props.stage);
   if (confidenceProblem !== undefined) return <ConfidenceStage {...props} problem={confidenceProblem} />;
+  if (props.stage === UnderstandingCalibrationStages.selfKnowledge) return <SelfKnowledgeStage {...props} />;
+  if (props.stage === UnderstandingCalibrationStages.overallSelfEvaluation) return <OverallSelfEvaluationStage {...props} />;
   if (props.stage === UnderstandingCalibrationStages.reflectionSurvey) return <ReflectionSurveyStage {...props} />;
   if (props.stage === UnderstandingCalibrationStages.chatReview) return <ChatReviewStage {...props} />;
   if (props.stage === UnderstandingCalibrationStages.finalReflection) return <FinalReflectionStage {...props} />;

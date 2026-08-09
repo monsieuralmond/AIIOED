@@ -315,7 +315,7 @@ const exportBundle = (
       confidenceDrop: confidenceDrop(trajectory),
       confidenceTrajectory: JSON.stringify(trajectory),
       currentStage: session.current_stage,
-      hasFinalReflection: String(hasKind(session.session_id, "final_reflection", artifacts) || hasKind(session.session_id, "final_reflection_self_report", measures)),
+      hasFinalReflection: String(hasKind(session.session_id, "final_reflection", artifacts) || hasKind(session.session_id, "final_reflection_self_report", measures) || hasKind(session.session_id, "overall_self_evaluation", measures)),
       hasFinalSubmission: String(hasKind(session.session_id, "final_submission", artifacts)),
       hasReflectionSurvey: String(hasKind(session.session_id, "reflection_self_report", measures)),
       problem1_answer: problem1.answer,

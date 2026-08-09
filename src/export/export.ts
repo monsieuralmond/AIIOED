@@ -96,6 +96,7 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   calibration_chat_review_submitted: "system_event",
   calibration_chat_started: "system_event",
   calibration_chat_turn_created: "system_event",
+  calibration_guide_started: "system_event",
   calibration_pre_survey_submitted: "system_event",
   calibration_prediction_survey_submitted: "system_event",
   calibration_reading_completed: "system_event",
@@ -105,14 +106,25 @@ const speakerByEventType: Readonly<Record<PilotEventType, LabelingSpeaker>> = {
   chat_review_submitted: "system_event",
   confidence_started: "system_event",
   confidence_submitted: "system_event",
+  chat_locked: "system_event",
+  evaluation_gate_cancelled: "system_event",
+  evaluation_gate_confirmed: "system_event",
+  evaluation_gate_opened: "system_event",
+  evaluation_started: "system_event",
   final_reflection_submitted: "system_event",
   irreversible_transition_cancelled: "system_event",
   irreversible_transition_confirmed: "system_event",
   irreversible_transition_prompt_shown: "system_event",
+  overall_self_evaluation_started: "system_event",
+  overall_self_evaluation_submitted: "system_event",
+  passage_locked: "system_event",
+  pre_evaluation_submitted: "system_event",
   question_started: "system_event",
   question_submitted: "system_event",
   reflection_started: "system_event",
-  reflection_submitted: "system_event"
+  reflection_submitted: "system_event",
+  self_knowledge_started: "system_event",
+  self_knowledge_submitted: "system_event"
 };
 
 const evidenceText = (payload: Record<string, unknown>, eventType: PilotEventType): string => {

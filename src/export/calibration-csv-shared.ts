@@ -63,6 +63,8 @@ export const manualProblemForKey = (session: ExportPilotSession, problemKey: Cal
       return session.manualEvaluation.problem3;
     case "problem4":
       return session.manualEvaluation.problem4;
+    case "problem5":
+      return session.manualEvaluation.problem5;
   }
 };
 
@@ -76,5 +78,7 @@ export const problemDurationForKey = (session: ExportPilotSession, problemKey: C
       return session.derivedFeatures.problem3DurationMs;
     case "problem4":
       return session.derivedFeatures.problem4DurationMs;
+    case "problem5":
+      return session.derivedFeatures.problem5DurationMs;
   }
 };

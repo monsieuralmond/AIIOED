@@ -24,7 +24,8 @@ const nullItemGaps: Readonly<Record<CalibrationProblemKey, number | null>> = {
   problem1: null,
   problem2: null,
   problem3: null,
-  problem4: null
+  problem4: null,
+  problem5: null
 };
 
 const nullCriterionScores: Readonly<Record<CalibrationCriterionScoreKey, 0 | 1 | 2 | null>> = {
@@ -74,7 +75,7 @@ const meanForItems = (ratings: Readonly<Record<string, number>>, itemIds: readon
     const value = ratings[id];
     return typeof value === "number" ? [value] : [];
   });
-  return mean(values);
+  return values.length > 0 ? mean(values) : mean(Object.values(ratings));
 };
 
 const confidenceMean = (session: PilotSession): number | null => {
@@ -140,17 +141,19 @@ const manualProblemValues = (manualEvaluation: CalibrationManualEvaluation): rea
   manualEvaluation.problem1,
   manualEvaluation.problem2,
   manualEvaluation.problem3,
-  manualEvaluation.problem4
+  manualEvaluation.problem4,
+  manualEvaluation.problem5
 ];
 
 const hasManualScores = (manualEvaluation: CalibrationManualEvaluation): boolean =>
   manualEvaluation.totalScore !== null || manualProblemValues(manualEvaluation).some((problem) => problem.totalScore !== null);
 
-const problemNumberByKey: Readonly<Record<CalibrationProblemKey, 1 | 2 | 3 | 4>> = {
+const problemNumberByKey: Readonly<Record<CalibrationProblemKey, 1 | 2 | 3 | 4 | 5>> = {
   problem1: 1,
   problem2: 2,
   problem3: 3,
-  problem4: 4
+  problem4: 4,
+  problem5: 5
 };
 
 const emptyManualProblem = (problemKey: CalibrationProblemKey): CalibrationManualEvaluationProblem => {
@@ -180,6 +183,7 @@ export const emptyManualEvaluation = (): CalibrationManualEvaluation => ({
   problem2: emptyManualProblem("problem2"),
   problem3: emptyManualProblem("problem3"),
   problem4: emptyManualProblem("problem4"),
+  problem5: emptyManualProblem("problem5"),
   raterIds: [],
   rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION,
   totalScore: null
@@ -187,7 +191,7 @@ export const emptyManualEvaluation = (): CalibrationManualEvaluation => ({
 
 export const deriveCalibrationFeatures = (session: PilotSession, manualEvaluation: CalibrationManualEvaluation): CalibrationDerivedFeatures => {
   const preRatings = measureRatings(session, "pre_self_report");
-  const predictionRatings = measureRatings(session, "prediction_self_report");
+  const predictionRatings = { ...measureRatings(session, "prediction_self_report"), ...measureRatings(session, "pre_evaluation_self_report") };
   const predictionMean = meanForItems(predictionRatings, predictionSurveyItemsForModule(session.modules.understandingCalibration).map((item) => item.id));
   const performanceTotal = manualEvaluation.totalScore;
   const calibrationGapOverall = predictionMean === null || performanceTotal === null ? null : rounded(predictionMean - performanceTotal);
@@ -195,20 +199,25 @@ export const deriveCalibrationFeatures = (session: PilotSession, manualEvaluatio
   const requestCounts = requestTagCounts(session.events);
   const totalChatUserChars = charsByRole(session, "student");
   const totalChatAssistantChars = charsByRole(session, "assistant");
-  const problemArtifacts: readonly CalibrationAnalysisProblemArtifact[] = [
+  const coreProblemArtifacts: readonly CalibrationAnalysisProblemArtifact[] = [
     analysisArtifacts.problem1,
     analysisArtifacts.problem2,
     analysisArtifacts.problem3,
-    analysisArtifacts.problem4
+    analysisArtifacts.problem4,
   ];
-  const hasAllFourAnswers = problemArtifacts.every((artifact) => artifact.answer.trim().length > 0);
-  const hasAllFourConfidence = independentProblemsForModule(session.modules.understandingCalibration).every((problem) => confidenceForProblem(session, problem) !== null);
+  const allProblemArtifacts: readonly CalibrationAnalysisProblemArtifact[] = [
+    ...coreProblemArtifacts,
+    analysisArtifacts.problem5
+  ];
+  const hasAllFourAnswers = coreProblemArtifacts.every((artifact) => artifact.answer.trim().length > 0);
+  const coreProblems = independentProblemsForModule(session.modules.understandingCalibration).filter((problem) => problem.number <= 4);
+  const hasAllFourConfidence = coreProblems.every((problem) => confidenceForProblem(session, problem) !== null);
   const hasChat = session.chatTurns.some((turn) => turn.role === "assistant");
   const hasReflectionSurvey = hasMeasure(session, "reflection_self_report");
-  const hasFinalReflection = hasMeasure(session, "final_reflection_self_report") || hasArtifactText(session, "final_reflection", "text");
+  const hasFinalReflection = hasMeasure(session, "final_reflection_self_report") || hasArtifactText(session, "final_reflection", "text") || hasMeasure(session, "overall_self_evaluation");
   const manualScoresPresent = hasManualScores(manualEvaluation);
   const trajectory = confidenceTrajectory(session);
-  const completedProblemCount = problemArtifacts.filter((artifact, index) => {
+  const completedProblemCount = allProblemArtifacts.filter((artifact, index) => {
     const problem = independentProblemsForModule(session.modules.understandingCalibration)[index];
     return problem !== undefined && artifact.answer.trim().length > 0 && confidenceForProblem(session, problem) !== null;
   }).length;
@@ -252,6 +261,7 @@ export const deriveCalibrationFeatures = (session: PilotSession, manualEvaluatio
     problem2DurationMs: analysisArtifacts.problem2.problemDurationMs,
     problem3DurationMs: analysisArtifacts.problem3.problemDurationMs,
     problem4DurationMs: analysisArtifacts.problem4.problemDurationMs,
+    problem5DurationMs: analysisArtifacts.problem5.problemDurationMs,
     promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
     promptSetVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION,
     questionCount: questionCount(session),

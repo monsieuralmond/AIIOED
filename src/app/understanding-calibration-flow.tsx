@@ -37,6 +37,7 @@ type FailedChatRequest = {
 
 type PendingTransition = {
   readonly actionKey: string;
+  readonly cancelLabel?: string;
   readonly confirmLabel?: string;
   readonly message: string;
   readonly stage: UnderstandingCalibrationStage;
@@ -86,15 +87,31 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   const recordTransitionEvent = (type: "irreversible_transition_cancelled" | "irreversible_transition_confirmed" | "irreversible_transition_prompt_shown", transition: PendingTransition): void => {
     props.setSession((session) =>
       appendCalibrationEventsOnly(session, {
-        events: [{
-          type,
-          payload: {
-            actionKey: transition.actionKey,
-            fromStage: transition.stage,
-            message: transition.message,
-            title: transition.title ?? "다음으로 넘어갈까요?"
-          }
-        }],
+        events: [
+          {
+            type,
+            payload: {
+              actionKey: transition.actionKey,
+              fromStage: transition.stage,
+              message: transition.message,
+              title: transition.title ?? "다음으로 넘어갈까요?"
+            }
+          },
+          ...(transition.actionKey === "start_closed_book_evaluation"
+            ? [{
+                type: type === "irreversible_transition_prompt_shown"
+                  ? "evaluation_gate_opened" as const
+                  : type === "irreversible_transition_cancelled"
+                    ? "evaluation_gate_cancelled" as const
+                    : "evaluation_gate_confirmed" as const,
+                payload: {
+                  actionKey: transition.actionKey,
+                  fromStage: transition.stage,
+                  topic
+                }
+              }]
+            : [])
+        ],
         stage: transition.stage
       })
     );
@@ -124,11 +141,21 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         artifacts: [{ kind: "pre_survey_text_responses", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, textResponses: preTextResponses, topic } }],
         events: [
           { type: "calibration_pre_survey_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: preRatings, textResponses: preTextResponses, topic } },
-          { type: "calibration_reading_started", payload: { topic } }
+          { type: "calibration_guide_started", payload: { topic } }
         ],
         measures: [{ kind: "pre_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: preRatings, textResponses: preTextResponses, topic } }],
-        nextStage: UnderstandingCalibrationStages.reading,
+        nextStage: UnderstandingCalibrationStages.guide,
         stage: UnderstandingCalibrationStages.preSurvey
+      })
+    );
+  };
+
+  const completeGuide = (): void => {
+    props.setSession((session) =>
+      appendCalibrationRecords(session, {
+        events: [{ type: "calibration_reading_started", payload: { topic } }],
+        nextStage: UnderstandingCalibrationStages.reading,
+        stage: UnderstandingCalibrationStages.guide
       })
     );
   };
@@ -219,7 +246,12 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   const completeChat = (): void => {
     props.setSession((session) =>
       appendCalibrationRecords(session, {
-        events: [{ type: "calibration_chat_completed", payload: chatCompletedPayload(session, topic) }],
+        events: [
+          { type: "calibration_chat_completed", payload: chatCompletedPayload(session, topic) },
+          { type: "evaluation_started", payload: { topic } },
+          { type: "passage_locked", payload: { topic } },
+          { type: "chat_locked", payload: { chatTurnCount: session.chatTurns.length, topic } }
+        ],
         nextStage: UnderstandingCalibrationStages.predictionSurvey,
         stage: UnderstandingCalibrationStages.chat
       })
@@ -233,9 +265,10 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         artifacts: [{ kind: "prediction_survey_text_responses", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, textResponses: predictionTextResponses, topic } }],
         events: [
           { type: "calibration_prediction_survey_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, textResponses: predictionTextResponses, topic } },
+          { type: "pre_evaluation_submitted", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, textResponses: predictionTextResponses, topic } },
           ...(firstProblem === undefined ? [] : [startedEventForProblem(firstProblem)])
         ],
-        measures: [{ kind: "prediction_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION, textResponses: predictionTextResponses, topic } }],
+        measures: [{ kind: "pre_evaluation_self_report", payload: { promptVersion: UNDERSTANDING_CALIBRATION_PROMPT_VERSION, ratings: predictionRatings, rubricVersion: UNDERSTANDING_CALIBRATION_RUBRIC_VERSION, textResponses: predictionTextResponses, topic } }],
         nextStage: firstProblem?.stage ?? UnderstandingCalibrationStages.reflectionSurvey,
         stage: UnderstandingCalibrationStages.predictionSurvey
       })
@@ -244,7 +277,7 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
 
   if (stage === UnderstandingCalibrationStages.preSurvey) {
     return (
-      <StageFrame disabled={!surveyResponsesComplete(preSurveyItems, preRatings, preTextResponses)} primaryLabel="글 읽기로 이동" sessionTitle={props.session.assignment.title} stage={stage} subtitle={`${topic}에 대해 지금 떠오르는 생각을 먼저 남깁니다.`} title="시작 전 확인" onPrimary={savePreSurvey}>
+      <StageFrame disabled={!surveyResponsesComplete(preSurveyItems, preRatings, preTextResponses)} primaryLabel="안내 보기" sessionTitle={props.session.assignment.title} stage={stage} subtitle={`${topic}에 대해 지금 떠오르는 생각을 먼저 남깁니다.`} title="시작 전 확인" onPrimary={savePreSurvey}>
         <SurveyResponseGroup
           items={preSurveyItemsForTopic}
           ratings={preRatings}
@@ -256,9 +289,23 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
     );
   }
 
+  if (stage === UnderstandingCalibrationStages.guide) {
+    return (
+      <StageFrame primaryLabel="지문 읽기" sessionTitle={props.session.assignment.title} stage={stage} subtitle="활동 방식과 평가 조건을 먼저 확인합니다." title="활동 안내" onPrimary={completeGuide}>
+        <article className="understanding-question-card">
+          <p>지금부터 제시되는 글을 읽고 AI와 자유롭게 대화하며 학습하게 됩니다.</p>
+          <p>이후에는 AI와의 대화를 바탕으로 새로운 문제를 해결하는 평가가 진행됩니다.</p>
+          <p>평가 문항은 미리 공개되지 않습니다.</p>
+          <p>지문의 문장을 그대로 기억하는 것보다 내용을 충분히 이해하는 것이 중요합니다.</p>
+          <p>필요한 만큼 AI와 자유롭게 대화한 후 스스로 준비되었다고 판단되면 평가를 시작하세요.</p>
+        </article>
+      </StageFrame>
+    );
+  }
+
   if (stage === UnderstandingCalibrationStages.reading) {
     return (
-      <StageFrame primaryLabel="질문하러 가기" sessionTitle={props.session.assignment.title} stage={stage} subtitle="천천히 읽고 중요한 문장을 마음속으로 표시해 보세요." title={props.session.assignment.title} onPrimary={completeReading}>
+      <StageFrame primaryLabel="AI에게 질문하기" sessionTitle={props.session.assignment.title} stage={stage} subtitle="천천히 읽고 중요한 내용을 이해해 보세요. 평가가 시작되면 지문을 다시 볼 수 없습니다." title={props.session.assignment.title} onPrimary={completeReading}>
         <article className="understanding-passage"><h2>지문</h2><p>{passage}</p></article>
       </StageFrame>
     );
@@ -267,10 +314,13 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
   if (stage === UnderstandingCalibrationStages.chat) {
     const hasAssistantResponse = props.session.chatTurns.some((turn) => turn.role === "assistant");
     return (
-      <StageFrame disabled={chatPending || !hasAssistantResponse} layout="split" primaryLabel="다음 활동 전 확인" sessionTitle={props.session.assignment.title} stage={stage} subtitle="글을 읽고 더 확인하고 싶은 내용이 있으면 AI에게 자유롭게 질문해 보세요. 확인이 끝나면 다음 활동으로 이동하세요." title={topic} onPrimary={() => requestTransition({
-        actionKey: "complete_ai_chat",
-        message: "다음 화면으로 넘어가면 AI에게 질문하던 화면으로 다시 돌아올 수 없습니다. 충분히 확인했나요?",
+      <StageFrame disabled={chatPending || !hasAssistantResponse} layout="split" primaryLabel="평가 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="글을 읽고 더 확인하고 싶은 내용이 있으면 AI에게 자유롭게 질문해 보세요. 준비가 되면 평가를 시작하세요." title={topic} onPrimary={() => requestTransition({
+        actionKey: "start_closed_book_evaluation",
+        cancelLabel: "계속 학습하기",
+        confirmLabel: "평가 시작하기",
+        message: "학습을 종료하고 평가를 시작하시겠습니까?\n\n이후에는 AI와 더 이상 대화할 수 없습니다.\n\n평가는 AI와의 대화를 통해 이해한 내용을 바탕으로 진행됩니다.\n\n아직 더 학습이 필요하다면 AI와 계속 대화할 수 있습니다.",
         stage,
+        title: "평가를 시작할까요?",
         onConfirm: completeChat
       })}>
         <div className="calibration-study-layout">
@@ -295,6 +345,7 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         </div>
         {pendingTransition === null ? null : (
           <IrreversibleTransitionDialog
+            cancelLabel={pendingTransition.cancelLabel}
             confirmLabel={pendingTransition.confirmLabel}
             message={pendingTransition.message}
             title={pendingTransition.title}
@@ -308,9 +359,9 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
 
   if (stage === UnderstandingCalibrationStages.predictionSurvey) {
     return (
-      <StageFrame disabled={!surveyResponsesComplete(predictionSurveyItems, predictionRatings, predictionTextResponses)} primaryLabel="문제 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="다음 활동을 하기 전에 지금 느낌을 표시해 주세요." title="다음 활동 전 확인" onPrimary={() => requestTransition({
+      <StageFrame disabled={!surveyResponsesComplete(predictionSurveyItems, predictionRatings, predictionTextResponses)} primaryLabel="문제 시작" sessionTitle={props.session.assignment.title} stage={stage} subtitle="이제 지문과 AI 대화 없이 문제를 풉니다. 시작 전에 현재 판단을 남겨 주세요." title="평가 직전 확인" onPrimary={() => requestTransition({
         actionKey: "start_independent_problems",
-        message: "문제를 시작하면 앞 화면으로 돌아갈 수 없습니다. 지금 느낌을 모두 표시했나요?",
+        message: "문제를 시작하면 지문, AI 대화, 이전 화면으로 돌아갈 수 없습니다. 지금 판단을 모두 표시했나요?",
         stage,
         onConfirm: savePrediction
       })}>
@@ -323,6 +374,7 @@ export function UnderstandingCalibrationFlow(props: { readonly session: PilotSes
         />
         {pendingTransition === null ? null : (
           <IrreversibleTransitionDialog
+            cancelLabel={pendingTransition.cancelLabel}
             confirmLabel={pendingTransition.confirmLabel}
             message={pendingTransition.message}
             title={pendingTransition.title}

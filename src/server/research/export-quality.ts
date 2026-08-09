@@ -105,7 +105,7 @@ const qualityIssues = (
     if (missingProblems.length > 0) issues.push(`missing_problem_artifacts:${missingProblems.join("|")}`);
     if (missingConfidence.length > 0) issues.push(`missing_confidence_measures:${missingConfidence.join("|")}`);
     if (!hasKind(measures, "reflection_self_report")) issues.push("missing_reflection_survey");
-    if (!hasKind(artifacts, "final_reflection") && !hasKind(measures, "final_reflection_self_report")) issues.push("missing_final_reflection");
+    if (!hasKind(artifacts, "final_reflection") && !hasKind(measures, "final_reflection_self_report") && !hasKind(measures, "overall_self_evaluation")) issues.push("missing_final_reflection");
   }
   if ((session.research_mode === ResearchModes.writingCoach || session.research_mode === ResearchModes.guidedWriting) && completedLike(session) && !hasKind(artifacts, "final_submission")) {
     issues.push("missing_final_submission_artifact");

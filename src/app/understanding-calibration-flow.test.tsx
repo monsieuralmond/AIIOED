@@ -122,18 +122,18 @@ describe("UnderstandingCalibrationFlow chat", () => {
 
     render(<FlowHarnessWithSession initialSession={initialSession} onSessionChange={(session) => sessionUpdates.push(session)} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "다음 활동 전 확인" }));
+    fireEvent.click(screen.getByRole("button", { name: "평가 시작" }));
 
     expect(screen.getByRole("dialog", { name: "이동 확인" })).toBeInTheDocument();
-    expect(screen.getByText("다음 화면으로 넘어가면 AI에게 질문하던 화면으로 다시 돌아올 수 없습니다. 충분히 확인했나요?")).toBeInTheDocument();
+    expect(screen.getByText(/학습을 종료하고 평가를 시작하시겠습니까/u)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "아직 더 볼래요" }));
+    fireEvent.click(screen.getByRole("button", { name: "계속 학습하기" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "이동 확인" })).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "다음 활동 전 확인" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "평가 시작" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "다음 활동 전 확인" }));
-    fireEvent.click(screen.getByRole("button", { name: "다음으로 갈래요" }));
+    fireEvent.click(screen.getByRole("button", { name: "평가 시작" }));
+    fireEvent.click(screen.getByRole("button", { name: "평가 시작하기" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "문제 시작" })).toBeInTheDocument());
     const latestSession = sessionUpdates.at(-1);
@@ -141,7 +141,10 @@ describe("UnderstandingCalibrationFlow chat", () => {
       "irreversible_transition_prompt_shown",
       "irreversible_transition_cancelled",
       "irreversible_transition_confirmed",
-      "calibration_chat_completed"
+      "calibration_chat_completed",
+      "evaluation_started",
+      "passage_locked",
+      "chat_locked"
     ]));
   });
 
@@ -162,6 +165,6 @@ describe("UnderstandingCalibrationFlow chat", () => {
     fireEvent.click(screen.getByRole("button", { name: "제출" }));
     fireEvent.click(screen.getByRole("button", { name: "제출할래요" }));
 
-    await waitFor(() => expect(screen.getByText("문제 1 / 4 직후 확인")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("문제 1 / 5 직후 확인")).toBeInTheDocument());
   });
 });

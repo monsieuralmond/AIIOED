@@ -1,7 +1,7 @@
 import type { PilotSession } from "./types.js";
 
-export type CalibrationProblemKey = "problem1" | "problem2" | "problem3" | "problem4";
-export type CalibrationQuestionNumber = 1 | 2 | 3 | 4;
+export type CalibrationProblemKey = "problem1" | "problem2" | "problem3" | "problem4" | "problem5";
+export type CalibrationQuestionNumber = 1 | 2 | 3 | 4 | 5;
 export type CalibrationCriterionScoreKey = "conceptAccuracy" | "mechanismUnderstanding" | "misconceptionCorrection" | "applicationJudgment";
 export type CalibrationRubricScore = 0 | 1 | 2;
 
@@ -48,6 +48,7 @@ export type CalibrationDerivedFeatures = {
   readonly problem2DurationMs: number | null;
   readonly problem3DurationMs: number | null;
   readonly problem4DurationMs: number | null;
+  readonly problem5DurationMs: number | null;
   readonly promptVersion: string;
   readonly promptSetVersion: string;
   readonly questionCount: number;
@@ -85,6 +86,7 @@ export type CalibrationManualEvaluation = {
   readonly problem2: CalibrationManualEvaluationProblem;
   readonly problem3: CalibrationManualEvaluationProblem;
   readonly problem4: CalibrationManualEvaluationProblem;
+  readonly problem5: CalibrationManualEvaluationProblem;
   readonly raterIds: readonly string[];
   readonly rubricVersion: string;
   readonly totalScore: number | null;

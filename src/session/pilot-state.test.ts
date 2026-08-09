@@ -111,12 +111,12 @@ describe("local pilot state", () => {
     expect(started.session.status).toBe("in_progress");
     expect(started.session.artifacts).toEqual([]);
     expect(started.session.measures).toEqual([]);
-    expect(started.session.modules.understandingCalibration).toEqual({
+    expect(started.session.modules.understandingCalibration).toEqual(expect.objectContaining({
       independentTasks: ["핵심 근거 두 가지 쓰기"],
       topic: "일회용 플라스틱 사용",
       transferChoices: [{ id: "A", label: "A", text: "새로운 기사에 적용하기" }],
       version: "1.0"
-    });
+    }));
   });
 
   it("starts a guided-writing session at the material planning step", () => {

@@ -240,7 +240,7 @@ describe("understanding calibration CSV export", () => {
       performanceTotal: null,
       problem1DurationMs: 60000,
       predictionMean: 3.5,
-      preSelfMean: 2.75,
+      preSelfMean: 4,
       requestTagCounts: { example_request: 1, summary_request: 1, why_how_request: 1 },
       rubricVersion: "2026-07-UC-R1"
     }));
@@ -259,7 +259,7 @@ describe("understanding calibration CSV export", () => {
       predictionMean: "3.5",
       questionCount: "0"
     }));
-    expect(itemRows).toHaveLength(4);
+    expect(itemRows).toHaveLength(5);
     expect(itemRows[0]).toEqual(expect.objectContaining({
       answer: "양자컴퓨터는 양자의 성질을 이용해 정보를 처리하는 컴퓨터입니다.",
       confidence: "4",

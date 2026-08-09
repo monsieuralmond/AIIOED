@@ -40,6 +40,7 @@ const latestDraftText = (session: PilotSession): string => session.draftSnapshot
 
 const stageLabels: Readonly<Record<PilotSession["currentStage"], string>> = {
   calibration_chat: "AI에게 질문하기",
+  calibration_guide: "안내",
   calibration_reading: "글 읽기",
   chat_review: "대화 다시 보기",
   completed: "완료",
@@ -61,7 +62,11 @@ const stageLabels: Readonly<Record<PilotSession["currentStage"], string>> = {
   problem_3_confidence: "문제 3 확신도",
   problem_4: "문제 4",
   problem_4_confidence: "문제 4 확신도",
+  problem_5: "문제 5",
+  problem_5_confidence: "문제 5 확신도",
   reflection_survey: "활동 돌아보기",
+  self_knowledge: "자기 점검",
+  overall_self_evaluation: "전체 자기평가",
   reading: "과제 이해",
   review: "고쳐쓰기",
   thinking: "개요 작성",

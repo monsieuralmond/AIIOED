@@ -74,7 +74,7 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
     if (isCalibrationMode && parsedMaxChatMinutes !== undefined && (!Number.isFinite(parsedMaxChatMinutes) || parsedMaxChatMinutes <= 0)) { setError("최대 채팅 권장 시간은 1 이상의 숫자로 입력하세요"); return; }
     if (isCalibrationMode && resolvedCalibrationDraft.errorStatement.length === 0) { setError("오류 판단 문장을 입력하세요"); return; }
     const problemPostSurveyItems = resolvedCalibrationDraft.independentProblems.flatMap((problem) => problem.postSurveyItems);
-    if (isCalibrationMode && [...resolvedCalibrationDraft.preSurveyItems, ...resolvedCalibrationDraft.predictionSurveyItems, ...problemPostSurveyItems, ...resolvedCalibrationDraft.reflectionSurveyItems, ...resolvedCalibrationDraft.finalReflectionSurveyItems].some((item) => item.label.length === 0)) { setError("설문 문항을 모두 입력하세요"); return; }
+    if (isCalibrationMode && [...resolvedCalibrationDraft.preSurveyItems, ...resolvedCalibrationDraft.predictionSurveyItems, ...problemPostSurveyItems, ...resolvedCalibrationDraft.reflectionSurveyItems].some((item) => item.label.length === 0)) { setError("설문 문항을 모두 입력하세요"); return; }
     if (isCalibrationMode && resolvedCalibrationDraft.independentProblems.length === 0) { setError("실제 수행 문항을 하나 이상 남겨 두세요"); return; }
     if (isCalibrationMode && resolvedCalibrationDraft.independentProblems.some((problem) => problem.title.length === 0 || problem.prompt.length === 0)) { setError("실제 수행 문항의 제목과 지시문을 모두 입력하세요"); return; }
     if (isWritingCoachMode && question.trim().length === 0) { setError("해결할 문제를 입력하세요"); return; }
@@ -99,13 +99,20 @@ export function CreateAssignment(props: CreateAssignmentProps): ReactElement {
         ? {
             calibrationConfig: {
               ...(resolvedCalibrationDraft.aiContext.length > 0 ? { aiContext: resolvedCalibrationDraft.aiContext } : {}),
+              audienceLevel: resolvedCalibrationDraft.audienceLevel,
+              constructFrameworkVersion: resolvedCalibrationDraft.constructFrameworkVersion,
               errorStatement: resolvedCalibrationDraft.errorStatement,
-              finalReflectionSurveyItems: resolvedCalibrationDraft.finalReflectionSurveyItems,
               independentProblems: resolvedCalibrationDraft.independentProblems,
+              ksVersion: resolvedCalibrationDraft.ksVersion,
               ...(parsedMaxChatMinutes === undefined ? {} : { maxChatMinutes: parsedMaxChatMinutes }),
+              overallSelfEvaluationPrompt: resolvedCalibrationDraft.overallSelfEvaluationPrompt,
               predictionSurveyItems: resolvedCalibrationDraft.predictionSurveyItems,
+              protocolVersion: resolvedCalibrationDraft.protocolVersion,
+              questionSetVersion: resolvedCalibrationDraft.questionSetVersion,
               preSurveyItems: resolvedCalibrationDraft.preSurveyItems,
               reflectionSurveyItems: resolvedCalibrationDraft.reflectionSurveyItems,
+              rubricVersion: resolvedCalibrationDraft.rubricVersion,
+              selfKnowledgePrompt: resolvedCalibrationDraft.selfKnowledgePrompt,
               sourceText: passage.trim(),
               topic: trimmedTopic
             }

@@ -60,16 +60,25 @@ export const makeCalibrationChatTurn = (role: ChatTurn["role"], text: string, re
   return responseType === undefined ? base : { ...base, responseType };
 };
 
-const sessionPayload = (session: PilotSession, stage: Stage, timestamp: string): Record<string, unknown> => ({
-  assignmentId: session.assignment.id,
-  classGroupId: session.assignment.classGroupId ?? "",
-  researchMode: session.researchMode,
-  sessionId: session.sessionId,
-  stage,
-  studentAnonymousId: session.student.anonymousId,
-  timestamp,
-  topicId: session.modules.understandingCalibration?.topic ?? session.assignment.title
-});
+const sessionPayload = (session: PilotSession, stage: Stage, timestamp: string): Record<string, unknown> => {
+  const module = session.modules.understandingCalibration;
+  return {
+    assignmentId: session.assignment.id,
+    audienceLevel: module?.audienceLevel ?? "",
+    classGroupId: session.assignment.classGroupId ?? "",
+    constructFrameworkVersion: module?.constructFrameworkVersion ?? "",
+    ksVersion: module?.ksVersion ?? "",
+    protocolVersion: module?.protocolVersion ?? "",
+    questionSetVersion: module?.questionSetVersion ?? "",
+    researchMode: session.researchMode,
+    rubricVersion: module?.rubricVersion ?? "",
+    sessionId: session.sessionId,
+    stage,
+    studentAnonymousId: session.student.anonymousId,
+    timestamp,
+    topicId: module?.topic ?? session.assignment.title
+  };
+};
 
 const createEvent = (session: PilotSession, stage: Stage, input: NewEvent, timestamp: string): PilotEvent => {
   const eventStage = input.stage ?? stage;

@@ -53,14 +53,16 @@ const problemKeyByNumber: Readonly<Record<CalibrationQuestionNumber, Calibration
   1: "problem1",
   2: "problem2",
   3: "problem3",
-  4: "problem4"
+  4: "problem4",
+  5: "problem5"
 };
 
 const questionNumberByProblemKey: Readonly<Record<CalibrationProblemKey, CalibrationQuestionNumber>> = {
   problem1: 1,
   problem2: 2,
   problem3: 3,
-  problem4: 4
+  problem4: 4,
+  problem5: 5
 };
 
 const problemKeyForNumber = (questionNumber: CalibrationQuestionNumber): CalibrationProblemKey => problemKeyByNumber[questionNumber];
@@ -104,12 +106,13 @@ export const analysisArtifactsForSession = (session: PilotSession): CalibrationA
       }
     ];
   });
-  const [first, second, third, fourth] = entries;
+  const [first, second, third, fourth, fifth] = entries;
   return {
     problem1: first?.[1] ?? defaultProblemArtifact(session, "problem1"),
     problem2: second?.[1] ?? defaultProblemArtifact(session, "problem2"),
     problem3: third?.[1] ?? defaultProblemArtifact(session, "problem3"),
-    problem4: fourth?.[1] ?? defaultProblemArtifact(session, "problem4")
+    problem4: fourth?.[1] ?? defaultProblemArtifact(session, "problem4"),
+    problem5: fifth?.[1] ?? defaultProblemArtifact(session, "problem5")
   };
 };
 
