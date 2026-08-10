@@ -3763,6 +3763,20 @@ textarea { line-height: var(--line-height-body); resize: vertical; }
   font-size: var(--font-size-sm);
   margin: var(--space-2) 0 0;
 }
+.sync-warning {
+  background: #fff7d6;
+  border: 1px solid #e1c34d;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+}
+.sync-warning strong {
+  display: block;
+  margin-bottom: var(--space-1);
+}
 .labeling-export-summary {
   background: var(--surface-primary);
   border: 1px solid var(--border-default);

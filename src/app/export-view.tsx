@@ -61,7 +61,7 @@ const downloadFile = (fileName: keyof DatabaseExportBundle, value: DatabaseExpor
   URL.revokeObjectURL(url);
 };
 
-export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly state: PilotState; readonly onBack: () => void }): ReactElement {
+export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly sessionLoadError?: string; readonly state: PilotState; readonly onBack: () => void }): ReactElement {
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ type: "idle" });
   const [databaseExportStatus, setDatabaseExportStatus] = useState<DatabaseExportStatus>({ type: "idle" });
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({ type: "idle" });
@@ -139,6 +139,13 @@ export function ExportView(props: { readonly fileSync: FileSyncStatus; readonly 
       <h1>연구 로그</h1>
       <p>관리자 계정에서만 원자료 로그와 export 파일을 확인합니다. 교사 화면에는 학생 결과 요약만 표시됩니다.</p>
       <p className="sync-status">파일 저장 상태: {fileSyncLabel(props.fileSync)}</p>
+      {props.sessionLoadError === undefined || props.sessionLoadError.length === 0 ? null : (
+        <div className="sync-warning" role="alert">
+          <strong>DB 로그를 불러오지 못했습니다.</strong>
+          <span> 화면의 로그가 비어 있어도 데이터 삭제를 의미하지 않습니다. Supabase 연결 또는 배포 환경변수 문제로 조회에 실패했을 수 있습니다.</span>
+          <span> {props.sessionLoadError}</span>
+        </div>
+      )}
       <section aria-label="라벨링 데이터 요약" className="labeling-export-summary">
         <div>
           <p className="eyebrow">라벨링 데이터</p>

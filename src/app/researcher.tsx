@@ -8,6 +8,7 @@ import { Button, Field, TextInput } from "./ui.js";
 
 type ResearcherListProps = {
   readonly activeAssignment: Assignment | null;
+  readonly sessionLoadError?: string;
   readonly state: PilotState;
   readonly onAccounts: () => void;
   readonly onCreate: () => void;
@@ -135,6 +136,13 @@ export function ResearcherList(props: ResearcherListProps): ReactElement {
         <Button className="rail-item" variant="ghost" onClick={props.onAccounts}>계정 관리</Button>
       </aside>
       <section className="researcher-main">
+        {props.sessionLoadError === undefined || props.sessionLoadError.length === 0 ? null : (
+          <div className="sync-warning" role="alert">
+            <strong>학생 기록을 불러오지 못했습니다.</strong>
+            <span> 데이터가 삭제된 것이 아니라 Supabase 조회에 실패한 상태일 수 있습니다. 수업 전 점검 또는 Vercel/Supabase 환경변수를 확인하세요.</span>
+            <span> {props.sessionLoadError}</span>
+          </div>
+        )}
         <section className="prompt-explorer" aria-label="과제 목록">
           <div className="prompt-toolbar">
             <div className="prompt-toolbar-text">

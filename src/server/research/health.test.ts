@@ -48,6 +48,7 @@ describe("deployment health", () => {
 
     expect(health.ok).toBe(true);
     expect(new Set(requestedTables)).toEqual(new Set([
+      "v1",
       "artifacts",
       "assignments",
       "chat_turns",
@@ -60,6 +61,36 @@ describe("deployment health", () => {
       "students",
       "teachers",
       "research_schema_health"
+    ]));
+  });
+
+  it("stops table checks when Supabase REST is unreachable", async () => {
+    process.env["ADMIN_ID"] = "admin-root";
+    process.env["ADMIN_LOGIN_ID"] = "admin";
+    process.env["ADMIN_PASSWORD"] = "admin-password-test";
+    process.env["AI_PROVIDER"] = "openai";
+    process.env["OPENAI_API_KEY"] = "openai-test";
+    process.env["READING_COACH_AI_MODE"] = "real";
+    process.env["SERVER_AUTH_SECRET"] = "server-auth-test";
+    process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-role-test";
+    process.env["SUPABASE_URL"] = "https://missing-project.supabase.co";
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      const error = new TypeError("fetch failed") as TypeError & { cause?: Error };
+      error.cause = new Error("getaddrinfo ENOTFOUND missing-project.supabase.co");
+      throw error;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const health = await researchDeploymentHealth();
+
+    expect(health.ok).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(health.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        message: expect.stringContaining("ENOTFOUND"),
+        name: "supabase_rest_connection",
+        ok: false
+      })
     ]));
   });
 

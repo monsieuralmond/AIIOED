@@ -116,6 +116,7 @@ export function App(): ReactElement {
   const [teacherPreviewSession, setTeacherPreviewSession] = useState<PilotSession | null>(null);
   const [rosterReady, setRosterReady] = useState(false);
   const [, setRosterRevision] = useState<string | null>(null);
+  const [sessionLoadError, setSessionLoadError] = useState("");
   const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<SessionPersistenceStatus>({ type: "idle" });
   const rosterRevisionRef = useRef<string | null>(null);
   const rosterSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -295,6 +296,7 @@ export function App(): ReactElement {
       loader
         .then((result) => {
           if (cancelled) return;
+          setSessionLoadError("");
           setPilotState((state) => {
             const incomingIds = new Set(result.sessions.map((item) => item.sessionId));
             return {
@@ -303,7 +305,11 @@ export function App(): ReactElement {
             };
           });
         })
-        .catch(reportSessionSyncError);
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setSessionLoadError(persistenceErrorMessage(error));
+          reportSessionSyncError(error);
+        });
     };
     refreshSessions();
     const intervalId = window.setInterval(refreshSessions, 30_000);
@@ -657,7 +663,7 @@ export function App(): ReactElement {
     setTeacherPreviewSession((current) => (current === null ? current : updater(current)));
   };
 
-  const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} state={visibleTeacherState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={(assignmentId) => { void openStudent(assignmentId); }} />;
+  const renderTeacherList = (): ReactElement => <ResearcherList activeAssignment={activeAssignment} sessionLoadError={sessionLoadError} state={visibleTeacherState} onAccounts={() => openRoute("accounts")} onAssign={saveAssignment} onCreate={openNewAssignment} onEditAssignment={openEditAssignment} onReview={() => openRoute("review")} onStudent={(assignmentId) => { void openStudent(assignmentId); }} />;
 
   const renderTeacherStudentPreview = (): ReactElement => {
     const previewAssignment = visibleTeacherState.assignments.find((assignment) => assignment.id === teacherPreviewAssignmentId) ?? null;
@@ -779,7 +785,7 @@ export function App(): ReactElement {
   };
 
   const renderAdminRoute = (): ReactElement => {
-    if (route === "export") return <ExportView fileSync={fileSync} state={pilotState} onBack={() => openRoute("admin")} />;
+    if (route === "export") return <ExportView fileSync={fileSync} sessionLoadError={sessionLoadError} state={pilotState} onBack={() => openRoute("admin")} />;
     return (
       <AccountManagement
       mode="admin"

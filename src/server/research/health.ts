@@ -46,7 +46,11 @@ const requiredTables = [
   { name: "deletion_logs", select: "id" }
 ] as const satisfies readonly RequiredTable[];
 
-const messageForError = (error: unknown): string => error instanceof Error ? error.message : "Unknown error.";
+const messageForError = (error: unknown): string => {
+  if (!(error instanceof Error)) return "Unknown error.";
+  const cause = "cause" in error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
+  return `${error.message}${cause}`;
+};
 
 const check = (name: string, ok: boolean, message?: string): HealthCheck => ({
   ...(message === undefined ? {} : { message }),
@@ -66,6 +70,27 @@ const tableHealthCheck = async (db: SupabaseRestClient, table: RequiredTable): P
     return check(`supabase_table_${table.name}`, true);
   } catch (error) {
     return check(`supabase_table_${table.name}`, false, messageForError(error));
+  }
+};
+
+const supabaseRestConnectionCheck = async (env: ReturnType<typeof researchServerEnv>): Promise<HealthCheck> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch(`${env.supabaseUrl.replace(/\/$/, "")}/rest/v1/`, {
+      headers: {
+        apikey: env.supabaseServiceRoleKey,
+        authorization: `Bearer ${env.supabaseServiceRoleKey}`
+      },
+      method: "GET",
+      signal: controller.signal
+    });
+    if (response.ok) return check("supabase_rest_connection", true);
+    return check("supabase_rest_connection", false, `Supabase REST returned HTTP ${response.status}. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`);
+  } catch (error) {
+    return check("supabase_rest_connection", false, messageForError(error));
+  } finally {
+    clearTimeout(timeout);
   }
 };
 
@@ -155,6 +180,15 @@ export const researchDeploymentHealth = async (): Promise<DeploymentHealth> => {
 
   try {
     const db = new SupabaseRestClient({ serviceRoleKey: env.supabaseServiceRoleKey, url: env.supabaseUrl });
+    const connectionCheck = await supabaseRestConnectionCheck(env);
+    checks.push(connectionCheck);
+    if (!connectionCheck.ok) {
+      return {
+        checks,
+        generatedAt,
+        ok: false
+      };
+    }
     checks.push(...await Promise.all(requiredTables.map((table) => tableHealthCheck(db, table))));
     checks.push(...await schemaHealthChecks(db));
   } catch (error) {
